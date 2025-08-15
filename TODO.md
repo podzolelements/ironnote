@@ -1,0 +1,91 @@
+# TODO
+
+List of items and features needed for v1.0
+
+
+### Functionality
+- [ ] File saving/loading
+  - [x] Monthly JSON file containing day's entries
+    - [ ] Extra metadata?
+  - [ ] Auto save
+  - [x] Load existing entries
+  - [ ] Backups
+- [ ] File exports
+  - [ ] TXT
+  - [ ] Bulk ZIP
+  - [ ] Markdown?
+    - [ ] PDF?
+    - [ ] HTML?
+- [ ] File imports
+  - [ ] TXT
+  - [ ] Bulk ZIP
+- [ ] Navigation
+  - [ ] Jump to today
+  - [ ] Forward/backward
+    - [ ] Day
+    - [ ] Month
+    - [ ] Year
+- [ ] Seachable entries
+  - [ ] Range constriants
+- [ ] Configuration
+  - [ ] Editor font
+  - [ ] Auto save interval
+  - [ ] Save location
+  - [ ] Date format
+  - [ ] Time format
+  - [ ] Spell check
+- [ ] Window title reflects date
+- [ ] Spell check
+  - [ ] Add to dictionary
+  - [ ] Remove from dictionary
+    - [ ] Ignore for today's entry
+- [ ] Keyboard shortcuts
+  - [x] Save (S)
+  - [ ] Versioning
+    - [ ] Undo (Z)
+    - [ ] Redo (Shift Z?)
+  - [ ] Export (E)
+  - [ ] Delete word (Del)
+  - [ ] Delete sentance (Shift Del)
+  - [ ] Open spell check (W?)
+  - [ ] Quit (Q)
+  - [ ] Find (F)
+    - [ ] And replace (H)
+  - [ ] Entry navigation
+    - [ ] Today (T?)
+    - [ ] Next day (Y?)
+    - [ ] Previous day (R?)
+- [ ] Todo checklist
+  - [ ] Templates
+  - [ ] Time based
+  - [ ] Progress wheel
+- [ ] Statitics
+  - [ ] Words
+    - [ ] Most used
+    - [ ] Unique
+  - [ ] Letters
+  - [ ] Characters
+    - [ ] Excluding spaces
+  - [ ] All time
+  - [ ] Past year
+  - [ ] Year to date
+  - [ ] Month
+  - [ ] Week
+  - [ ] Day
+  - [ ] Graphs?
+
+### UI
+- [ ] Align daily navigation buttons
+- [ ] Calender widget
+  - [ ] Month navigation
+  - [ ] Year navigation
+  - [ ] Clicking on date jumps to the day
+  - [ ] Days with entries have styling
+- [ ] Top menu bar
+- [ ] Right click menu?
+- [ ] External buttons above typing area
+  - [ ] Basic markdown rendering
+- [ ] Lower log bar
+- [ ] Search area views
+- [ ] Underline misspelled words?
+- [ ] Consistant styling and theme

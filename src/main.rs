@@ -1,18 +1,23 @@
-#![allow(unused)]
-use std::{fs, path::PathBuf};
-
-use chrono::{DateTime, Datelike, Local};
+use chrono::{DateTime, Local};
+use core::panic;
 use iced::{
     Font, Subscription,
     keyboard::{self, Key, Modifiers},
     widget::{Row, Space, button, column, row, text::Wrapping, text_editor},
 };
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::{fs, path::PathBuf};
 
 struct App {
-    text: String,
     content: text_editor::Content,
     search_content: text_editor::Content,
     active_date_time: DateTime<Local>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct Entry {
+    text: String,
 }
 
 #[derive(Debug, Clone)]
@@ -28,6 +33,80 @@ pub enum Message {
 }
 
 impl App {
+    /// returns (date_key, month_json, save_path)
+    fn prepare_rw_action(&self) -> (String, String, PathBuf) {
+        let date_rfc3339 = self.active_date_time.to_rfc3339();
+        let date_key = &date_rfc3339[0..10];
+
+        let filename = date_key.to_string() + ".json";
+
+        let mut save_path = PathBuf::new();
+
+        let home = dirs::home_dir().expect("Couldn't open home dir!");
+        save_path.push(home);
+        save_path.push(".ironnote");
+        save_path.push("data");
+        save_path.push(filename);
+
+        let save_parent_dir = save_path.parent().expect("save path has no parent???");
+        fs::create_dir_all(&save_parent_dir).expect("couldn't create parent dirs");
+
+        match fs::exists(&save_path) {
+            Err(_) => {
+                panic!("couldn't determine if file exists");
+            }
+            Ok(file_exists) => {
+                if !file_exists {
+                    fs::write(&save_path, "{}").expect("couldn't create month file");
+                }
+            }
+        }
+
+        let month_json = fs::read_to_string(&save_path).expect("couldn't read json into string");
+
+        (date_key.to_string(), month_json, save_path)
+    }
+
+    fn load_active_entry(&mut self) {
+        let (date_key, month_json, _) = self.prepare_rw_action();
+
+        let data: serde_json::Map<String, Value> =
+            serde_json::from_str(&month_json).expect("couldn't deserialize");
+
+        if let Some(entry_value) = data.get(&date_key) {
+            let entry: Entry =
+                serde_json::from_value(entry_value.clone()).expect("invalid entry format");
+            self.content = text_editor::Content::with_text(&entry.text);
+        } else {
+            self.content = text_editor::Content::with_text("nothing here");
+        }
+
+        println!("loaded {}", date_key);
+    }
+
+    fn save_active_entry(&self) {
+        let (date_key, month_json, save_path) = self.prepare_rw_action();
+
+        let mut data: serde_json::Map<String, Value> =
+            serde_json::from_str(&month_json).expect("couldn't deserialize");
+
+        let new_entry = Entry {
+            text: self.content.text(),
+        };
+
+        data.insert(
+            date_key.to_string(),
+            serde_json::to_value(new_entry).unwrap(),
+        );
+
+        let new_json = serde_json::to_string_pretty(&data).expect("couldn't serialize on save");
+        fs::write(&save_path, new_json).expect("couldn't save new json");
+
+        println!("saved {}", date_key);
+    }
+}
+
+impl App {
     pub fn view(&self) -> Row<Message> {
         let back_button = button("<--").on_press(Message::BackOneDay).height(100);
         let today_button = button("Today").on_press(Message::JumpToToday).height(100);
@@ -37,7 +116,6 @@ impl App {
         let hspace2 = Space::new(5, 5);
 
         let buttonbar = row![back_button, hspace, today_button, hspace2, forward_button];
-
 
         let temp_calender_bar = row![
             column![
@@ -137,12 +215,11 @@ impl App {
 
     pub fn update(&mut self, message: Message) {
         match message {
-            Message::BackOneDay => {
-            }
-            Message::ForwardOneDay => {
-            }
+            Message::BackOneDay => {}
+            Message::ForwardOneDay => {}
             Message::JumpToToday => {
                 self.active_date_time = Local::now();
+                self.load_active_entry();
             }
             Message::UpdateCalender => {
                 println!("cal");
@@ -157,34 +234,7 @@ impl App {
                 println!("topbar");
             }
             Message::Save => {
-                let year = self.active_date_time.year();
-                let month = self.active_date_time.month();
-
-                let mut filename = String::default();
-                filename += &year.to_string();
-                filename += "-";
-                filename.push_str(&format!("{:02}", month));
-                filename += ".txt";
-
-                let mut save_path = PathBuf::new();
-
-                let home = dirs::home_dir().expect("Couldn't open home dir!");
-                save_path.push(home);
-                save_path.push(".ironnote");
-                save_path.push("data");
-                save_path.push(filename);
-
-                if let Some(parent) = save_path.parent() {
-                    if let Err(e) = fs::create_dir_all(parent) {
-                        eprintln!("Failed to create parent dirs: {}", e);
-                        return;
-                    }
-                }
-
-                match fs::write(&save_path, self.content.text()) {
-                    Err(e) => eprintln!("Failed to write file: {}", e),
-                    Ok(_) => println!("saved!"),
-                }
+                self.save_active_entry();
             }
         }
     }
@@ -205,7 +255,6 @@ impl Default for App {
     fn default() -> Self {
         Self {
             active_date_time: Local::now(),
-            text: String::default(),
             content: text_editor::Content::default(),
             search_content: text_editor::Content::default(),
         }
