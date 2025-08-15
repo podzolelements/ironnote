@@ -36,7 +36,7 @@ List of items and features needed for v1.0
   - [ ] Date format
   - [ ] Time format
   - [ ] Spell check
-- [ ] Window title reflects date
+- [x] Window title reflects date
 - [ ] Spell check
   - [ ] Add to dictionary
   - [ ] Remove from dictionary

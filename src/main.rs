@@ -10,6 +10,7 @@ use serde_json::Value;
 use std::{fs, path::PathBuf};
 
 struct App {
+    window_title: String,
     content: text_editor::Content,
     edited_active_day: bool,
     search_content: text_editor::Content,
@@ -106,9 +107,20 @@ impl App {
 
         println!("saved {}", date_key);
     }
+
+    fn update_window_title(&mut self) {
+        let formated_date = self.active_date_time.format("%A, %B %d, %Y").to_string();
+        let new_title = "ironnote - ".to_string() + &formated_date;
+
+        self.window_title = new_title;
+    }
 }
 
 impl App {
+    fn title(&self) -> String {
+        self.window_title.clone()
+    }
+
     pub fn view(&self) -> Row<Message> {
         let back_button = button("<--").on_press(Message::BackOneDay).height(100);
         let today_button = button("Today").on_press(Message::JumpToToday).height(100);
@@ -226,6 +238,7 @@ impl App {
                     .active_date_time
                     .checked_sub_days(Days::new(1))
                     .expect("failed to go to previous day");
+                self.update_window_title();
                 self.load_active_entry();
             }
             Message::ForwardOneDay => {
@@ -237,10 +250,12 @@ impl App {
                     .active_date_time
                     .checked_add_days(Days::new(1))
                     .expect("failed to go to next day");
+                self.update_window_title();
                 self.load_active_entry();
             }
             Message::JumpToToday => {
                 self.active_date_time = Local::now();
+                self.update_window_title();
                 self.load_active_entry();
             }
             Message::UpdateCalender => {
@@ -283,6 +298,7 @@ impl App {
 impl Default for App {
     fn default() -> Self {
         Self {
+            window_title: "ironnote".to_string(),
             active_date_time: Local::now(),
             edited_active_day: false,
             content: text_editor::Content::default(),
@@ -292,7 +308,7 @@ impl Default for App {
 }
 
 fn main() -> iced::Result {
-    iced::application("ironnote", App::update, App::view)
+    iced::application(App::title, App::update, App::view)
         .subscription(App::subscription)
         .run()
 }
