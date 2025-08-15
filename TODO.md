@@ -9,6 +9,7 @@ List of items and features needed for v1.0
     - [ ] Extra metadata?
   - [ ] Auto save
   - [x] Load existing entries
+    - [ ] On startup
   - [ ] Backups
 - [ ] File exports
   - [ ] TXT
@@ -19,10 +20,11 @@ List of items and features needed for v1.0
 - [ ] File imports
   - [ ] TXT
   - [ ] Bulk ZIP
+  - [ ] Overwrite/append existing data
 - [ ] Navigation
-  - [ ] Jump to today
+  - [x] Jump to today
   - [ ] Forward/backward
-    - [ ] Day
+    - [x] Day
     - [ ] Month
     - [ ] Year
 - [ ] Seachable entries

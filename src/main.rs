@@ -1,4 +1,4 @@
-use chrono::{DateTime, Local};
+use chrono::{DateTime, Days, Local};
 use core::panic;
 use iced::{
     Font, Subscription,
@@ -11,6 +11,7 @@ use std::{fs, path::PathBuf};
 
 struct App {
     content: text_editor::Content,
+    edited_active_day: bool,
     search_content: text_editor::Content,
     active_date_time: DateTime<Local>,
 }
@@ -37,8 +38,9 @@ impl App {
     fn prepare_rw_action(&self) -> (String, String, PathBuf) {
         let date_rfc3339 = self.active_date_time.to_rfc3339();
         let date_key = &date_rfc3339[0..10];
+        let year_month = &date_rfc3339[0..7];
 
-        let filename = date_key.to_string() + ".json";
+        let filename = year_month.to_string() + ".json";
 
         let mut save_path = PathBuf::new();
 
@@ -78,7 +80,7 @@ impl App {
                 serde_json::from_value(entry_value.clone()).expect("invalid entry format");
             self.content = text_editor::Content::with_text(&entry.text);
         } else {
-            self.content = text_editor::Content::with_text("nothing here");
+            self.content = text_editor::Content::with_text("");
         }
 
         println!("loaded {}", date_key);
@@ -215,8 +217,28 @@ impl App {
 
     pub fn update(&mut self, message: Message) {
         match message {
-            Message::BackOneDay => {}
-            Message::ForwardOneDay => {}
+            Message::BackOneDay => {
+                if self.edited_active_day {
+                    self.save_active_entry();
+                    self.edited_active_day = false;
+                }
+                self.active_date_time = self
+                    .active_date_time
+                    .checked_sub_days(Days::new(1))
+                    .expect("failed to go to previous day");
+                self.load_active_entry();
+            }
+            Message::ForwardOneDay => {
+                if self.edited_active_day {
+                    self.save_active_entry();
+                    self.edited_active_day = false;
+                }
+                self.active_date_time = self
+                    .active_date_time
+                    .checked_add_days(Days::new(1))
+                    .expect("failed to go to next day");
+                self.load_active_entry();
+            }
             Message::JumpToToday => {
                 self.active_date_time = Local::now();
                 self.load_active_entry();
@@ -225,6 +247,13 @@ impl App {
                 println!("cal");
             }
             Message::Edit(action) => {
+                match &action {
+                    text_editor::Action::Edit(_edit) => {
+                        self.edited_active_day = true;
+                    }
+                    _ => {}
+                }
+
                 self.content.perform(action);
             }
             Message::EditSearch(action) => {
@@ -255,6 +284,7 @@ impl Default for App {
     fn default() -> Self {
         Self {
             active_date_time: Local::now(),
+            edited_active_day: false,
             content: text_editor::Content::default(),
             search_content: text_editor::Content::default(),
         }
