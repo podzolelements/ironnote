@@ -53,12 +53,25 @@ impl Calender {
             start_offset = 7;
         }
 
+        let days_in_last_month: u32;
+        if active_datetime.month() == 1 {
+            days_in_last_month = 31;
+        } else {
+            let nd =
+                NaiveDate::from_ymd_opt(active_datetime.year(), active_datetime.month() - 1, 1)
+                    .expect("bad date");
+
+            days_in_last_month = nd.num_days_in_month() as u32;
+        }
+        let mut cal_first_date = (days_in_last_month - start_offset) + 1;
+
         let mut current_day_addr = 0;
 
         for _day_last_month in 0..start_offset {
-            self.day_list[current_day_addr] = 99;
+            self.day_list[current_day_addr] = cal_first_date;
             self.month_mapping[current_day_addr] = Month::LastMonth;
             current_day_addr += 1;
+            cal_first_date += 1;
         }
 
         for day_in_month in 1..=(nd.num_days_in_month() as u32) {

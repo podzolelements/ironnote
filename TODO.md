@@ -27,6 +27,7 @@ List of items and features needed for v1.0
     - [x] Day
     - [ ] Month
     - [ ] Year
+  - [ ] Calender
 - [ ] Seachable entries
   - [ ] Range constriants
 - [ ] Configuration
@@ -81,7 +82,7 @@ List of items and features needed for v1.0
 - [ ] Calender widget
   - [ ] Month navigation
   - [ ] Year navigation
-  - [ ] Clicking on date jumps to the day
+  - [x] Clicking on date jumps to the day
   - [ ] Days with entries have styling
 - [ ] Top menu bar
 - [ ] Right click menu?

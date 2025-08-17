@@ -1,4 +1,4 @@
-use chrono::{DateTime, Datelike, Days, Local};
+use chrono::{DateTime, Datelike, Days, Local, NaiveDate};
 use core::panic;
 use iced::{
     Font, Subscription,
@@ -244,7 +244,28 @@ impl App {
 
                 match month {
                     calender::Month::LastMonth => {
-                        todo!();
+                        let days_in_last_month: u32;
+
+                        if self.active_date_time.month() == 1 {
+                            days_in_last_month = 31;
+                        } else {
+                            let nd = NaiveDate::from_ymd_opt(
+                                self.active_date_time.year(),
+                                self.active_date_time.month() - 1,
+                                1,
+                            )
+                            .expect("bad date");
+
+                            days_in_last_month = nd.num_days_in_month() as u32;
+                        }
+
+                        let days_to_go_back =
+                            (days_in_last_month - new_day) + self.active_date_time.day();
+
+                        self.active_date_time = self
+                            .active_date_time
+                            .checked_sub_days(Days::new(days_to_go_back as u64))
+                            .expect("couldn't go into the past");
                     }
                     calender::Month::CurrentMonth => {
                         let delta_day = (new_day as i32) - (self.active_date_time.day() as i32);
@@ -267,12 +288,20 @@ impl App {
                         }
                     }
                     calender::Month::NextMonth => {
-                        todo!();
+                        let days_to_go_forward = (self.active_date_time.num_days_in_month() as u64
+                            - self.active_date_time.day() as u64)
+                            + new_day as u64;
+
+                        self.active_date_time = self
+                            .active_date_time
+                            .checked_add_days(Days::new(days_to_go_forward))
+                            .expect("couldn't go into the future");
                     }
                 }
 
                 self.update_window_title();
                 self.calender.update_calender_dates(self.active_date_time);
+                self.load_active_entry();
             }
         }
     }
