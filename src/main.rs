@@ -1,4 +1,4 @@
-use chrono::{DateTime, Days, Local};
+use chrono::{DateTime, Datelike, Days, Local};
 use core::panic;
 use iced::{
     Font, Subscription,
@@ -9,12 +9,18 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{fs, path::PathBuf};
 
+mod calender;
+use calender::Calender;
+
+use crate::calender::CalenderMessage;
+
 struct App {
     window_title: String,
     content: text_editor::Content,
     edited_active_day: bool,
     search_content: text_editor::Content,
     active_date_time: DateTime<Local>,
+    calender: Calender,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -32,6 +38,7 @@ pub enum Message {
     EditSearch(text_editor::Action),
     TempTopBarMessage,
     Save,
+    Calender(CalenderMessage),
 }
 
 impl App {
@@ -121,7 +128,7 @@ impl App {
         self.window_title.clone()
     }
 
-    pub fn view(&self) -> Row<Message> {
+    pub fn view(&'_ self) -> Row<'_, Message> {
         let back_button = button("<--").on_press(Message::BackOneDay).height(100);
         let today_button = button("Today").on_press(Message::JumpToToday).height(100);
         let forward_button = button("-->").on_press(Message::ForwardOneDay).height(100);
@@ -131,64 +138,8 @@ impl App {
 
         let buttonbar = row![back_button, hspace, today_button, hspace2, forward_button];
 
-        let temp_calender_bar = row![
-            column![
-                button("12").on_press(Message::UpdateCalender),
-                button("12").on_press(Message::UpdateCalender),
-                button("12").on_press(Message::UpdateCalender),
-                button("12").on_press(Message::UpdateCalender),
-                button("12").on_press(Message::UpdateCalender),
-                button("12").on_press(Message::UpdateCalender),
-            ],
-            column![
-                button("12").on_press(Message::UpdateCalender),
-                button("12").on_press(Message::UpdateCalender),
-                button("12").on_press(Message::UpdateCalender),
-                button("12").on_press(Message::UpdateCalender),
-                button("12").on_press(Message::UpdateCalender),
-                button("12").on_press(Message::UpdateCalender),
-            ],
-            column![
-                button("12").on_press(Message::UpdateCalender),
-                button("12").on_press(Message::UpdateCalender),
-                button("12").on_press(Message::UpdateCalender),
-                button("12").on_press(Message::UpdateCalender),
-                button("12").on_press(Message::UpdateCalender),
-                button("12").on_press(Message::UpdateCalender),
-            ],
-            column![
-                button("12").on_press(Message::UpdateCalender),
-                button("12").on_press(Message::UpdateCalender),
-                button("12").on_press(Message::UpdateCalender),
-                button("12").on_press(Message::UpdateCalender),
-                button("12").on_press(Message::UpdateCalender),
-                button("12").on_press(Message::UpdateCalender),
-            ],
-            column![
-                button("12").on_press(Message::UpdateCalender),
-                button("12").on_press(Message::UpdateCalender),
-                button("12").on_press(Message::UpdateCalender),
-                button("12").on_press(Message::UpdateCalender),
-                button("12").on_press(Message::UpdateCalender),
-                button("12").on_press(Message::UpdateCalender),
-            ],
-            column![
-                button("12").on_press(Message::UpdateCalender),
-                button("12").on_press(Message::UpdateCalender),
-                button("12").on_press(Message::UpdateCalender),
-                button("12").on_press(Message::UpdateCalender),
-                button("12").on_press(Message::UpdateCalender),
-                button("12").on_press(Message::UpdateCalender),
-            ],
-            column![
-                button("12").on_press(Message::UpdateCalender),
-                button("12").on_press(Message::UpdateCalender),
-                button("12").on_press(Message::UpdateCalender),
-                button("12").on_press(Message::UpdateCalender),
-                button("12").on_press(Message::UpdateCalender),
-                button("12").on_press(Message::UpdateCalender),
-            ],
-        ];
+        let cal = Calender::view(&self.calender);
+        let temp_calender_bar = row![cal];
 
         let seachbar = text_editor(&self.search_content)
             .placeholder("Search entries...")
@@ -239,6 +190,7 @@ impl App {
                     .checked_sub_days(Days::new(1))
                     .expect("failed to go to previous day");
                 self.update_window_title();
+                self.calender.update_calender_dates(self.active_date_time);
                 self.load_active_entry();
             }
             Message::ForwardOneDay => {
@@ -251,11 +203,13 @@ impl App {
                     .checked_add_days(Days::new(1))
                     .expect("failed to go to next day");
                 self.update_window_title();
+                self.calender.update_calender_dates(self.active_date_time);
                 self.load_active_entry();
             }
             Message::JumpToToday => {
                 self.active_date_time = Local::now();
                 self.update_window_title();
+                self.calender.update_calender_dates(self.active_date_time);
                 self.load_active_entry();
             }
             Message::UpdateCalender => {
@@ -280,6 +234,46 @@ impl App {
             Message::Save => {
                 self.save_active_entry();
             }
+            Message::Calender(calmes) => {
+                if self.edited_active_day {
+                    self.save_active_entry();
+                    self.edited_active_day = false;
+                }
+
+                let CalenderMessage::DayButton(new_day, month) = calmes;
+
+                match month {
+                    calender::Month::LastMonth => {
+                        todo!();
+                    }
+                    calender::Month::CurrentMonth => {
+                        let delta_day = (new_day as i32) - (self.active_date_time.day() as i32);
+
+                        let mag_delta_day = delta_day.abs() as u64;
+
+                        if delta_day == 0 {
+                            return;
+                        }
+                        if delta_day < 0 {
+                            self.active_date_time = self
+                                .active_date_time
+                                .checked_sub_days(Days::new(mag_delta_day))
+                                .expect("couldn't jump into the past");
+                        } else {
+                            self.active_date_time = self
+                                .active_date_time
+                                .checked_add_days(Days::new(mag_delta_day))
+                                .expect("couldn't jump into the future");
+                        }
+                    }
+                    calender::Month::NextMonth => {
+                        todo!();
+                    }
+                }
+
+                self.update_window_title();
+                self.calender.update_calender_dates(self.active_date_time);
+            }
         }
     }
 
@@ -303,6 +297,7 @@ impl Default for App {
             edited_active_day: false,
             content: text_editor::Content::default(),
             search_content: text_editor::Content::default(),
+            calender: Calender::default(),
         }
     }
 }
