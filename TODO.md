@@ -9,7 +9,7 @@ List of items and features needed for v1.0
     - [ ] Extra metadata?
   - [ ] Auto save
   - [x] Load existing entries
-    - [ ] On startup
+    - [x] On startup
   - [ ] Backups
 - [ ] File exports
   - [ ] TXT

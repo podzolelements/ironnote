@@ -352,14 +352,18 @@ impl App {
 
 impl Default for App {
     fn default() -> Self {
-        Self {
-            window_title: "ironnote".to_string(),
+        let mut df = Self {
+            window_title: String::default(),
             active_date_time: Local::now(),
             edited_active_day: false,
             content: text_editor::Content::default(),
             search_content: text_editor::Content::default(),
             calender: Calender::default(),
-        }
+        };
+
+        df.update(Message::JumpToToday);
+
+        df
     }
 }
 
