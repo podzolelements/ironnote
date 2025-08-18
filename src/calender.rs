@@ -6,6 +6,10 @@ use crate::Message;
 #[derive(Debug, Clone)]
 pub enum CalenderMessage {
     DayButton(u32, Month),
+    BackMonth,
+    ForwardMonth,
+    BackYear,
+    ForwardYear,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -18,11 +22,34 @@ pub enum Month {
 pub struct Calender {
     day_list: [u32; 42],
     month_mapping: [Month; 42],
+    month_text: String,
+    year_text: String,
 }
 
 impl Calender {
     pub fn view<'a>(&self) -> Column<'a, Message> {
         let mut cal = Column::new();
+
+        let month_back_btn =
+            Button::new("<").on_press(Message::Calender(CalenderMessage::BackMonth));
+        let month_text = Text::new(self.month_text.clone()).center().size(14);
+        let month_forward_btn =
+            Button::new(">").on_press(Message::Calender(CalenderMessage::ForwardMonth));
+
+        let year_back_btn = Button::new("<").on_press(Message::Calender(CalenderMessage::BackYear));
+        let year_text = Text::new(self.year_text.clone()).center().size(14);
+        let year_forward_btn =
+            Button::new(">").on_press(Message::Calender(CalenderMessage::ForwardYear));
+
+        let month_year_bar = Row::new()
+            .push(month_back_btn)
+            .push(month_text)
+            .push(month_forward_btn)
+            .push(year_back_btn)
+            .push(year_text)
+            .push(year_forward_btn);
+
+        cal = cal.push(month_year_bar);
 
         for y in 0..6 {
             let mut row = Row::new();
@@ -88,6 +115,9 @@ impl Calender {
             next_month_count += 1;
             current_day_addr += 1;
         }
+
+        self.month_text = active_datetime.format("%B").to_string();
+        self.year_text = active_datetime.format("%Y").to_string();
     }
 }
 
@@ -96,6 +126,8 @@ impl Default for Calender {
         Self {
             day_list: [0; 42],
             month_mapping: [Month::LastMonth; 42],
+            month_text: String::new(),
+            year_text: String::new(),
         }
     }
 }

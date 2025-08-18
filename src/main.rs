@@ -1,4 +1,4 @@
-use chrono::{DateTime, Datelike, Days, Local, NaiveDate};
+use chrono::{DateTime, Datelike, Days, Local, Months, NaiveDate};
 use core::panic;
 use iced::{
     Font, Subscription,
@@ -178,6 +178,12 @@ impl App {
         layout
     }
 
+    fn reload_date(&mut self, active_datetime: DateTime<Local>) {
+        self.update_window_title();
+        self.calender.update_calender_dates(active_datetime);
+        self.load_active_entry();
+    }
+
     pub fn update(&mut self, message: Message) {
         match message {
             Message::BackOneDay => {
@@ -189,9 +195,7 @@ impl App {
                     .active_date_time
                     .checked_sub_days(Days::new(1))
                     .expect("failed to go to previous day");
-                self.update_window_title();
-                self.calender.update_calender_dates(self.active_date_time);
-                self.load_active_entry();
+                self.reload_date(self.active_date_time);
             }
             Message::ForwardOneDay => {
                 if self.edited_active_day {
@@ -202,15 +206,12 @@ impl App {
                     .active_date_time
                     .checked_add_days(Days::new(1))
                     .expect("failed to go to next day");
-                self.update_window_title();
-                self.calender.update_calender_dates(self.active_date_time);
-                self.load_active_entry();
+
+                self.reload_date(self.active_date_time);
             }
             Message::JumpToToday => {
                 self.active_date_time = Local::now();
-                self.update_window_title();
-                self.calender.update_calender_dates(self.active_date_time);
-                self.load_active_entry();
+                self.reload_date(self.active_date_time);
             }
             Message::UpdateCalender => {
                 println!("cal");
@@ -234,75 +235,106 @@ impl App {
             Message::Save => {
                 self.save_active_entry();
             }
-            Message::Calender(calmes) => {
-                if self.edited_active_day {
-                    self.save_active_entry();
-                    self.edited_active_day = false;
-                }
-
-                let CalenderMessage::DayButton(new_day, month) = calmes;
-
-                match month {
-                    calender::Month::LastMonth => {
-                        let days_in_last_month: u32;
-
-                        if self.active_date_time.month() == 1 {
-                            days_in_last_month = 31;
-                        } else {
-                            let nd = NaiveDate::from_ymd_opt(
-                                self.active_date_time.year(),
-                                self.active_date_time.month() - 1,
-                                1,
-                            )
-                            .expect("bad date");
-
-                            days_in_last_month = nd.num_days_in_month() as u32;
-                        }
-
-                        let days_to_go_back =
-                            (days_in_last_month - new_day) + self.active_date_time.day();
-
-                        self.active_date_time = self
-                            .active_date_time
-                            .checked_sub_days(Days::new(days_to_go_back as u64))
-                            .expect("couldn't go into the past");
+            Message::Calender(calmes) => match calmes {
+                CalenderMessage::DayButton(new_day, month) => {
+                    if self.edited_active_day {
+                        self.save_active_entry();
+                        self.edited_active_day = false;
                     }
-                    calender::Month::CurrentMonth => {
-                        let delta_day = (new_day as i32) - (self.active_date_time.day() as i32);
 
-                        let mag_delta_day = delta_day.abs() as u64;
+                    match month {
+                        calender::Month::LastMonth => {
+                            let days_in_last_month: u32;
 
-                        if delta_day == 0 {
-                            return;
-                        }
-                        if delta_day < 0 {
+                            if self.active_date_time.month() == 1 {
+                                days_in_last_month = 31;
+                            } else {
+                                let nd = NaiveDate::from_ymd_opt(
+                                    self.active_date_time.year(),
+                                    self.active_date_time.month() - 1,
+                                    1,
+                                )
+                                .expect("bad date");
+
+                                days_in_last_month = nd.num_days_in_month() as u32;
+                            }
+
+                            let days_to_go_back =
+                                (days_in_last_month - new_day) + self.active_date_time.day();
+
                             self.active_date_time = self
                                 .active_date_time
-                                .checked_sub_days(Days::new(mag_delta_day))
-                                .expect("couldn't jump into the past");
-                        } else {
+                                .checked_sub_days(Days::new(days_to_go_back as u64))
+                                .expect("couldn't go into the past");
+                        }
+                        calender::Month::CurrentMonth => {
+                            let delta_day = (new_day as i32) - (self.active_date_time.day() as i32);
+
+                            let mag_delta_day = delta_day.abs() as u64;
+
+                            if delta_day == 0 {
+                                return;
+                            }
+                            if delta_day < 0 {
+                                self.active_date_time = self
+                                    .active_date_time
+                                    .checked_sub_days(Days::new(mag_delta_day))
+                                    .expect("couldn't jump into the past");
+                            } else {
+                                self.active_date_time = self
+                                    .active_date_time
+                                    .checked_add_days(Days::new(mag_delta_day))
+                                    .expect("couldn't jump into the future");
+                            }
+                        }
+                        calender::Month::NextMonth => {
+                            let days_to_go_forward = (self.active_date_time.num_days_in_month()
+                                as u64
+                                - self.active_date_time.day() as u64)
+                                + new_day as u64;
+
                             self.active_date_time = self
                                 .active_date_time
-                                .checked_add_days(Days::new(mag_delta_day))
-                                .expect("couldn't jump into the future");
+                                .checked_add_days(Days::new(days_to_go_forward))
+                                .expect("couldn't go into the future");
                         }
                     }
-                    calender::Month::NextMonth => {
-                        let days_to_go_forward = (self.active_date_time.num_days_in_month() as u64
-                            - self.active_date_time.day() as u64)
-                            + new_day as u64;
 
-                        self.active_date_time = self
-                            .active_date_time
-                            .checked_add_days(Days::new(days_to_go_forward))
-                            .expect("couldn't go into the future");
-                    }
+                    self.reload_date(self.active_date_time);
                 }
+                CalenderMessage::BackMonth => {
+                    self.active_date_time = self
+                        .active_date_time
+                        .checked_sub_months(Months::new(1))
+                        .expect("couldn't go back a month");
 
-                self.update_window_title();
-                self.calender.update_calender_dates(self.active_date_time);
-                self.load_active_entry();
-            }
+                    self.reload_date(self.active_date_time);
+                }
+                CalenderMessage::ForwardMonth => {
+                    self.active_date_time = self
+                        .active_date_time
+                        .checked_add_months(Months::new(1))
+                        .expect("couldn't go forward a month");
+
+                    self.reload_date(self.active_date_time);
+                }
+                CalenderMessage::BackYear => {
+                    self.active_date_time = self
+                        .active_date_time
+                        .checked_sub_months(Months::new(12))
+                        .expect("couldn't go back a year");
+
+                    self.reload_date(self.active_date_time);
+                }
+                CalenderMessage::ForwardYear => {
+                    self.active_date_time = self
+                        .active_date_time
+                        .checked_add_months(Months::new(12))
+                        .expect("couldn't go forward a year");
+
+                    self.reload_date(self.active_date_time);
+                }
+            },
         }
     }
 
