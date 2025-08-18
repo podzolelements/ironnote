@@ -21,13 +21,13 @@ List of items and features needed for v1.0
   - [ ] TXT
   - [ ] Bulk ZIP
   - [ ] Overwrite/append existing data
-- [ ] Navigation
+- [x] Navigation
   - [x] Jump to today
-  - [ ] Forward/backward
+  - [x] Forward/backward
     - [x] Day
-    - [ ] Month
-    - [ ] Year
-  - [ ] Calender
+    - [x] Month
+    - [x] Year
+  - [x] Calender
 - [ ] Seachable entries
   - [ ] Range constriants
 - [ ] Configuration
