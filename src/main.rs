@@ -33,6 +33,10 @@ struct App {
 enum KeyboardAction {
     Save,
     BackspaceWord,
+    BackspaceSentence,
+    Delete,
+    DeleteWord,
+    DeleteSentence,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -138,6 +142,113 @@ impl App {
         self.update_window_title();
         self.calender.update_calender_dates(active_datetime);
         self.load_active_entry();
+    }
+
+    fn ctrl_backspace(&mut self, stopping_chars: &[char]) {
+        let (line_idx, char_idx) = self.content.cursor_position();
+
+        let content_text = self.content.text();
+        let char_line = content_text
+            .lines()
+            .nth(line_idx)
+            .expect("couldn't extract character line");
+
+        if char_idx == 0 {
+            return;
+        }
+
+        let mut backspace_head = char_idx - 1;
+        let mut should_backspace_next_char = true;
+
+        while should_backspace_next_char {
+            self.content
+                .perform(Action::Edit(text_editor::Edit::Backspace));
+
+            if backspace_head > 0 {
+                backspace_head -= 1;
+            } else {
+                should_backspace_next_char = false;
+            }
+
+            let next_char_to_backspace = char_line
+                .chars()
+                .nth(backspace_head)
+                .expect("couldn't get char from line");
+
+            if stopping_chars.contains(&next_char_to_backspace) {
+                should_backspace_next_char = false;
+            }
+
+            // if there is a consecutive sequence of the same Ctrl+Backspace
+            // stopping character, keep going until the last one is hit
+            if backspace_head > 0 {
+                let test_delete_head = backspace_head - 1;
+                let next_next_char = char_line
+                    .chars()
+                    .nth(test_delete_head)
+                    .expect("couldn't get char from line");
+
+                if next_next_char == next_char_to_backspace
+                    && (stopping_chars.contains(&next_next_char))
+                {
+                    should_backspace_next_char = true;
+                }
+            }
+        }
+    }
+
+    fn ctrl_delete(&mut self, stopping_chars: &[char]) {
+        let (line_idx, char_idx) = self.content.cursor_position();
+
+        let content_text = self.content.text();
+        let Some(char_line) = content_text.lines().nth(line_idx) else {
+            println!("triggering None on char_line");
+            return;
+        };
+
+        if char_line.chars().count() == 0 {
+            self.content
+                .perform(Action::Edit(text_editor::Edit::Delete));
+            return;
+        }
+
+        let mut delete_head = char_idx;
+        let mut should_delete_next_char = true;
+
+        while should_delete_next_char {
+            self.content
+                .perform(Action::Edit(text_editor::Edit::Delete));
+
+            if delete_head < (char_line.chars().count() - 1) {
+                delete_head += 1;
+            } else {
+                should_delete_next_char = false;
+                continue;
+            }
+
+            let next_char_to_delete = char_line
+                .chars()
+                .nth(delete_head)
+                .expect("couldn't get char from line");
+
+            if stopping_chars.contains(&next_char_to_delete) {
+                should_delete_next_char = false;
+            }
+
+            if delete_head < (char_line.chars().count() - 1) {
+                let test_delete_head = delete_head + 1;
+                let next_next_char = char_line
+                    .chars()
+                    .nth(test_delete_head)
+                    .expect("couldn't get char from line");
+
+                if next_next_char == next_char_to_delete
+                    && (stopping_chars.contains(&next_next_char))
+                {
+                    should_delete_next_char = true;
+                }
+            }
+        }
     }
 }
 
@@ -351,61 +462,31 @@ impl App {
                             self.save_active_entry();
                         }
                         KeyboardAction::BackspaceWord => {
-                            let (line_idx, char_idx) = self.content.cursor_position();
-
-                            let content_text = self.content.text();
-                            let char_line = content_text
-                                .lines()
-                                .nth(line_idx)
-                                .expect("couldn't extract character line");
-
-                            if char_idx == 0 {
-                                return;
-                            }
-
                             let stopping_chars = [
-                                ' ', '.', '!', '?', ',', '-', '_', '\'', '\"', ';', ':', '(', ')',
-                                '{', '}', '[', ']',
+                                ' ', '.', '!', '?', ',', '-', '_', '\"', ';', ':', '(', ')', '{',
+                                '}', '[', ']',
                             ];
-
-                            let mut delete_head = char_idx - 1;
-                            let mut should_backspace_next_char = true;
-
-                            while should_backspace_next_char {
-                                self.content
-                                    .perform(Action::Edit(text_editor::Edit::Backspace));
-
-                                if delete_head > 0 {
-                                    delete_head -= 1;
-                                } else {
-                                    should_backspace_next_char = false;
-                                }
-
-                                let next_char_to_backspace = char_line
-                                    .chars()
-                                    .nth(delete_head)
-                                    .expect("couldn't get char from line");
-
-                                if stopping_chars.contains(&next_char_to_backspace) {
-                                    should_backspace_next_char = false;
-                                }
-
-                                // if there is a consecutive sequence of the same Ctrl+Backspace
-                                // stopping character, keep going until the last one is hit
-                                if delete_head > 0 {
-                                    let test_delete_head = delete_head - 1;
-                                    let next_next_char = char_line
-                                        .chars()
-                                        .nth(test_delete_head)
-                                        .expect("couldn't get char from line");
-
-                                    if next_next_char == next_char_to_backspace
-                                        && (stopping_chars.contains(&next_next_char))
-                                    {
-                                        should_backspace_next_char = true;
-                                    }
-                                }
-                            }
+                            self.ctrl_backspace(&stopping_chars);
+                        }
+                        KeyboardAction::BackspaceSentence => {
+                            let stopping_chars = ['.', '!', '?', ',', '\"', ';', ':'];
+                            self.ctrl_backspace(&stopping_chars);
+                        }
+                        KeyboardAction::Delete => {
+                            // not sure why the text_editor action handler doesn't do this on its own
+                            self.content
+                                .perform(Action::Edit(text_editor::Edit::Delete));
+                        }
+                        KeyboardAction::DeleteWord => {
+                            let stopping_chars = [
+                                ' ', '.', '!', '?', ',', '-', '_', '\"', ';', ':', '(', ')', '{',
+                                '}', '[', ']',
+                            ];
+                            self.ctrl_delete(&stopping_chars);
+                        }
+                        KeyboardAction::DeleteSentence => {
+                            let stopping_chars = ['.', '!', '?', ',', '\"', ';', ':'];
+                            self.ctrl_delete(&stopping_chars);
                         }
                     }
                 }
@@ -431,6 +512,19 @@ impl Default for App {
         keybinds
             .bind("Ctrl+Backspace", KeyboardAction::BackspaceWord)
             .expect("couldn't bind Ctrl+Backspace");
+        keybinds
+            .bind("Ctrl+Shift+Backspace", KeyboardAction::BackspaceSentence)
+            .expect("couldn't bind Ctrl+Shift+Backspace");
+        // text_editor delete key doesn't seem to get handled right, so we need to manually implement it
+        keybinds
+            .bind("Delete", KeyboardAction::Delete)
+            .expect("couldn't bind Delete");
+        keybinds
+            .bind("Ctrl+Delete", KeyboardAction::DeleteWord)
+            .expect("couldn't bind Ctrl+Delete");
+        keybinds
+            .bind("Ctrl+Shift+Delete", KeyboardAction::DeleteSentence)
+            .expect("couldn't bind Ctrl+Shift+Delete");
 
         let mut df = Self {
             window_title: String::default(),
