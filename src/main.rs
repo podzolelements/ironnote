@@ -1,10 +1,16 @@
 use chrono::{DateTime, Datelike, Days, Local, Months, NaiveDate};
 use core::panic;
 use iced::{
-    Font, Subscription,
-    keyboard::{self, Key, Modifiers},
-    widget::{Row, Space, button, column, row, text::Wrapping, text_editor},
+    Event, Font, Subscription,
+    event::listen_with,
+    keyboard::{self},
+    widget::{
+        self, Row, Space, button, column, row,
+        text::Wrapping,
+        text_editor::{self, Action},
+    },
 };
+use keybinds::Keybinds;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{fs, path::PathBuf};
@@ -21,6 +27,12 @@ struct App {
     search_content: text_editor::Content,
     active_date_time: DateTime<Local>,
     calender: Calender,
+    keybinds: Keybinds<KeyboardAction>,
+}
+
+enum KeyboardAction {
+    Save,
+    BackspaceWord,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -37,8 +49,8 @@ pub enum Message {
     Edit(text_editor::Action),
     EditSearch(text_editor::Action),
     TempTopBarMessage,
-    Save,
     Calender(CalenderMessage),
+    KeyEvent(keyboard::Event),
 }
 
 impl App {
@@ -121,6 +133,12 @@ impl App {
 
         self.window_title = new_title;
     }
+
+    fn reload_date(&mut self, active_datetime: DateTime<Local>) {
+        self.update_window_title();
+        self.calender.update_calender_dates(active_datetime);
+        self.load_active_entry();
+    }
 }
 
 impl App {
@@ -141,7 +159,7 @@ impl App {
         let cal = Calender::view(&self.calender);
         let temp_calender_bar = row![cal];
 
-        let seachbar = text_editor(&self.search_content)
+        let seachbar = widget::text_editor(&self.search_content)
             .placeholder("Search entries...")
             .on_action(Message::EditSearch)
             .size(13)
@@ -163,7 +181,7 @@ impl App {
                 .height(100),
         ];
 
-        let input = text_editor(&self.content)
+        let input = widget::text_editor(&self.content)
             .placeholder("Type today's log...")
             .on_action(Message::Edit)
             .size(13)
@@ -176,12 +194,6 @@ impl App {
         let layout = row![left_ui, right_ui];
 
         layout
-    }
-
-    fn reload_date(&mut self, active_datetime: DateTime<Local>) {
-        self.update_window_title();
-        self.calender.update_calender_dates(active_datetime);
-        self.load_active_entry();
     }
 
     pub fn update(&mut self, message: Message) {
@@ -231,9 +243,6 @@ impl App {
             }
             Message::TempTopBarMessage => {
                 println!("topbar");
-            }
-            Message::Save => {
-                self.save_active_entry();
             }
             Message::Calender(calmes) => match calmes {
                 CalenderMessage::DayButton(new_day, month) => {
@@ -335,23 +344,94 @@ impl App {
                     self.reload_date(self.active_date_time);
                 }
             },
+            Message::KeyEvent(event) => {
+                if let Some(action) = self.keybinds.dispatch(event) {
+                    match action {
+                        KeyboardAction::Save => {
+                            self.save_active_entry();
+                        }
+                        KeyboardAction::BackspaceWord => {
+                            let (line_idx, char_idx) = self.content.cursor_position();
+
+                            let content_text = self.content.text();
+                            let char_line = content_text
+                                .lines()
+                                .nth(line_idx)
+                                .expect("couldn't extract character line");
+
+                            if char_idx == 0 {
+                                return;
+                            }
+
+                            let stopping_chars = [
+                                ' ', '.', '!', '?', ',', '-', '_', '\'', '\"', ';', ':', '(', ')',
+                                '{', '}', '[', ']',
+                            ];
+
+                            let mut delete_head = char_idx - 1;
+                            let mut should_backspace_next_char = true;
+
+                            while should_backspace_next_char {
+                                self.content
+                                    .perform(Action::Edit(text_editor::Edit::Backspace));
+
+                                if delete_head > 0 {
+                                    delete_head -= 1;
+                                } else {
+                                    should_backspace_next_char = false;
+                                }
+
+                                let next_char_to_backspace = char_line
+                                    .chars()
+                                    .nth(delete_head)
+                                    .expect("couldn't get char from line");
+
+                                if stopping_chars.contains(&next_char_to_backspace) {
+                                    should_backspace_next_char = false;
+                                }
+
+                                // if there is a consecutive sequence of the same Ctrl+Backspace
+                                // stopping character, keep going until the last one is hit
+                                if delete_head > 0 {
+                                    let test_delete_head = delete_head - 1;
+                                    let next_next_char = char_line
+                                        .chars()
+                                        .nth(test_delete_head)
+                                        .expect("couldn't get char from line");
+
+                                    if next_next_char == next_char_to_backspace
+                                        && (stopping_chars.contains(&next_next_char))
+                                    {
+                                        should_backspace_next_char = true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        fn handle_hotkey(key: Key, modifiers: Modifiers) -> Option<Message> {
-            match (modifiers, key.as_ref()) {
-                (Modifiers::CTRL, Key::Character("s")) => Some(Message::Save),
-                _ => None,
-            }
-        }
-
-        keyboard::on_key_press(handle_hotkey)
+        listen_with(|event, _, _| match event {
+            Event::Keyboard(event) => Some(Message::KeyEvent(event)),
+            _ => None,
+        })
     }
 }
 
 impl Default for App {
     fn default() -> Self {
+        let mut keybinds = Keybinds::default();
+
+        keybinds
+            .bind("Ctrl+s", KeyboardAction::Save)
+            .expect("couldn't bind Ctrl+s");
+        keybinds
+            .bind("Ctrl+Backspace", KeyboardAction::BackspaceWord)
+            .expect("couldn't bind Ctrl+Backspace");
+
         let mut df = Self {
             window_title: String::default(),
             active_date_time: Local::now(),
@@ -359,6 +439,7 @@ impl Default for App {
             content: text_editor::Content::default(),
             search_content: text_editor::Content::default(),
             calender: Calender::default(),
+            keybinds: keybinds,
         };
 
         df.update(Message::JumpToToday);

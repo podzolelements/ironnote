@@ -1619,6 +1619,7 @@ dependencies = [
  "chrono",
  "dirs 6.0.0",
  "iced",
+ "keybinds",
  "serde",
  "serde_json",
 ]
@@ -1669,6 +1670,17 @@ checksum = "1cfaf33c695fc6e08064efbc1f72ec937429614f25eef83af942d0e227c3a28f"
 dependencies = [
  "once_cell",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "keybinds"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a039c6f55b34108f8ec8caa617cbaa17232ff08ccc9e3d656a41ec974e09d322"
+dependencies = [
+ "bitflags 2.9.1",
+ "iced",
+ "smallvec",
 ]
 
 [[package]]
