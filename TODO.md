@@ -48,6 +48,8 @@ List of items and features needed for v1.0
     - [ ] Undo (Z)
     - [ ] Redo (Shift Z?)
   - [ ] Export (E)
+  - [x] Backspace word (Backspace)
+  - [ ] Backspace sentance (Shift Backspace)
   - [ ] Delete word (Del)
   - [ ] Delete sentance (Shift Del)
   - [ ] Open spell check (W?)
