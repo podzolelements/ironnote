@@ -5,7 +5,7 @@ use iced::{
     event::listen_with,
     keyboard::{self},
     widget::{
-        self, Row, Space, button, column, row,
+        self, Row, Space, column, row,
         text::Wrapping,
         text_editor::{self, Action},
     },
@@ -16,9 +16,14 @@ use serde_json::Value;
 use std::{fs, path::PathBuf};
 
 mod calender;
+mod search_table;
+
 use calender::Calender;
 
-use crate::calender::CalenderMessage;
+use crate::{
+    calender::CalenderMessage,
+    search_table::{SearchTable, SearchTableMessage},
+};
 
 struct App {
     window_title: String,
@@ -27,6 +32,7 @@ struct App {
     search_content: text_editor::Content,
     active_date_time: DateTime<Local>,
     calender: Calender,
+    search_table: SearchTable,
     keybinds: Keybinds<KeyboardAction>,
 }
 
@@ -54,6 +60,7 @@ pub enum Message {
     EditSearch(text_editor::Action),
     TempTopBarMessage,
     Calender(CalenderMessage),
+    TableSearch(SearchTableMessage),
     KeyEvent(keyboard::Event),
 }
 
@@ -258,9 +265,15 @@ impl App {
     }
 
     pub fn view(&'_ self) -> Row<'_, Message> {
-        let back_button = button("<--").on_press(Message::BackOneDay).height(100);
-        let today_button = button("Today").on_press(Message::JumpToToday).height(100);
-        let forward_button = button("-->").on_press(Message::ForwardOneDay).height(100);
+        let back_button = widget::button("<--")
+            .on_press(Message::BackOneDay)
+            .height(100);
+        let today_button = widget::button("Today")
+            .on_press(Message::JumpToToday)
+            .height(100);
+        let forward_button = widget::button("-->")
+            .on_press(Message::ForwardOneDay)
+            .height(100);
 
         let hspace = Space::new(5, 5);
         let hspace2 = Space::new(5, 5);
@@ -278,16 +291,20 @@ impl App {
             .wrapping(Wrapping::None)
             .width(250);
 
-        let left_ui = column![buttonbar, temp_calender_bar, seachbar,];
+        let table = SearchTable::view(&self.search_table);
+
+        let search_results = column![table];
+
+        let left_ui = column![buttonbar, temp_calender_bar, seachbar, search_results];
 
         let right_top_bar = row![
-            button("test button 0")
+            widget::button("test button 0")
                 .on_press(Message::TempTopBarMessage)
                 .height(100),
-            button("test button 1")
+            widget::button("test button 1")
                 .on_press(Message::TempTopBarMessage)
                 .height(100),
-            button("test button 2")
+            widget::button("test button 2")
                 .on_press(Message::TempTopBarMessage)
                 .height(100),
         ];
@@ -351,6 +368,43 @@ impl App {
             }
             Message::EditSearch(action) => {
                 self.search_content.perform(action);
+
+                self.search_table.clear();
+
+                let content_text = self.content.text();
+                let mut search_text = self.search_content.text();
+                search_text.pop();
+
+                if search_text.is_empty() || search_text == " " {
+                    return;
+                }
+
+                if let Some(subtext_idx) = content_text.find(&search_text) {
+                    let start_idx = if ((subtext_idx as i32) - 30) < 0 {
+                        0
+                    } else {
+                        subtext_idx - 30
+                    };
+                    let end_idx = if subtext_idx + 50 > content_text.chars().count() {
+                        content_text.chars().count()
+                    } else {
+                        subtext_idx + 50
+                    };
+
+                    let start_text = "... ".to_string()
+                        + content_text
+                            .get(start_idx..subtext_idx)
+                            .expect("couldn't get start content_text");
+
+                    let end_text = content_text
+                        .get((subtext_idx + search_text.chars().count())..end_idx)
+                        .expect("couldn't get end content_text")
+                        .to_string()
+                        + " ...";
+
+                    self.search_table
+                        .insert_element(start_text, search_text, end_text);
+                }
             }
             Message::TempTopBarMessage => {
                 println!("topbar");
@@ -491,6 +545,10 @@ impl App {
                     }
                 }
             }
+            Message::TableSearch(table_message) => {
+                let SearchTableMessage::EntryClicked(table_id) = table_message;
+                println!("search table {}", table_id);
+            }
         }
     }
 
@@ -533,6 +591,7 @@ impl Default for App {
             content: text_editor::Content::default(),
             search_content: text_editor::Content::default(),
             calender: Calender::default(),
+            search_table: SearchTable::default(),
             keybinds: keybinds,
         };
 
