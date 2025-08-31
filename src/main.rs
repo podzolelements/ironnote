@@ -82,7 +82,7 @@ impl App {
         save_path.push(filename);
 
         let save_parent_dir = save_path.parent().expect("save path has no parent???");
-        fs::create_dir_all(&save_parent_dir).expect("couldn't create parent dirs");
+        fs::create_dir_all(save_parent_dir).expect("couldn't create parent dirs");
 
         match fs::exists(&save_path) {
             Err(_) => {
@@ -357,11 +357,8 @@ impl App {
                 println!("cal");
             }
             Message::Edit(action) => {
-                match &action {
-                    text_editor::Action::Edit(_edit) => {
-                        self.edited_active_day = true;
-                    }
-                    _ => {}
+                if let text_editor::Action::Edit(_edit) = &action {
+                    self.edited_active_day = true;
                 }
 
                 self.content.perform(action);
@@ -417,11 +414,9 @@ impl App {
                     }
 
                     match month {
-                        calender::Month::LastMonth => {
-                            let days_in_last_month: u32;
-
-                            if self.active_date_time.month() == 1 {
-                                days_in_last_month = 31;
+                        calender::Month::Last => {
+                            let days_in_last_month = if self.active_date_time.month() == 1 {
+                                31
                             } else {
                                 let nd = NaiveDate::from_ymd_opt(
                                     self.active_date_time.year(),
@@ -430,8 +425,8 @@ impl App {
                                 )
                                 .expect("bad date");
 
-                                days_in_last_month = nd.num_days_in_month() as u32;
-                            }
+                                nd.num_days_in_month() as u32
+                            };
 
                             let days_to_go_back =
                                 (days_in_last_month - new_day) + self.active_date_time.day();
@@ -441,10 +436,10 @@ impl App {
                                 .checked_sub_days(Days::new(days_to_go_back as u64))
                                 .expect("couldn't go into the past");
                         }
-                        calender::Month::CurrentMonth => {
+                        calender::Month::Current => {
                             let delta_day = (new_day as i32) - (self.active_date_time.day() as i32);
 
-                            let mag_delta_day = delta_day.abs() as u64;
+                            let mag_delta_day = delta_day.unsigned_abs() as u64;
 
                             if delta_day == 0 {
                                 return;
@@ -461,7 +456,7 @@ impl App {
                                     .expect("couldn't jump into the future");
                             }
                         }
-                        calender::Month::NextMonth => {
+                        calender::Month::Next => {
                             let days_to_go_forward = (self.active_date_time.num_days_in_month()
                                 as u64
                                 - self.active_date_time.day() as u64)
@@ -592,7 +587,7 @@ impl Default for App {
             search_content: text_editor::Content::default(),
             calender: Calender::default(),
             search_table: SearchTable::default(),
-            keybinds: keybinds,
+            keybinds,
         };
 
         df.update(Message::JumpToToday);
