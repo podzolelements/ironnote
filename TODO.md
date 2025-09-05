@@ -37,6 +37,8 @@ List of items and features needed for v1.0
   - [ ] Date format
   - [ ] Time format
   - [ ] Spell check
+  - [ ] Undo/redo size
+    - [ ] Unlimited
 - [x] Window title reflects date
 - [ ] Spell check
   - [ ] Add to dictionary
@@ -45,8 +47,8 @@ List of items and features needed for v1.0
 - [ ] Keyboard shortcuts
   - [x] Save (S)
   - [ ] Versioning
-    - [ ] Undo (Z)
-    - [ ] Redo (Shift Z?)
+    - [x] Undo (Z)
+    - [x] Redo (Y)
   - [ ] Export (E)
   - [x] Backspace word (Backspace)
   - [x] Backspace sentance (Shift Backspace)
