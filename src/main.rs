@@ -1,5 +1,6 @@
 use crate::{
     calender::CalenderMessage,
+    history_stack::{HistoryEvent, HistoryStack},
     search_table::{SearchTable, SearchTableMessage},
     text_store::{DayStore, MonthStore},
 };
@@ -19,6 +20,7 @@ use keybinds::Keybinds;
 
 mod calender;
 mod filetools;
+mod history_stack;
 mod search_table;
 mod text_store;
 
@@ -33,6 +35,7 @@ struct App {
     keybinds: Keybinds<KeyboardAction>,
     day_store: DayStore,
     month_store: MonthStore,
+    version_stack: HistoryStack,
 }
 
 enum KeyboardAction {
@@ -42,6 +45,8 @@ enum KeyboardAction {
     Delete,
     DeleteWord,
     DeleteSentence,
+    Undo,
+    Redo,
 }
 
 #[derive(Debug, Clone)]
@@ -101,6 +106,8 @@ impl App {
         self.update_window_title();
         self.calender.update_calender_dates(self.active_date_time);
         self.load_active_entry();
+
+        self.version_stack.clear();
     }
 
     fn ctrl_backspace(&mut self, stopping_chars: &[char]) {
@@ -309,8 +316,55 @@ impl App {
                 println!("cal");
             }
             Message::Edit(action) => {
-                if let text_editor::Action::Edit(_edit) = &action {
+                if let text_editor::Action::Edit(edit) = &action {
                     self.edited_active_day = true;
+
+                    self.version_stack.clear_redo_stack();
+
+                    let (line, chara) = self.content.cursor_position();
+                    let selection = self.content.selection();
+
+                    let history_event = match edit {
+                        text_editor::Edit::Insert(insert) => HistoryEvent {
+                            text_removed: selection,
+                            text_added: Some(insert.to_string()),
+                        },
+                        text_editor::Edit::Paste(paste) => HistoryEvent {
+                            text_removed: selection,
+                            text_added: Some(paste.to_string()),
+                        },
+                        text_editor::Edit::Enter => HistoryEvent {
+                            text_removed: selection,
+                            text_added: Some("\n".to_string()),
+                        },
+                        text_editor::Edit::Backspace => {
+                            let removed = if selection.is_some() {
+                                selection
+                            } else if line == 0 && chara == 0 {
+                                None
+                            } else if chara == 0 {
+                                Some("\n".to_string())
+                            } else {
+                                let backsped_char = self
+                                    .content
+                                    .text()
+                                    .lines()
+                                    .nth(line)
+                                    .and_then(|line| line.chars().nth(chara - 1))
+                                    .expect("char doesn't exist");
+
+                                Some(backsped_char.to_string())
+                            };
+
+                            HistoryEvent {
+                                text_removed: removed,
+                                text_added: None,
+                            }
+                        }
+                        text_editor::Edit::Delete => HistoryEvent::default(),
+                    };
+
+                    self.version_stack.push_undo_action(history_event);
                 }
 
                 self.content.perform(action);
@@ -320,39 +374,46 @@ impl App {
 
                 self.search_table.clear();
 
-                let content_text = self.content.text();
                 let mut search_text = self.search_content.text();
                 search_text.pop();
 
-                if search_text.is_empty() || search_text == " " {
-                    return;
-                }
+                for day_store in self.month_store.days() {
+                    let search_text = search_text.clone();
+                    let content_text = day_store.get_day_text();
 
-                if let Some(subtext_idx) = content_text.find(&search_text) {
-                    let start_idx = if ((subtext_idx as i32) - 30) < 0 {
-                        0
-                    } else {
-                        subtext_idx - 30
-                    };
-                    let end_idx = if subtext_idx + 50 > content_text.chars().count() {
-                        content_text.chars().count()
-                    } else {
-                        subtext_idx + 50
-                    };
+                    if search_text.is_empty() || search_text == " " {
+                        continue;
+                    }
 
-                    let start_text = "... ".to_string()
-                        + content_text
-                            .get(start_idx..subtext_idx)
-                            .expect("couldn't get start content_text");
+                    if let Some(subtext_idx) = content_text.find(&search_text) {
+                        let start_idx = if ((subtext_idx as i32) - 30) < 0 {
+                            0
+                        } else {
+                            subtext_idx - 30
+                        };
+                        let end_idx = if subtext_idx + 50 > content_text.chars().count() {
+                            content_text.chars().count()
+                        } else {
+                            subtext_idx + 50
+                        };
 
-                    let end_text = content_text
-                        .get((subtext_idx + search_text.chars().count())..end_idx)
-                        .expect("couldn't get end content_text")
-                        .to_string()
-                        + " ...";
+                        let start_text = (day_store.date()
+                            + " ... "
+                            + content_text
+                                .get(start_idx..subtext_idx)
+                                .expect("couldn't get start content_text"))
+                        .replace("\n", "");
 
-                    self.search_table
-                        .insert_element(start_text, search_text, end_text);
+                        let end_text = (content_text
+                            .get((subtext_idx + search_text.chars().count())..end_idx)
+                            .expect("couldn't get end content_text")
+                            .to_string()
+                            + " ...")
+                            .replace("\n", "");
+
+                        self.search_table
+                            .insert_element(start_text, search_text, end_text);
+                    }
                 }
             }
             Message::TempTopBarMessage => {
@@ -454,8 +515,12 @@ impl App {
             },
             Message::KeyEvent(event) => {
                 if let Some(action) = self.keybinds.dispatch(event) {
+                    let (line, chara) = self.content.cursor_position();
+                    let selection = self.content.selection();
+
                     match action {
                         KeyboardAction::Save => {
+                            self.write_active_entry_to_store();
                             self.write_store_to_disk();
                         }
                         KeyboardAction::BackspaceWord => {
@@ -464,13 +529,36 @@ impl App {
                                 '}', '[', ']',
                             ];
                             self.ctrl_backspace(&stopping_chars);
+
+                            self.version_stack.clear();
                         }
                         KeyboardAction::BackspaceSentence => {
                             let stopping_chars = ['.', '!', '?', ',', '\"', ';', ':'];
                             self.ctrl_backspace(&stopping_chars);
+
+                            self.version_stack.clear();
                         }
                         KeyboardAction::Delete => {
                             // not sure why the text_editor action handler doesn't do this on its own
+                            self.edited_active_day = true;
+
+                            let removed = if selection.is_some() {
+                                selection
+                            } else {
+                                // TODO: implement proper line detection
+                                self.content
+                                    .text()
+                                    .lines()
+                                    .nth(line)
+                                    .and_then(|line| line.chars().nth(chara))
+                                    .map(|deleted_char| deleted_char.to_string())
+                            };
+
+                            self.version_stack.push_undo_action(HistoryEvent {
+                                text_removed: removed,
+                                text_added: None,
+                            });
+
                             self.content
                                 .perform(Action::Edit(text_editor::Edit::Delete));
                         }
@@ -480,10 +568,20 @@ impl App {
                                 '}', '[', ']',
                             ];
                             self.ctrl_delete(&stopping_chars);
+
+                            self.version_stack.clear();
                         }
                         KeyboardAction::DeleteSentence => {
                             let stopping_chars = ['.', '!', '?', ',', '\"', ';', ':'];
                             self.ctrl_delete(&stopping_chars);
+
+                            self.version_stack.clear();
+                        }
+                        KeyboardAction::Undo => {
+                            self.version_stack.perform_undo(&mut self.content);
+                        }
+                        KeyboardAction::Redo => {
+                            self.version_stack.perform_redo(&mut self.content);
                         }
                     }
                 }
@@ -510,6 +608,12 @@ impl Default for App {
         keybinds
             .bind("Ctrl+s", KeyboardAction::Save)
             .expect("couldn't bind Ctrl+s");
+        keybinds
+            .bind("Ctrl+z", KeyboardAction::Undo)
+            .expect("couldn't bind Ctrl+z");
+        keybinds
+            .bind("Ctrl+y", KeyboardAction::Redo)
+            .expect("couldn't bind Ctrl+y");
         keybinds
             .bind("Ctrl+Backspace", KeyboardAction::BackspaceWord)
             .expect("couldn't bind Ctrl+Backspace");
@@ -538,6 +642,7 @@ impl Default for App {
             keybinds,
             day_store: DayStore::default(),
             month_store: MonthStore::default(),
+            version_stack: HistoryStack::default(),
         };
 
         df.month_store.load_month(Local::now());

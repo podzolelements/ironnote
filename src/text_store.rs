@@ -8,14 +8,21 @@ use std::fs;
 pub struct DayStore {
     date: String,
     entry_text: String,
+    modified: bool,
 }
 
 impl DayStore {
     pub fn get_day_text(&self) -> String {
         self.entry_text.clone()
     }
+
     pub fn set_day_text(&mut self, new_text: String) {
         self.entry_text = new_text;
+        self.modified = true;
+    }
+
+    pub fn date(&self) -> String {
+        self.date.clone()
     }
 }
 
@@ -41,8 +48,14 @@ impl MonthStore {
     pub fn get_day_store(&self, day: usize) -> DayStore {
         self.days[day].clone()
     }
+
     pub fn set_day_text(&mut self, day: usize, text: String) {
         self.days[day].set_day_text(text);
+        self.days[day].modified = true;
+    }
+
+    pub fn days(&self) -> &Vec<DayStore> {
+        &self.days
     }
 
     pub fn load_month(&mut self, date: DateTime<Local>) {
@@ -71,6 +84,7 @@ impl MonthStore {
                         let new_day_store = DayStore {
                             date: new_date.to_string(),
                             entry_text: String::default(),
+                            modified: false,
                         };
                         self.days.push(new_day_store);
 
@@ -106,6 +120,7 @@ impl MonthStore {
             let new_day_store = DayStore {
                 date: new_date.to_string(),
                 entry_text,
+                modified: false,
             };
             self.days.push(new_day_store);
 
@@ -138,15 +153,20 @@ impl MonthStore {
         for i in 0..(self.days_in_month as usize) {
             let new_entry = self.days[i].clone();
 
-            if !new_entry.entry_text.is_empty() && new_entry.entry_text != "\n" {
+            if !new_entry.modified {
+                continue;
+            }
+
+            if new_entry.entry_text.is_empty() || new_entry.entry_text == "\n" {
+                data.remove_entry(&new_entry.date);
+            } else {
                 data.insert(
                     new_entry.date.clone(),
                     serde_json::to_value(new_entry.entry_text).unwrap(),
                 );
-            } else {
-                data.remove_entry(&new_entry.date);
             }
         }
+
         let new_json = serde_json::to_string_pretty(&data).expect("couldn't serialize on save");
         fs::write(&save_path, new_json).expect("couldn't save new json");
         println!("saved {}", self.month);
