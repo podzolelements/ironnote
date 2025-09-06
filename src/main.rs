@@ -11,7 +11,7 @@ use iced::{
     event::listen_with,
     keyboard::{self},
     widget::{
-        self, Row, Space, column, row,
+        self, Row, Space, Text, column, row,
         text::Wrapping,
         text_editor::{self, Action},
     },
@@ -36,6 +36,7 @@ struct App {
     day_store: DayStore,
     month_store: MonthStore,
     version_stack: HistoryStack,
+    current_tab: Tab,
 }
 
 enum KeyboardAction {
@@ -50,6 +51,13 @@ enum KeyboardAction {
 }
 
 #[derive(Debug, Clone)]
+pub enum Tab {
+    Search,
+    Stats,
+    Todo,
+}
+
+#[derive(Debug, Clone)]
 pub enum Message {
     BackOneDay,
     ForwardOneDay,
@@ -61,6 +69,7 @@ pub enum Message {
     Calender(CalenderMessage),
     TableSearch(SearchTableMessage),
     KeyEvent(keyboard::Event),
+    TabSwitched(Tab),
 }
 
 impl App {
@@ -242,19 +251,41 @@ impl App {
         let cal = Calender::view(&self.calender);
         let temp_calender_bar = row![cal];
 
-        let seachbar = widget::text_editor(&self.search_content)
-            .placeholder("Search entries...")
-            .on_action(Message::EditSearch)
-            .size(13)
-            .font(Font::DEFAULT)
-            .wrapping(Wrapping::None)
-            .width(250);
+        let search_tab_btn = widget::button(Text::new("Search").size(12))
+            .on_press(Message::TabSwitched(Tab::Search));
+        let stats_tab_btn =
+            widget::button(Text::new("Stats").size(12)).on_press(Message::TabSwitched(Tab::Stats));
+        let todo_tab_btn =
+            widget::button(Text::new("Todo").size(12)).on_press(Message::TabSwitched(Tab::Todo));
 
-        let table = SearchTable::view(&self.search_table);
+        let tab_bar = row![search_tab_btn, stats_tab_btn, todo_tab_btn];
 
-        let search_results = column![table];
+        let tab_area = match self.current_tab {
+            Tab::Search => {
+                let seachbar = widget::text_editor(&self.search_content)
+                    .placeholder("Search entries...")
+                    .on_action(Message::EditSearch)
+                    .size(13)
+                    .font(Font::DEFAULT)
+                    .wrapping(Wrapping::None);
 
-        let left_ui = column![buttonbar, temp_calender_bar, seachbar, search_results];
+                let table = SearchTable::view(&self.search_table);
+
+                let search_results = column![table];
+                column![seachbar, search_results]
+            }
+            Tab::Stats => {
+                column![Text::new("Stats area")]
+            }
+            Tab::Todo => {
+                column![Text::new("Todo area")]
+            }
+        }
+        .width(250);
+
+        let tab_view = column![tab_bar, tab_area];
+
+        let left_ui = column![buttonbar, temp_calender_bar, tab_view];
 
         let right_top_bar = row![
             widget::button("test button 0")
@@ -590,6 +621,9 @@ impl App {
                 let SearchTableMessage::EntryClicked(table_id) = table_message;
                 println!("search table {}", table_id);
             }
+            Message::TabSwitched(tab) => {
+                self.current_tab = tab;
+            }
         }
     }
 
@@ -612,8 +646,8 @@ impl Default for App {
             .bind("Ctrl+z", KeyboardAction::Undo)
             .expect("couldn't bind Ctrl+z");
         keybinds
-            .bind("Ctrl+y", KeyboardAction::Redo)
-            .expect("couldn't bind Ctrl+y");
+            .bind("Ctrl+Z", KeyboardAction::Redo)
+            .expect("couldn't bind Ctrl+Z");
         keybinds
             .bind("Ctrl+Backspace", KeyboardAction::BackspaceWord)
             .expect("couldn't bind Ctrl+Backspace");
@@ -643,6 +677,7 @@ impl Default for App {
             day_store: DayStore::default(),
             month_store: MonthStore::default(),
             version_stack: HistoryStack::default(),
+            current_tab: Tab::Search,
         };
 
         df.month_store.load_month(Local::now());

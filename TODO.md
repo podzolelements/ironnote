@@ -48,7 +48,7 @@ List of items and features needed for v1.0
   - [x] Save (S)
   - [ ] Versioning
     - [x] Undo (Z)
-    - [x] Redo (Y)
+    - [x] Redo (Shift Z)
   - [ ] Export (E)
   - [x] Backspace word (Backspace)
   - [x] Backspace sentance (Shift Backspace)
