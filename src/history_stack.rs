@@ -2,10 +2,14 @@ use std::collections::VecDeque;
 
 use iced::widget::text_editor::{Action, Content, Edit};
 
+use crate::content_tools;
+
 #[derive(Debug, Clone, Default)]
 pub struct HistoryEvent {
     pub(crate) text_removed: Option<String>,
     pub(crate) text_added: Option<String>,
+    pub(crate) cursor_line_idx: usize,
+    pub(crate) cursor_char_idx: usize,
 }
 
 pub struct HistoryStack {
@@ -67,6 +71,12 @@ impl HistoryStack {
 
     pub fn perform_undo(&mut self, content: &mut Content) {
         if let Some(history_event) = self.move_undo_to_redo_stack() {
+            content_tools::move_cursor(
+                content,
+                history_event.cursor_line_idx,
+                history_event.cursor_char_idx,
+            );
+
             let inverse_edits = Self::inverse_edit_action(history_event);
 
             for edit in inverse_edits {
@@ -77,6 +87,14 @@ impl HistoryStack {
 
     pub fn perform_redo(&mut self, content: &mut Content) {
         if let Some(history_event) = self.move_redo_to_undo_stack() {
+            if let Some(removed) = &history_event.text_removed {
+                content_tools::move_cursor(
+                    content,
+                    history_event.cursor_line_idx,
+                    history_event.cursor_char_idx + removed.chars().count(),
+                );
+            }
+
             let redo_edits = Self::edit_action(history_event);
 
             for edit in redo_edits {
@@ -92,7 +110,11 @@ impl HistoryStack {
 
         if let Some(added_text) = history_event.text_added {
             for chara in added_text.chars() {
-                edit_sequence.push(Edit::Insert(chara));
+                if chara == '\n' {
+                    edit_sequence.push(Edit::Enter);
+                } else {
+                    edit_sequence.push(Edit::Insert(chara));
+                }
             }
         }
 
@@ -118,7 +140,11 @@ impl HistoryStack {
 
         if let Some(deleted_text) = history_event.text_removed {
             for chara in deleted_text.chars() {
-                inverse_sequence.push(Edit::Insert(chara));
+                if chara == '\n' {
+                    inverse_sequence.push(Edit::Enter);
+                } else {
+                    inverse_sequence.push(Edit::Insert(chara));
+                }
             }
         }
 

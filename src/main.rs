@@ -1,5 +1,6 @@
 use crate::{
     calender::CalenderMessage,
+    content_tools::{decrement_cursor_position, locate_cursor_start},
     history_stack::{HistoryEvent, HistoryStack},
     search_table::{SearchTable, SearchTableMessage},
     text_store::{DayStore, MonthStore},
@@ -19,6 +20,7 @@ use iced::{
 use keybinds::Keybinds;
 
 mod calender;
+mod content_tools;
 mod filetools;
 mod history_stack;
 mod search_table;
@@ -37,6 +39,8 @@ struct App {
     month_store: MonthStore,
     version_stack: HistoryStack,
     current_tab: Tab,
+    cursor_line_idx: usize,
+    cursor_char_idx: usize,
 }
 
 enum KeyboardAction {
@@ -347,6 +351,13 @@ impl App {
                 println!("cal");
             }
             Message::Edit(action) => {
+                let (actual_cursor_line, actual_cursor_char) =
+                    locate_cursor_start(&self.content, self.cursor_line_idx, self.cursor_char_idx);
+
+                if self.content.selection().is_none() {
+                    (self.cursor_line_idx, self.cursor_char_idx) = self.content.cursor_position();
+                }
+
                 if let text_editor::Action::Edit(edit) = &action {
                     self.edited_active_day = true;
 
@@ -359,14 +370,22 @@ impl App {
                         text_editor::Edit::Insert(insert) => HistoryEvent {
                             text_removed: selection,
                             text_added: Some(insert.to_string()),
+                            cursor_line_idx: actual_cursor_line,
+                            cursor_char_idx: actual_cursor_char,
                         },
                         text_editor::Edit::Paste(paste) => HistoryEvent {
                             text_removed: selection,
                             text_added: Some(paste.to_string()),
+                            cursor_line_idx: actual_cursor_line,
+                            cursor_char_idx: actual_cursor_char
+                                + paste.to_string().chars().count()
+                                + 1,
                         },
                         text_editor::Edit::Enter => HistoryEvent {
                             text_removed: selection,
                             text_added: Some("\n".to_string()),
+                            cursor_line_idx: actual_cursor_line,
+                            cursor_char_idx: actual_cursor_char,
                         },
                         text_editor::Edit::Backspace => {
                             let removed = if selection.is_some() {
@@ -387,9 +406,27 @@ impl App {
                                 Some(backsped_char.to_string())
                             };
 
+                            let (revised_line_idx, revised_char_idx) =
+                                if removed == Some("\n".to_string()) {
+                                    let (mut new_cursor_line, mut new_cursor_char) =
+                                        (actual_cursor_line, actual_cursor_char);
+
+                                    decrement_cursor_position(
+                                        &self.content,
+                                        &mut new_cursor_line,
+                                        &mut new_cursor_char,
+                                    );
+
+                                    (new_cursor_line, new_cursor_char)
+                                } else {
+                                    (actual_cursor_line, actual_cursor_char)
+                                };
+
                             HistoryEvent {
                                 text_removed: removed,
                                 text_added: None,
+                                cursor_line_idx: revised_line_idx,
+                                cursor_char_idx: revised_char_idx,
                             }
                         }
                         text_editor::Edit::Delete => HistoryEvent::default(),
@@ -573,6 +610,17 @@ impl App {
                             // not sure why the text_editor action handler doesn't do this on its own
                             self.edited_active_day = true;
 
+                            let (actual_cursor_line, actual_cursor_char) = locate_cursor_start(
+                                &self.content,
+                                self.cursor_line_idx,
+                                self.cursor_char_idx,
+                            );
+
+                            if self.content.selection().is_none() {
+                                (self.cursor_line_idx, self.cursor_char_idx) =
+                                    self.content.cursor_position();
+                            }
+
                             let removed = if selection.is_some() {
                                 selection
                             } else {
@@ -588,6 +636,8 @@ impl App {
                             self.version_stack.push_undo_action(HistoryEvent {
                                 text_removed: removed,
                                 text_added: None,
+                                cursor_line_idx: actual_cursor_line,
+                                cursor_char_idx: actual_cursor_char,
                             });
 
                             self.content
@@ -678,6 +728,8 @@ impl Default for App {
             month_store: MonthStore::default(),
             version_stack: HistoryStack::default(),
             current_tab: Tab::Search,
+            cursor_line_idx: 0,
+            cursor_char_idx: 0,
         };
 
         df.month_store.load_month(Local::now());
