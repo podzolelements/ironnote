@@ -127,50 +127,61 @@ impl App {
         let (line_idx, char_idx) = self.content.cursor_position();
 
         let content_text = self.content.text();
-        let char_line = content_text
-            .lines()
-            .nth(line_idx)
-            .expect("couldn't extract character line");
 
-        if char_idx == 0 {
-            return;
-        }
-
-        let mut backspace_head = char_idx - 1;
-        let mut should_backspace_next_char = true;
-
-        while should_backspace_next_char {
-            self.content
-                .perform(Action::Edit(text_editor::Edit::Backspace));
-
-            if backspace_head > 0 {
-                backspace_head -= 1;
-            } else {
-                should_backspace_next_char = false;
+        // TODO: if the pretrigged removal removes the last line it deletes the line and nth() obviously can't find the
+        // line
+        if let Some(char_line) = content_text.lines().nth(line_idx) {
+            if char_idx == 0 {
+                return;
             }
 
-            let next_char_to_backspace = char_line
+            let mut backspace_head = char_idx - 1;
+
+            let mut char_to_backspace = char_line
                 .chars()
                 .nth(backspace_head)
                 .expect("couldn't get char from line");
 
-            if stopping_chars.contains(&next_char_to_backspace) {
-                should_backspace_next_char = false;
-            }
+            if !stopping_chars.contains(&char_to_backspace) {
+                while !stopping_chars.contains(&char_to_backspace) {
+                    self.content
+                        .perform(Action::Edit(text_editor::Edit::Backspace));
 
-            // if there is a consecutive sequence of the same Ctrl+Backspace
-            // stopping character, keep going until the last one is hit
-            if backspace_head > 0 {
-                let test_delete_head = backspace_head - 1;
-                let next_next_char = char_line
-                    .chars()
-                    .nth(test_delete_head)
-                    .expect("couldn't get char from line");
+                    if backspace_head == 0 {
+                        break;
+                    }
 
-                if next_next_char == next_char_to_backspace
-                    && (stopping_chars.contains(&next_next_char))
-                {
-                    should_backspace_next_char = true;
+                    backspace_head -= 1;
+
+                    char_to_backspace = char_line
+                        .chars()
+                        .nth(backspace_head)
+                        .expect("couldn't get char from line");
+                }
+            } else {
+                let mut removed_chars = false;
+
+                while backspace_head > 0 {
+                    let previous_char = char_line
+                        .chars()
+                        .nth(backspace_head - 1)
+                        .expect("couldn't get char from line");
+
+                    if previous_char == char_to_backspace {
+                        self.content
+                            .perform(Action::Edit(text_editor::Edit::Backspace));
+                        removed_chars = true;
+
+                        backspace_head -= 1;
+                    } else {
+                        break;
+                    }
+                }
+
+                // if there were characters removed, remove the stopping character unless it is a space
+                if removed_chars && char_to_backspace != ' ' {
+                    self.content
+                        .perform(Action::Edit(text_editor::Edit::Backspace));
                 }
             }
         }
