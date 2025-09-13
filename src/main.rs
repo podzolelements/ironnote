@@ -1,7 +1,8 @@
 use crate::{
     calender::CalenderMessage,
-    content_tools::{decrement_cursor_position, locate_cursor_start},
+    content_tools::{decrement_cursor_position, locate_cursor_start, move_cursor},
     history_stack::{HistoryEvent, HistoryStack},
+    misc_tools::chars_all_same_in_string,
     search_table::{SearchTable, SearchTableMessage},
     text_store::{DayStore, MonthStore},
 };
@@ -23,6 +24,7 @@ mod calender;
 mod content_tools;
 mod filetools;
 mod history_stack;
+mod misc_tools;
 mod search_table;
 mod text_store;
 
@@ -52,6 +54,7 @@ enum KeyboardAction {
     DeleteSentence,
     Undo,
     Redo,
+    Debug,
 }
 
 #[derive(Debug, Clone)]
@@ -124,67 +127,95 @@ impl App {
     }
 
     fn ctrl_backspace(&mut self, stopping_chars: &[char]) {
-        let (line_idx, char_idx) = self.content.cursor_position();
+        if self.content.cursor_position() == (0, 0) {
+            return;
+        }
+
+        // revert the standard backspace that can't be caught
+        self.version_stack.revert(&mut self.content);
+
+        let mut removed_chars = String::new();
+        let (cursor_line_start, cursor_char_start) = self.content.cursor_position();
+
+        // on edge of newline
+        if cursor_char_start == 0 {
+            self.content
+                .perform(Action::Edit(text_editor::Edit::Backspace));
+
+            let (cursor_line_idx, cursor_char_idx) = self.content.cursor_position();
+
+            self.version_stack.push_undo_action(HistoryEvent {
+                text_removed: Some("\n".to_string()),
+                text_added: None,
+                cursor_line_idx,
+                cursor_char_idx,
+            });
+            return;
+        }
 
         let content_text = self.content.text();
+        let char_line = content_text
+            .lines()
+            .nth(cursor_line_start)
+            .expect("couldn't extract line");
 
-        // TODO: if the pretrigged removal removes the last line it deletes the line and nth() obviously can't find the
-        // line
-        if let Some(char_line) = content_text.lines().nth(line_idx) {
-            if char_idx == 0 {
-                return;
-            }
+        let mut backspace_head = cursor_char_start - 1;
 
-            let mut backspace_head = char_idx - 1;
+        let first_char_removed = char_line
+            .chars()
+            .nth(backspace_head)
+            .expect("couldn't extract char from line");
 
-            let mut char_to_backspace = char_line
+        let mut removing_seqence_of_stops = false;
+
+        loop {
+            let char_to_remove = char_line
                 .chars()
                 .nth(backspace_head)
-                .expect("couldn't get char from line");
+                .expect("couldn't extract char from line");
 
-            if !stopping_chars.contains(&char_to_backspace) {
-                while !stopping_chars.contains(&char_to_backspace) {
-                    self.content
-                        .perform(Action::Edit(text_editor::Edit::Backspace));
+            removed_chars.push(char_to_remove);
+            self.content
+                .perform(Action::Edit(text_editor::Edit::Backspace));
 
-                    if backspace_head == 0 {
-                        break;
-                    }
-
-                    backspace_head -= 1;
-
-                    char_to_backspace = char_line
-                        .chars()
-                        .nth(backspace_head)
-                        .expect("couldn't get char from line");
-                }
+            if backspace_head > 0 {
+                backspace_head -= 1;
             } else {
-                let mut removed_chars = false;
+                break;
+            }
 
-                while backspace_head > 0 {
-                    let previous_char = char_line
-                        .chars()
-                        .nth(backspace_head - 1)
-                        .expect("couldn't get char from line");
+            let next_char_to_remove = char_line
+                .chars()
+                .nth(backspace_head)
+                .expect("couldn't extract char from line");
 
-                    if previous_char == char_to_backspace {
-                        self.content
-                            .perform(Action::Edit(text_editor::Edit::Backspace));
-                        removed_chars = true;
+            if stopping_chars.contains(&first_char_removed)
+                && first_char_removed == next_char_to_remove
+                && chars_all_same_in_string(&removed_chars)
+                && (removed_chars.chars().count() == 1 || removing_seqence_of_stops)
+            {
+                removing_seqence_of_stops = true;
+                continue;
+            } else if removing_seqence_of_stops {
+                break;
+            }
 
-                        backspace_head -= 1;
-                    } else {
-                        break;
-                    }
-                }
-
-                // if there were characters removed, remove the stopping character unless it is a space
-                if removed_chars && char_to_backspace != ' ' {
-                    self.content
-                        .perform(Action::Edit(text_editor::Edit::Backspace));
-                }
+            if stopping_chars.contains(&next_char_to_remove) {
+                break;
             }
         }
+
+        removed_chars = removed_chars.chars().rev().collect();
+
+        let cursor_line_end = cursor_line_start + 1 - removed_chars.lines().count();
+        let cursor_char_end = cursor_char_start - removed_chars.chars().count();
+
+        self.version_stack.push_undo_action(HistoryEvent {
+            text_removed: Some(removed_chars),
+            text_added: None,
+            cursor_line_idx: cursor_line_end,
+            cursor_char_idx: cursor_char_end,
+        });
     }
 
     fn ctrl_delete(&mut self, stopping_chars: &[char]) {
@@ -607,15 +638,13 @@ impl App {
                                 ' ', '.', '!', '?', ',', '-', '_', '\"', ';', ':', '(', ')', '{',
                                 '}', '[', ']',
                             ];
-                            self.ctrl_backspace(&stopping_chars);
 
-                            self.version_stack.clear();
+                            self.ctrl_backspace(&stopping_chars);
                         }
                         KeyboardAction::BackspaceSentence => {
-                            let stopping_chars = ['.', '!', '?', ',', '\"', ';', ':'];
-                            self.ctrl_backspace(&stopping_chars);
+                            let stopping_chars = ['.', '!', '?', '\"', ';', ':'];
 
-                            self.version_stack.clear();
+                            self.ctrl_backspace(&stopping_chars);
                         }
                         KeyboardAction::Delete => {
                             // not sure why the text_editor action handler doesn't do this on its own
@@ -675,6 +704,9 @@ impl App {
                         KeyboardAction::Redo => {
                             self.version_stack.perform_redo(&mut self.content);
                         }
+                        KeyboardAction::Debug => {
+                            move_cursor(&mut self.content, 3, 3);
+                        }
                     }
                 }
             }
@@ -725,6 +757,9 @@ impl Default for App {
         keybinds
             .bind("Ctrl+Shift+Delete", KeyboardAction::DeleteSentence)
             .expect("couldn't bind Ctrl+Shift+Delete");
+        keybinds
+            .bind("Ctrl+d", KeyboardAction::Debug)
+            .expect("couldn't bind Ctrl+d");
 
         let mut df = Self {
             window_title: String::default(),

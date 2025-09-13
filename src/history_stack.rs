@@ -103,6 +103,12 @@ impl HistoryStack {
         }
     }
 
+    /// performs an undo but does not move the action into the redo stack
+    pub fn revert(&mut self, content: &mut Content) {
+        self.perform_undo(content);
+        self.redo_history.pop_front();
+    }
+
     /// takes a HistoryEvent and decomposes it into an equivelent set of Edit actions that can reconstruct the original
     /// event for implementing a redo
     fn edit_action(history_event: HistoryEvent) -> Vec<Edit> {
