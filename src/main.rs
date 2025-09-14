@@ -252,10 +252,10 @@ impl App {
         let (cursor_line_start, cursor_char_start) = self.content.cursor_position();
 
         let line_count = content_text.lines().count();
-        let line = content_text
-            .lines()
-            .nth(cursor_line_start)
-            .expect("couldn't extract line");
+        let line = match content_text.lines().nth(cursor_line_start) {
+            Some(line) => line,
+            None => return,
+        };
 
         let char_count = line.chars().count();
 
