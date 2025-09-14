@@ -1,7 +1,6 @@
 use crate::{
     calender::CalenderMessage,
-    content_tools::{decrement_cursor_position, locate_cursor_start, move_cursor},
-    history_stack::{HistoryEvent, HistoryStack},
+    history_stack::{HistoryEvent, HistoryStack, edit_action_to_history_event},
     misc_tools::chars_all_same_in_string,
     search_table::{SearchTable, SearchTableMessage},
     text_store::{DayStore, MonthStore},
@@ -137,19 +136,47 @@ impl App {
         let mut removed_chars = String::new();
         let (cursor_line_start, cursor_char_start) = self.content.cursor_position();
 
-        // on edge of newline
-        if cursor_char_start == 0 {
+        if let Some(selection) = self.content.selection() {
+            let selection_bounds = content_tools::get_selection_bounds(
+                &self.content,
+                self.cursor_line_idx,
+                self.cursor_char_idx,
+            );
+            let (adjusted_cursor_line, adjusted_cursor_char) = content_tools::locate_cursor_start(
+                &self.content,
+                self.cursor_line_idx,
+                self.cursor_char_idx,
+            );
+            self.version_stack.push_undo_action(HistoryEvent {
+                selection: Some(selection_bounds),
+                text_removed: Some(selection),
+                text_added: None,
+                cursor_line_idx: adjusted_cursor_line,
+                cursor_char_idx: adjusted_cursor_char,
+            });
+
             self.content
                 .perform(Action::Edit(text_editor::Edit::Backspace));
+            return;
+        }
 
-            let (cursor_line_idx, cursor_char_idx) = self.content.cursor_position();
+        // on edge of newline
+        if cursor_char_start == 0 {
+            let (cursor_line, cursor_char) = self.content.cursor_position();
+
+            let (new_cursor_line, new_cursor_char) =
+                content_tools::decrement_cursor_position(&self.content, cursor_line, cursor_char);
 
             self.version_stack.push_undo_action(HistoryEvent {
+                selection: None,
                 text_removed: Some("\n".to_string()),
                 text_added: None,
-                cursor_line_idx,
-                cursor_char_idx,
+                cursor_line_idx: new_cursor_line,
+                cursor_char_idx: new_cursor_char,
             });
+
+            self.content
+                .perform(Action::Edit(text_editor::Edit::Backspace));
             return;
         }
 
@@ -211,6 +238,7 @@ impl App {
         let cursor_char_end = cursor_char_start - removed_chars.chars().count();
 
         self.version_stack.push_undo_action(HistoryEvent {
+            selection: None,
             text_removed: Some(removed_chars),
             text_added: None,
             cursor_line_idx: cursor_line_end,
@@ -393,87 +421,19 @@ impl App {
                 println!("cal");
             }
             Message::Edit(action) => {
-                let (actual_cursor_line, actual_cursor_char) =
-                    locate_cursor_start(&self.content, self.cursor_line_idx, self.cursor_char_idx);
-
                 if self.content.selection().is_none() {
                     (self.cursor_line_idx, self.cursor_char_idx) = self.content.cursor_position();
                 }
-
                 if let text_editor::Action::Edit(edit) = &action {
                     self.edited_active_day = true;
-
                     self.version_stack.clear_redo_stack();
 
-                    let (line, chara) = self.content.cursor_position();
-                    let selection = self.content.selection();
-
-                    let history_event = match edit {
-                        text_editor::Edit::Insert(insert) => HistoryEvent {
-                            text_removed: selection,
-                            text_added: Some(insert.to_string()),
-                            cursor_line_idx: actual_cursor_line,
-                            cursor_char_idx: actual_cursor_char,
-                        },
-                        text_editor::Edit::Paste(paste) => HistoryEvent {
-                            text_removed: selection,
-                            text_added: Some(paste.to_string()),
-                            cursor_line_idx: actual_cursor_line,
-                            cursor_char_idx: actual_cursor_char
-                                + paste.to_string().chars().count()
-                                + 1,
-                        },
-                        text_editor::Edit::Enter => HistoryEvent {
-                            text_removed: selection,
-                            text_added: Some("\n".to_string()),
-                            cursor_line_idx: actual_cursor_line,
-                            cursor_char_idx: actual_cursor_char,
-                        },
-                        text_editor::Edit::Backspace => {
-                            let removed = if selection.is_some() {
-                                selection
-                            } else if line == 0 && chara == 0 {
-                                None
-                            } else if chara == 0 {
-                                Some("\n".to_string())
-                            } else {
-                                let backsped_char = self
-                                    .content
-                                    .text()
-                                    .lines()
-                                    .nth(line)
-                                    .and_then(|line| line.chars().nth(chara - 1))
-                                    .expect("char doesn't exist");
-
-                                Some(backsped_char.to_string())
-                            };
-
-                            let (revised_line_idx, revised_char_idx) =
-                                if removed == Some("\n".to_string()) {
-                                    let (mut new_cursor_line, mut new_cursor_char) =
-                                        (actual_cursor_line, actual_cursor_char);
-
-                                    decrement_cursor_position(
-                                        &self.content,
-                                        &mut new_cursor_line,
-                                        &mut new_cursor_char,
-                                    );
-
-                                    (new_cursor_line, new_cursor_char)
-                                } else {
-                                    (actual_cursor_line, actual_cursor_char)
-                                };
-
-                            HistoryEvent {
-                                text_removed: removed,
-                                text_added: None,
-                                cursor_line_idx: revised_line_idx,
-                                cursor_char_idx: revised_char_idx,
-                            }
-                        }
-                        text_editor::Edit::Delete => HistoryEvent::default(),
-                    };
-
+                    let history_event = edit_action_to_history_event(
+                        &self.content,
+                        edit.clone(),
+                        self.cursor_line_idx,
+                        self.cursor_char_idx,
+                    );
                     self.version_stack.push_undo_action(history_event);
                 }
 
@@ -625,15 +585,13 @@ impl App {
             },
             Message::KeyEvent(event) => {
                 if let Some(action) = self.keybinds.dispatch(event) {
-                    let (line, chara) = self.content.cursor_position();
-                    let selection = self.content.selection();
-
                     match action {
                         KeyboardAction::Save => {
                             self.write_active_entry_to_store();
                             self.write_store_to_disk();
                         }
                         KeyboardAction::BackspaceWord => {
+                            self.edited_active_day = true;
                             let stopping_chars = [
                                 ' ', '.', '!', '?', ',', '-', '_', '\"', ';', ':', '(', ')', '{',
                                 '}', '[', ']',
@@ -642,6 +600,7 @@ impl App {
                             self.ctrl_backspace(&stopping_chars);
                         }
                         KeyboardAction::BackspaceSentence => {
+                            self.edited_active_day = true;
                             let stopping_chars = ['.', '!', '?', '\"', ';', ':'];
 
                             self.ctrl_backspace(&stopping_chars);
@@ -649,41 +608,21 @@ impl App {
                         KeyboardAction::Delete => {
                             // not sure why the text_editor action handler doesn't do this on its own
                             self.edited_active_day = true;
+                            self.version_stack.clear_redo_stack();
 
-                            let (actual_cursor_line, actual_cursor_char) = locate_cursor_start(
+                            let he = edit_action_to_history_event(
                                 &self.content,
+                                text_editor::Edit::Delete,
                                 self.cursor_line_idx,
                                 self.cursor_char_idx,
                             );
-
-                            if self.content.selection().is_none() {
-                                (self.cursor_line_idx, self.cursor_char_idx) =
-                                    self.content.cursor_position();
-                            }
-
-                            let removed = if selection.is_some() {
-                                selection
-                            } else {
-                                // TODO: implement proper line detection
-                                self.content
-                                    .text()
-                                    .lines()
-                                    .nth(line)
-                                    .and_then(|line| line.chars().nth(chara))
-                                    .map(|deleted_char| deleted_char.to_string())
-                            };
-
-                            self.version_stack.push_undo_action(HistoryEvent {
-                                text_removed: removed,
-                                text_added: None,
-                                cursor_line_idx: actual_cursor_line,
-                                cursor_char_idx: actual_cursor_char,
-                            });
+                            self.version_stack.push_undo_action(he);
 
                             self.content
                                 .perform(Action::Edit(text_editor::Edit::Delete));
                         }
                         KeyboardAction::DeleteWord => {
+                            self.edited_active_day = true;
                             let stopping_chars = [
                                 ' ', '.', '!', '?', ',', '-', '_', '\"', ';', ':', '(', ')', '{',
                                 '}', '[', ']',
@@ -693,19 +632,22 @@ impl App {
                             self.version_stack.clear();
                         }
                         KeyboardAction::DeleteSentence => {
+                            self.edited_active_day = true;
                             let stopping_chars = ['.', '!', '?', ',', '\"', ';', ':'];
                             self.ctrl_delete(&stopping_chars);
 
                             self.version_stack.clear();
                         }
                         KeyboardAction::Undo => {
+                            self.edited_active_day = true;
                             self.version_stack.perform_undo(&mut self.content);
                         }
                         KeyboardAction::Redo => {
+                            self.edited_active_day = true;
                             self.version_stack.perform_redo(&mut self.content);
                         }
                         KeyboardAction::Debug => {
-                            move_cursor(&mut self.content, 3, 3);
+                            content_tools::select_text(&mut self.content, 3, 3, 5);
                         }
                     }
                 }
