@@ -247,56 +247,111 @@ impl App {
     }
 
     fn ctrl_delete(&mut self, stopping_chars: &[char]) {
-        let (line_idx, char_idx) = self.content.cursor_position();
-
         let content_text = self.content.text();
-        let Some(char_line) = content_text.lines().nth(line_idx) else {
-            println!("triggering None on char_line");
-            return;
-        };
 
-        if char_line.chars().count() == 0 {
+        let (cursor_line_start, cursor_char_start) = self.content.cursor_position();
+
+        let line_count = content_text.lines().count();
+        let line = content_text
+            .lines()
+            .nth(cursor_line_start)
+            .expect("couldn't extract line");
+
+        let char_count = line.chars().count();
+
+        if let Some(selection) = self.content.selection() {
+            let selection_bounds = content_tools::get_selection_bounds(
+                &self.content,
+                self.cursor_line_idx,
+                self.cursor_char_idx,
+            );
+            let (adjusted_cursor_line, adjusted_cursor_char) = content_tools::locate_cursor_start(
+                &self.content,
+                self.cursor_line_idx,
+                self.cursor_char_idx,
+            );
+            self.version_stack.push_undo_action(HistoryEvent {
+                selection: Some(selection_bounds),
+                text_removed: Some(selection),
+                text_added: None,
+                cursor_line_idx: adjusted_cursor_line,
+                cursor_char_idx: adjusted_cursor_char,
+            });
+
             self.content
-                .perform(Action::Edit(text_editor::Edit::Delete));
+                .perform(Action::Edit(text_editor::Edit::Backspace));
             return;
         }
 
-        let mut delete_head = char_idx;
-        let mut should_delete_next_char = true;
-
-        while should_delete_next_char {
+        if line_count == (cursor_line_start + 1) && char_count == cursor_char_start {
+            // nothing to delete, end of text
+        } else if char_count == cursor_char_start {
+            // deletes following newline
+            self.version_stack.push_undo_action(HistoryEvent {
+                selection: None,
+                text_removed: Some('\n'.to_string()),
+                text_added: None,
+                cursor_line_idx: cursor_line_start,
+                cursor_char_idx: cursor_char_start,
+            });
             self.content
                 .perform(Action::Edit(text_editor::Edit::Delete));
-
-            if delete_head < (char_line.chars().count() - 1) {
-                delete_head += 1;
-            } else {
-                should_delete_next_char = false;
-                continue;
-            }
-
-            let next_char_to_delete = char_line
+        } else {
+            // standard ctrl+delete
+            let mut removed_chars = String::new();
+            let first_char_removed = line
                 .chars()
-                .nth(delete_head)
-                .expect("couldn't get char from line");
+                .nth(cursor_char_start)
+                .expect("couldn't extract char from line");
 
-            if stopping_chars.contains(&next_char_to_delete) {
-                should_delete_next_char = false;
-            }
+            let mut delete_head = cursor_char_start;
 
-            if delete_head < (char_line.chars().count() - 1) {
-                let test_delete_head = delete_head + 1;
-                let next_next_char = char_line
+            let mut removing_sequence_of_stops = false;
+
+            loop {
+                let char_to_remove = line
                     .chars()
-                    .nth(test_delete_head)
-                    .expect("couldn't get char from line");
+                    .nth(delete_head)
+                    .expect("couldn't extract char from line");
 
-                if next_next_char == next_char_to_delete
-                    && (stopping_chars.contains(&next_next_char))
+                removed_chars.push(char_to_remove);
+                self.content
+                    .perform(Action::Edit(text_editor::Edit::Delete));
+
+                if (delete_head + 1) < char_count {
+                    delete_head += 1;
+                } else {
+                    break;
+                }
+
+                let next_char_to_remove = line
+                    .chars()
+                    .nth(delete_head)
+                    .expect("couldn't extract char from line");
+
+                if stopping_chars.contains(&first_char_removed)
+                    && first_char_removed == next_char_to_remove
+                    && chars_all_same_in_string(&removed_chars)
+                    && (removed_chars.chars().count() == 1 || removing_sequence_of_stops)
                 {
-                    should_delete_next_char = true;
+                    removing_sequence_of_stops = true;
+                    continue;
+                } else if removing_sequence_of_stops {
+                    break;
+                }
+
+                if stopping_chars.contains(&next_char_to_remove) {
+                    break;
                 }
             }
+
+            self.version_stack.push_undo_action(HistoryEvent {
+                selection: None,
+                text_removed: Some(removed_chars),
+                text_added: None,
+                cursor_line_idx: cursor_line_start,
+                cursor_char_idx: cursor_char_start,
+            });
         }
     }
 }
@@ -610,13 +665,13 @@ impl App {
                             self.edited_active_day = true;
                             self.version_stack.clear_redo_stack();
 
-                            let he = edit_action_to_history_event(
+                            let history_event = edit_action_to_history_event(
                                 &self.content,
                                 text_editor::Edit::Delete,
                                 self.cursor_line_idx,
                                 self.cursor_char_idx,
                             );
-                            self.version_stack.push_undo_action(he);
+                            self.version_stack.push_undo_action(history_event);
 
                             self.content
                                 .perform(Action::Edit(text_editor::Edit::Delete));
@@ -628,15 +683,11 @@ impl App {
                                 '}', '[', ']',
                             ];
                             self.ctrl_delete(&stopping_chars);
-
-                            self.version_stack.clear();
                         }
                         KeyboardAction::DeleteSentence => {
                             self.edited_active_day = true;
-                            let stopping_chars = ['.', '!', '?', ',', '\"', ';', ':'];
+                            let stopping_chars = ['.', '!', '?', '\"', ';', ':'];
                             self.ctrl_delete(&stopping_chars);
-
-                            self.version_stack.clear();
                         }
                         KeyboardAction::Undo => {
                             self.edited_active_day = true;

@@ -78,8 +78,14 @@ pub fn locate_cursor_start(
 pub fn select_text(content: &mut Content, line_start: usize, char_start: usize, length: usize) {
     move_cursor(content, line_start, char_start);
 
+    // this is required to ensure the cursor position ends at the start of the selection, so we don't need to pass in
+    // the current state for use with locate_cursor_start()
     for _i in 0..length {
-        content.perform(Action::Select(Motion::Right));
+        content.perform(Action::Move(Motion::Right));
+    }
+
+    for _i in 0..length {
+        content.perform(Action::Select(Motion::Left));
     }
 }
 
