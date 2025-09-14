@@ -27,23 +27,25 @@ pub fn move_cursor(content: &mut Content, new_line_idx: usize, new_char_idx: usi
 }
 
 /// Used for locating new the cursor position when a line gets removed
-pub fn decrement_cursor_position(content: &Content, line_idx: &mut usize, char_idx: &mut usize) {
+pub fn decrement_cursor_position(
+    content: &Content,
+    line_idx: usize,
+    char_idx: usize,
+) -> (usize, usize) {
     let text = content.text();
 
-    if *line_idx == 0 && *char_idx == 0 {
-        return;
-    }
+    if line_idx == 0 && char_idx == 0 {
+        (0, 0)
+    } else if char_idx == 0 {
+        let line = text
+            .lines()
+            .nth(line_idx - 1)
+            .expect("line index doesn't exist");
 
-    if *char_idx == 0 {
-        if let Some(line) = text.lines().nth(*line_idx - 1) {
-            *line_idx -= 1;
-            println!("line: {}", line);
-            *char_idx = line.chars().count() + 1;
-        }
-        return;
+        (line_idx - 1, line.chars().count())
+    } else {
+        (line_idx, char_idx - 1)
     }
-
-    *char_idx -= 1;
 }
 
 /// Since the cursor is the literal leading edge of the cursor (where the mouse is located), using cursor_position() at
@@ -70,4 +72,29 @@ pub fn locate_cursor_start(
     } else {
         (current_line, current_char.min(cursor_char_idx))
     }
+}
+
+/// selects the number of characters specified in length, starting at line index, char index
+pub fn select_text(content: &mut Content, line_start: usize, char_start: usize, length: usize) {
+    move_cursor(content, line_start, char_start);
+
+    for _i in 0..length {
+        content.perform(Action::Select(Motion::Right));
+    }
+}
+
+/// retrives the information about the current selection, returning ((start_of_selection_line_idx, char_idx),
+/// length_of_selection)
+pub fn get_selection_bounds(
+    content: &Content,
+    cursor_line_idx: usize,
+    cursor_char_idx: usize,
+) -> ((usize, usize), usize) {
+    let (cursor_line, cursor_char) = locate_cursor_start(content, cursor_line_idx, cursor_char_idx);
+
+    let selection_length = content
+        .selection()
+        .map_or(0, |selection| selection.chars().count());
+
+    ((cursor_line, cursor_char), selection_length)
 }

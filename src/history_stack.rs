@@ -1,11 +1,11 @@
+use crate::content_tools::{self, decrement_cursor_position};
+use iced::widget::text_editor::{self, Action, Content, Edit};
 use std::collections::VecDeque;
-
-use iced::widget::text_editor::{Action, Content, Edit};
-
-use crate::content_tools;
 
 #[derive(Debug, Clone, Default)]
 pub struct HistoryEvent {
+    /// information about the selection, formatted as ((start_line, start_char), length)
+    pub(crate) selection: Option<((usize, usize), usize)>,
     pub(crate) text_removed: Option<String>,
     pub(crate) text_added: Option<String>,
     pub(crate) cursor_line_idx: usize,
@@ -77,10 +77,14 @@ impl HistoryStack {
                 history_event.cursor_char_idx,
             );
 
-            let inverse_edits = Self::inverse_edit_action(history_event);
+            let inverse_edits = Self::inverse_edit_action(&history_event);
 
             for edit in inverse_edits {
                 content.perform(Action::Edit(edit));
+            }
+
+            if let Some(((line_start, char_start), length)) = history_event.selection {
+                content_tools::select_text(content, line_start, char_start, length);
             }
         }
     }
@@ -135,16 +139,16 @@ impl HistoryStack {
 
     /// takes a HistoryEvent and decomposes it into an equivelent set of Edit actions that can perform the inverse
     /// of the original event for implementing an undo
-    fn inverse_edit_action(history_event: HistoryEvent) -> Vec<Edit> {
+    fn inverse_edit_action(history_event: &HistoryEvent) -> Vec<Edit> {
         let mut inverse_sequence = vec![];
 
-        if let Some(added_text) = history_event.text_added {
+        if let Some(added_text) = &history_event.text_added {
             for _ in added_text.chars() {
                 inverse_sequence.push(Edit::Backspace);
             }
         }
 
-        if let Some(deleted_text) = history_event.text_removed {
+        if let Some(deleted_text) = &history_event.text_removed {
             for chara in deleted_text.chars() {
                 if chara == '\n' {
                     inverse_sequence.push(Edit::Enter);
@@ -156,6 +160,189 @@ impl HistoryStack {
 
         inverse_sequence
     }
+}
+
+/// converts an Edit action into a HistoryEvent based on the current state of the content
+pub fn edit_action_to_history_event(
+    content: &Content,
+    edit: Edit,
+    cursor_line_idx: usize,
+    cursor_char_idx: usize,
+) -> HistoryEvent {
+    let mut history_event = HistoryEvent::default();
+
+    let (cursor_line, cursor_char) = content.cursor_position();
+    let content_text = content.text();
+
+    if let Some(selection) = content.selection() {
+        let (adjusted_cursor_line, adjusted_cursor_char) =
+            content_tools::locate_cursor_start(content, cursor_line_idx, cursor_char_idx);
+
+        let selection_bounds = (
+            (adjusted_cursor_line, adjusted_cursor_char),
+            selection.chars().count(),
+        );
+
+        match edit {
+            text_editor::Edit::Insert(inserted_char) => {
+                history_event = HistoryEvent {
+                    selection: Some(selection_bounds),
+                    text_removed: Some(selection),
+                    text_added: Some(inserted_char.to_string()),
+                    cursor_line_idx: adjusted_cursor_line,
+                    cursor_char_idx: adjusted_cursor_char + 1, // cursor is moved one by the insert
+                }
+            }
+            text_editor::Edit::Paste(pasted_text) => {
+                let paste_text_string = pasted_text.to_string();
+                let pasted_chars = paste_text_string.chars().count();
+
+                history_event = HistoryEvent {
+                    selection: Some(selection_bounds),
+                    text_removed: Some(selection),
+                    text_added: Some(pasted_text.to_string()),
+                    cursor_line_idx: adjusted_cursor_line,
+                    cursor_char_idx: adjusted_cursor_char + pasted_chars, // cursor moved by the number of chars in paste
+                }
+            }
+            text_editor::Edit::Enter => {
+                history_event = HistoryEvent {
+                    selection: Some(selection_bounds),
+                    text_removed: Some(selection),
+                    text_added: Some("\n".to_string()),
+                    cursor_line_idx: adjusted_cursor_line + 1, // cursor is moved by the enter
+                    cursor_char_idx: 0,
+                }
+            }
+            text_editor::Edit::Backspace => {
+                history_event = HistoryEvent {
+                    selection: Some(selection_bounds),
+                    text_removed: Some(selection),
+                    text_added: None,
+                    cursor_line_idx: adjusted_cursor_line,
+                    cursor_char_idx: adjusted_cursor_char,
+                }
+            }
+            text_editor::Edit::Delete => {
+                history_event = HistoryEvent {
+                    selection: Some(selection_bounds),
+                    text_removed: Some(selection),
+                    text_added: None,
+                    cursor_line_idx: adjusted_cursor_line,
+                    cursor_char_idx: adjusted_cursor_char,
+                }
+            }
+        }
+    } else {
+        match edit {
+            text_editor::Edit::Insert(inserted_char) => {
+                history_event = HistoryEvent {
+                    selection: None,
+                    text_removed: None,
+                    text_added: Some(inserted_char.to_string()),
+                    cursor_line_idx: cursor_line,
+                    cursor_char_idx: cursor_char + 1, // cursor is moved one by the insert
+                }
+            }
+            text_editor::Edit::Paste(pasted_text) => {
+                let paste_text_string = pasted_text.to_string();
+                let pasted_chars = paste_text_string.chars().count();
+
+                history_event = HistoryEvent {
+                    selection: None,
+                    text_removed: None,
+                    text_added: Some(pasted_text.to_string()),
+                    cursor_line_idx: cursor_line,
+                    cursor_char_idx: cursor_char + pasted_chars, // cursor moved by the number of chars in paste
+                }
+            }
+            text_editor::Edit::Enter => {
+                history_event = HistoryEvent {
+                    selection: None,
+                    text_removed: None,
+                    text_added: Some("\n".to_string()),
+                    cursor_line_idx: cursor_line + 1, // cursor is moved by the enter
+                    cursor_char_idx: 0,
+                }
+            }
+            text_editor::Edit::Backspace => {
+                if let Some(line) = content_text.lines().nth(cursor_line) {
+                    if cursor_line == 0 && cursor_char == 0 {
+                        // don't log an event since nothing will happen on a backspace at the very start
+                    } else if cursor_char > 0 {
+                        let removed_char = line
+                            .chars()
+                            .nth(cursor_char - 1)
+                            .expect("couldn't extract char");
+
+                        history_event = HistoryEvent {
+                            selection: None,
+                            text_removed: Some(removed_char.to_string()),
+                            text_added: None,
+                            cursor_line_idx: cursor_line,
+                            cursor_char_idx: cursor_char - 1,
+                        }
+                    } else {
+                        let removed_char = '\n';
+
+                        let (new_cursor_line, new_cursor_char) =
+                            decrement_cursor_position(content, cursor_line, cursor_char);
+
+                        history_event = HistoryEvent {
+                            selection: None,
+                            text_removed: Some(removed_char.to_string()),
+                            text_added: None,
+                            cursor_line_idx: new_cursor_line,
+                            cursor_char_idx: new_cursor_char,
+                        }
+                    };
+                } else {
+                    // backspaced an empty newline at the very end of the text
+                    let (new_cursor_line, new_cursor_char) =
+                        decrement_cursor_position(content, cursor_line, cursor_char);
+
+                    history_event = HistoryEvent {
+                        selection: None,
+                        text_removed: Some('\n'.to_string()),
+                        text_added: None,
+                        cursor_line_idx: new_cursor_line,
+                        cursor_char_idx: new_cursor_char,
+                    }
+                }
+            }
+            text_editor::Edit::Delete => {
+                let line_count = content_text.lines().count();
+                let line = content_text.lines().nth(cursor_line).expect("msg");
+
+                let char_count = line.chars().count();
+                let char_to_remove = line.chars().nth(cursor_char);
+
+                if line_count == (cursor_line + 1) && char_count == cursor_char {
+                    // nothing to delete at the very end of the text
+                } else if char_count == cursor_char {
+                    // deleting a newline
+                    history_event = HistoryEvent {
+                        selection: None,
+                        text_removed: Some('\n'.to_string()),
+                        text_added: None,
+                        cursor_line_idx: cursor_line,
+                        cursor_char_idx: cursor_char,
+                    }
+                } else if let Some(removed_char) = char_to_remove {
+                    // standard deletion
+                    history_event = HistoryEvent {
+                        selection: None,
+                        text_removed: Some(removed_char.to_string()),
+                        text_added: None,
+                        cursor_line_idx: cursor_line,
+                        cursor_char_idx: cursor_char,
+                    }
+                }
+            }
+        }
+    }
+
+    history_event
 }
 
 impl Default for HistoryStack {
