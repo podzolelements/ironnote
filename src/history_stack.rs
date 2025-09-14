@@ -2,7 +2,7 @@ use crate::content_tools::{self, decrement_cursor_position};
 use iced::widget::text_editor::{self, Action, Content, Edit};
 use std::collections::VecDeque;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct HistoryEvent {
     /// information about the selection, formatted as ((start_line, start_char), length)
     pub(crate) selection: Option<((usize, usize), usize)>,
@@ -30,7 +30,7 @@ impl HistoryStack {
     }
 
     pub fn push_undo_action(&mut self, history_event: HistoryEvent) {
-        if history_event.text_added.is_none() && history_event.text_removed.is_none() {
+        if history_event == HistoryEvent::default() {
             return;
         }
 
@@ -71,11 +71,13 @@ impl HistoryStack {
 
     pub fn perform_undo(&mut self, content: &mut Content) {
         if let Some(history_event) = self.move_undo_to_redo_stack() {
-            content_tools::move_cursor(
-                content,
-                history_event.cursor_line_idx,
-                history_event.cursor_char_idx,
-            );
+            if history_event.text_removed.is_some() && history_event.selection.is_none() {
+                content_tools::move_cursor(
+                    content,
+                    history_event.cursor_line_idx,
+                    history_event.cursor_char_idx,
+                );
+            }
 
             let inverse_edits = Self::inverse_edit_action(&history_event);
 
@@ -91,7 +93,9 @@ impl HistoryStack {
 
     pub fn perform_redo(&mut self, content: &mut Content) {
         if let Some(history_event) = self.move_redo_to_undo_stack() {
-            if let Some(removed) = &history_event.text_removed {
+            if let Some(removed) = &history_event.text_removed
+                && history_event.selection.is_none()
+            {
                 content_tools::move_cursor(
                     content,
                     history_event.cursor_line_idx,
@@ -118,7 +122,7 @@ impl HistoryStack {
     fn edit_action(history_event: HistoryEvent) -> Vec<Edit> {
         let mut edit_sequence = vec![];
 
-        if let Some(added_text) = history_event.text_added {
+        if let Some(added_text) = history_event.text_added.clone() {
             for chara in added_text.chars() {
                 if chara == '\n' {
                     edit_sequence.push(Edit::Enter);
@@ -128,10 +132,15 @@ impl HistoryStack {
             }
         }
 
-        if let Some(deleted_text) = history_event.text_removed {
-            for _ in deleted_text.chars() {
-                edit_sequence.push(Edit::Backspace);
+        if history_event.selection.is_none() {
+            if let Some(deleted_text) = history_event.text_removed {
+                for _i in deleted_text.chars() {
+                    edit_sequence.push(Edit::Backspace);
+                }
             }
+        } else if history_event.selection.is_some() && history_event.text_added.is_none() {
+            // remove the selection manually if no text was added (which automatically removes it via the insertion)
+            edit_sequence.push(Edit::Backspace);
         }
 
         edit_sequence
@@ -312,13 +321,21 @@ pub fn edit_action_to_history_event(
             }
             text_editor::Edit::Delete => {
                 let line_count = content_text.lines().count();
-                let line = content_text.lines().nth(cursor_line).expect("msg");
+
+                let line = match content_text.lines().nth(cursor_line) {
+                    Some(line) => line,
+                    None => {
+                        // this will happen on an attempt to delete at the end of an empty line
+                        return HistoryEvent::default();
+                    }
+                };
 
                 let char_count = line.chars().count();
                 let char_to_remove = line.chars().nth(cursor_char);
 
                 if line_count == (cursor_line + 1) && char_count == cursor_char {
                     // nothing to delete at the very end of the text
+                    return HistoryEvent::default();
                 } else if char_count == cursor_char {
                     // deleting a newline
                     history_event = HistoryEvent {
