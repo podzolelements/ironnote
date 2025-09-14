@@ -1,7 +1,7 @@
 use crate::{
     calender::CalenderMessage,
-    history_stack::{HistoryEvent, HistoryStack, edit_action_to_history_event},
-    misc_tools::chars_all_same_in_string,
+    content_tools::{perform_ctrl_backspace, perform_ctrl_delete},
+    history_stack::{HistoryStack, edit_action_to_history_event},
     search_table::{SearchTable, SearchTableMessage},
     text_store::{DayStore, MonthStore},
 };
@@ -123,236 +123,6 @@ impl App {
         self.load_active_entry();
 
         self.version_stack.clear();
-    }
-
-    fn ctrl_backspace(&mut self, stopping_chars: &[char]) {
-        if self.content.cursor_position() == (0, 0) {
-            return;
-        }
-
-        // revert the standard backspace that can't be caught
-        self.version_stack.revert(&mut self.content);
-
-        let mut removed_chars = String::new();
-        let (cursor_line_start, cursor_char_start) = self.content.cursor_position();
-
-        if let Some(selection) = self.content.selection() {
-            let selection_bounds = content_tools::get_selection_bounds(
-                &self.content,
-                self.cursor_line_idx,
-                self.cursor_char_idx,
-            );
-            let (adjusted_cursor_line, adjusted_cursor_char) = content_tools::locate_cursor_start(
-                &self.content,
-                self.cursor_line_idx,
-                self.cursor_char_idx,
-            );
-            self.version_stack.push_undo_action(HistoryEvent {
-                selection: Some(selection_bounds),
-                text_removed: Some(selection),
-                text_added: None,
-                cursor_line_idx: adjusted_cursor_line,
-                cursor_char_idx: adjusted_cursor_char,
-            });
-
-            self.content
-                .perform(Action::Edit(text_editor::Edit::Backspace));
-            return;
-        }
-
-        // on edge of newline
-        if cursor_char_start == 0 {
-            let (cursor_line, cursor_char) = self.content.cursor_position();
-
-            let (new_cursor_line, new_cursor_char) =
-                content_tools::decrement_cursor_position(&self.content, cursor_line, cursor_char);
-
-            self.version_stack.push_undo_action(HistoryEvent {
-                selection: None,
-                text_removed: Some("\n".to_string()),
-                text_added: None,
-                cursor_line_idx: new_cursor_line,
-                cursor_char_idx: new_cursor_char,
-            });
-
-            self.content
-                .perform(Action::Edit(text_editor::Edit::Backspace));
-            return;
-        }
-
-        let content_text = self.content.text();
-        let char_line = content_text
-            .lines()
-            .nth(cursor_line_start)
-            .expect("couldn't extract line");
-
-        let mut backspace_head = cursor_char_start - 1;
-
-        let first_char_removed = char_line
-            .chars()
-            .nth(backspace_head)
-            .expect("couldn't extract char from line");
-
-        let mut removing_seqence_of_stops = false;
-
-        loop {
-            let char_to_remove = char_line
-                .chars()
-                .nth(backspace_head)
-                .expect("couldn't extract char from line");
-
-            removed_chars.push(char_to_remove);
-            self.content
-                .perform(Action::Edit(text_editor::Edit::Backspace));
-
-            if backspace_head > 0 {
-                backspace_head -= 1;
-            } else {
-                break;
-            }
-
-            let next_char_to_remove = char_line
-                .chars()
-                .nth(backspace_head)
-                .expect("couldn't extract char from line");
-
-            if stopping_chars.contains(&first_char_removed)
-                && first_char_removed == next_char_to_remove
-                && chars_all_same_in_string(&removed_chars)
-                && (removed_chars.chars().count() == 1 || removing_seqence_of_stops)
-            {
-                removing_seqence_of_stops = true;
-                continue;
-            } else if removing_seqence_of_stops {
-                break;
-            }
-
-            if stopping_chars.contains(&next_char_to_remove) {
-                break;
-            }
-        }
-
-        removed_chars = removed_chars.chars().rev().collect();
-
-        let cursor_line_end = cursor_line_start + 1 - removed_chars.lines().count();
-        let cursor_char_end = cursor_char_start - removed_chars.chars().count();
-
-        self.version_stack.push_undo_action(HistoryEvent {
-            selection: None,
-            text_removed: Some(removed_chars),
-            text_added: None,
-            cursor_line_idx: cursor_line_end,
-            cursor_char_idx: cursor_char_end,
-        });
-    }
-
-    fn ctrl_delete(&mut self, stopping_chars: &[char]) {
-        let content_text = self.content.text();
-
-        let (cursor_line_start, cursor_char_start) = self.content.cursor_position();
-
-        let line_count = content_text.lines().count();
-        let line = match content_text.lines().nth(cursor_line_start) {
-            Some(line) => line,
-            None => return,
-        };
-
-        let char_count = line.chars().count();
-
-        if let Some(selection) = self.content.selection() {
-            let selection_bounds = content_tools::get_selection_bounds(
-                &self.content,
-                self.cursor_line_idx,
-                self.cursor_char_idx,
-            );
-            let (adjusted_cursor_line, adjusted_cursor_char) = content_tools::locate_cursor_start(
-                &self.content,
-                self.cursor_line_idx,
-                self.cursor_char_idx,
-            );
-            self.version_stack.push_undo_action(HistoryEvent {
-                selection: Some(selection_bounds),
-                text_removed: Some(selection),
-                text_added: None,
-                cursor_line_idx: adjusted_cursor_line,
-                cursor_char_idx: adjusted_cursor_char,
-            });
-
-            self.content
-                .perform(Action::Edit(text_editor::Edit::Backspace));
-            return;
-        }
-
-        if line_count == (cursor_line_start + 1) && char_count == cursor_char_start {
-            // nothing to delete, end of text
-        } else if char_count == cursor_char_start {
-            // deletes following newline
-            self.version_stack.push_undo_action(HistoryEvent {
-                selection: None,
-                text_removed: Some('\n'.to_string()),
-                text_added: None,
-                cursor_line_idx: cursor_line_start,
-                cursor_char_idx: cursor_char_start,
-            });
-            self.content
-                .perform(Action::Edit(text_editor::Edit::Delete));
-        } else {
-            // standard ctrl+delete
-            let mut removed_chars = String::new();
-            let first_char_removed = line
-                .chars()
-                .nth(cursor_char_start)
-                .expect("couldn't extract char from line");
-
-            let mut delete_head = cursor_char_start;
-
-            let mut removing_sequence_of_stops = false;
-
-            loop {
-                let char_to_remove = line
-                    .chars()
-                    .nth(delete_head)
-                    .expect("couldn't extract char from line");
-
-                removed_chars.push(char_to_remove);
-                self.content
-                    .perform(Action::Edit(text_editor::Edit::Delete));
-
-                if (delete_head + 1) < char_count {
-                    delete_head += 1;
-                } else {
-                    break;
-                }
-
-                let next_char_to_remove = line
-                    .chars()
-                    .nth(delete_head)
-                    .expect("couldn't extract char from line");
-
-                if stopping_chars.contains(&first_char_removed)
-                    && first_char_removed == next_char_to_remove
-                    && chars_all_same_in_string(&removed_chars)
-                    && (removed_chars.chars().count() == 1 || removing_sequence_of_stops)
-                {
-                    removing_sequence_of_stops = true;
-                    continue;
-                } else if removing_sequence_of_stops {
-                    break;
-                }
-
-                if stopping_chars.contains(&next_char_to_remove) {
-                    break;
-                }
-            }
-
-            self.version_stack.push_undo_action(HistoryEvent {
-                selection: None,
-                text_removed: Some(removed_chars),
-                text_added: None,
-                cursor_line_idx: cursor_line_start,
-                cursor_char_idx: cursor_char_start,
-            });
-        }
     }
 }
 
@@ -652,13 +422,29 @@ impl App {
                                 '}', '[', ']',
                             ];
 
-                            self.ctrl_backspace(&stopping_chars);
+                            // revert the standard backspace that can't be caught
+                            self.version_stack.revert(&mut self.content);
+
+                            self.version_stack.push_undo_action(perform_ctrl_backspace(
+                                &mut self.content,
+                                &stopping_chars,
+                                self.cursor_line_idx,
+                                self.cursor_char_idx,
+                            ));
                         }
                         KeyboardAction::BackspaceSentence => {
                             self.edited_active_day = true;
                             let stopping_chars = ['.', '!', '?', '\"', ';', ':'];
 
-                            self.ctrl_backspace(&stopping_chars);
+                            // revert the standard backspace that can't be caught
+                            self.version_stack.revert(&mut self.content);
+
+                            self.version_stack.push_undo_action(perform_ctrl_backspace(
+                                &mut self.content,
+                                &stopping_chars,
+                                self.cursor_line_idx,
+                                self.cursor_char_idx,
+                            ));
                         }
                         KeyboardAction::Delete => {
                             // not sure why the text_editor action handler doesn't do this on its own
@@ -682,12 +468,24 @@ impl App {
                                 ' ', '.', '!', '?', ',', '-', '_', '\"', ';', ':', '(', ')', '{',
                                 '}', '[', ']',
                             ];
-                            self.ctrl_delete(&stopping_chars);
+
+                            self.version_stack.push_undo_action(perform_ctrl_delete(
+                                &mut self.content,
+                                &stopping_chars,
+                                self.cursor_line_idx,
+                                self.cursor_char_idx,
+                            ));
                         }
                         KeyboardAction::DeleteSentence => {
                             self.edited_active_day = true;
                             let stopping_chars = ['.', '!', '?', '\"', ';', ':'];
-                            self.ctrl_delete(&stopping_chars);
+
+                            self.version_stack.push_undo_action(perform_ctrl_delete(
+                                &mut self.content,
+                                &stopping_chars,
+                                self.cursor_line_idx,
+                                self.cursor_char_idx,
+                            ));
                         }
                         KeyboardAction::Undo => {
                             self.edited_active_day = true;
