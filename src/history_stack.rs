@@ -12,6 +12,7 @@ pub struct HistoryEvent {
     pub(crate) cursor_char_idx: usize,
 }
 
+#[derive(Debug)]
 pub struct HistoryStack {
     undo_history: VecDeque<HistoryEvent>,
     max_undo_size: Option<usize>,
