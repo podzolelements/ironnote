@@ -38,10 +38,18 @@ struct App {
     keybinds: Keybinds<KeyboardAction>,
     day_store: DayStore,
     month_store: MonthStore,
-    version_stack: HistoryStack,
+    log_history_stack: HistoryStack,
+    search_history_stack: HistoryStack,
     current_tab: Tab,
+    current_editor: Editor,
     cursor_line_idx: usize,
     cursor_char_idx: usize,
+}
+
+#[derive(Debug)]
+enum Editor {
+    Log,
+    Search,
 }
 
 enum KeyboardAction {
@@ -122,7 +130,7 @@ impl App {
         self.calender.update_calender_dates(self.active_date_time);
         self.load_active_entry();
 
-        self.version_stack.clear();
+        self.log_history_stack.clear();
     }
 }
 
@@ -246,12 +254,14 @@ impl App {
                 println!("cal");
             }
             Message::Edit(action) => {
+                self.current_editor = Editor::Log;
+
                 if self.content.selection().is_none() {
                     (self.cursor_line_idx, self.cursor_char_idx) = self.content.cursor_position();
                 }
                 if let text_editor::Action::Edit(edit) = &action {
                     self.edited_active_day = true;
-                    self.version_stack.clear_redo_stack();
+                    self.log_history_stack.clear_redo_stack();
 
                     let history_event = edit_action_to_history_event(
                         &self.content,
@@ -259,12 +269,29 @@ impl App {
                         self.cursor_line_idx,
                         self.cursor_char_idx,
                     );
-                    self.version_stack.push_undo_action(history_event);
+                    self.log_history_stack.push_undo_action(history_event);
                 }
 
                 self.content.perform(action);
             }
             Message::EditSearch(action) => {
+                self.current_editor = Editor::Search;
+
+                if self.content.selection().is_none() {
+                    (self.cursor_line_idx, self.cursor_char_idx) = self.content.cursor_position();
+                }
+                if let text_editor::Action::Edit(edit) = &action {
+                    self.search_history_stack.clear_redo_stack();
+
+                    let history_event = edit_action_to_history_event(
+                        &self.search_content,
+                        edit.clone(),
+                        self.cursor_line_idx,
+                        self.cursor_char_idx,
+                    );
+                    self.search_history_stack.push_undo_action(history_event);
+                }
+
                 self.search_content.perform(action);
 
                 self.search_table.clear();
@@ -422,11 +449,16 @@ impl App {
                                 '}', '[', ']',
                             ];
 
-                            // revert the standard backspace that can't be caught
-                            self.version_stack.revert(&mut self.content);
+                            let (history_stack, mut content) = match self.current_editor {
+                                Editor::Log => (&mut self.log_history_stack, &mut self.content),
+                                Editor::Search => (&mut self.search_history_stack, &mut self.search_content),
+                            };
 
-                            self.version_stack.push_undo_action(perform_ctrl_backspace(
-                                &mut self.content,
+                            // revert the standard backspace that can't be caught
+                            history_stack.revert(&mut content);
+
+                            history_stack.push_undo_action(perform_ctrl_backspace(
+                                &mut content,
                                 &stopping_chars,
                                 self.cursor_line_idx,
                                 self.cursor_char_idx,
@@ -436,11 +468,16 @@ impl App {
                             self.edited_active_day = true;
                             let stopping_chars = ['.', '!', '?', '\"', ';', ':'];
 
-                            // revert the standard backspace that can't be caught
-                            self.version_stack.revert(&mut self.content);
+                            let (history_stack, mut content) = match self.current_editor {
+                                Editor::Log => (&mut self.log_history_stack, &mut self.content),
+                                Editor::Search => (&mut self.search_history_stack, &mut self.search_content),
+                            };
 
-                            self.version_stack.push_undo_action(perform_ctrl_backspace(
-                                &mut self.content,
+                            // revert the standard backspace that can't be caught
+                            history_stack.revert(&mut content);
+
+                            history_stack.push_undo_action(perform_ctrl_backspace(
+                                &mut content,
                                 &stopping_chars,
                                 self.cursor_line_idx,
                                 self.cursor_char_idx,
@@ -449,7 +486,7 @@ impl App {
                         KeyboardAction::Delete => {
                             // not sure why the text_editor action handler doesn't do this on its own
                             self.edited_active_day = true;
-                            self.version_stack.clear_redo_stack();
+                            self.log_history_stack.clear_redo_stack();
 
                             let history_event = edit_action_to_history_event(
                                 &self.content,
@@ -457,7 +494,7 @@ impl App {
                                 self.cursor_line_idx,
                                 self.cursor_char_idx,
                             );
-                            self.version_stack.push_undo_action(history_event);
+                            self.log_history_stack.push_undo_action(history_event);
 
                             self.content
                                 .perform(Action::Edit(text_editor::Edit::Delete));
@@ -469,7 +506,7 @@ impl App {
                                 '}', '[', ']',
                             ];
 
-                            self.version_stack.push_undo_action(perform_ctrl_delete(
+                            self.log_history_stack.push_undo_action(perform_ctrl_delete(
                                 &mut self.content,
                                 &stopping_chars,
                                 self.cursor_line_idx,
@@ -480,7 +517,7 @@ impl App {
                             self.edited_active_day = true;
                             let stopping_chars = ['.', '!', '?', '\"', ';', ':'];
 
-                            self.version_stack.push_undo_action(perform_ctrl_delete(
+                            self.log_history_stack.push_undo_action(perform_ctrl_delete(
                                 &mut self.content,
                                 &stopping_chars,
                                 self.cursor_line_idx,
@@ -489,11 +526,22 @@ impl App {
                         }
                         KeyboardAction::Undo => {
                             self.edited_active_day = true;
-                            self.version_stack.perform_undo(&mut self.content);
+
+                            let (history_stack, mut content) = match self.current_editor {
+                                Editor::Log => (&mut self.log_history_stack, &mut self.content),
+                                Editor::Search => (&mut self.search_history_stack, &mut self.search_content),
+                            };
+                            history_stack.perform_undo(&mut content);
                         }
                         KeyboardAction::Redo => {
                             self.edited_active_day = true;
-                            self.version_stack.perform_redo(&mut self.content);
+
+                            let (history_stack, mut content) = match self.current_editor {
+                                Editor::Log => (&mut self.log_history_stack, &mut self.content),
+                                Editor::Search => (&mut self.search_history_stack, &mut self.search_content),
+                            };
+
+                            history_stack.perform_redo(&mut content);
                         }
                         KeyboardAction::Debug => {
                             content_tools::select_text(&mut self.content, 3, 3, 5);
@@ -563,8 +611,10 @@ impl Default for App {
             keybinds,
             day_store: DayStore::default(),
             month_store: MonthStore::default(),
-            version_stack: HistoryStack::default(),
+            log_history_stack: HistoryStack::default(),
+            search_history_stack: HistoryStack::default(),
             current_tab: Tab::Search,
+            current_editor: Editor::Log,
             cursor_line_idx: 0,
             cursor_char_idx: 0,
         };
