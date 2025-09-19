@@ -1,6 +1,7 @@
 use crate::{
     calender::CalenderMessage,
     content_tools::{perform_ctrl_backspace, perform_ctrl_delete},
+    highlighter::SpellHighlighter,
     history_stack::{HistoryStack, edit_action_to_history_event},
     search_table::{SearchTable, SearchTableMessage},
     text_store::{DayStore, MonthStore},
@@ -22,6 +23,7 @@ use keybinds::Keybinds;
 mod calender;
 mod content_tools;
 mod filetools;
+mod highlighter;
 mod history_stack;
 mod misc_tools;
 mod search_table;
@@ -212,7 +214,8 @@ impl App {
             .size(13)
             .font(Font::DEFAULT)
             .wrapping(Wrapping::Word)
-            .height(iced::Length::Fill);
+            .height(iced::Length::Fill)
+            .highlight_with::<SpellHighlighter>((), highlighter::highlight_to_format);
 
         let right_ui = column![right_top_bar, input];
 
@@ -449,16 +452,18 @@ impl App {
                                 '}', '[', ']',
                             ];
 
-                            let (history_stack, mut content) = match self.current_editor {
+                            let (history_stack, content) = match self.current_editor {
                                 Editor::Log => (&mut self.log_history_stack, &mut self.content),
-                                Editor::Search => (&mut self.search_history_stack, &mut self.search_content),
+                                Editor::Search => {
+                                    (&mut self.search_history_stack, &mut self.search_content)
+                                }
                             };
 
                             // revert the standard backspace that can't be caught
-                            history_stack.revert(&mut content);
+                            history_stack.revert(content);
 
                             history_stack.push_undo_action(perform_ctrl_backspace(
-                                &mut content,
+                                content,
                                 &stopping_chars,
                                 self.cursor_line_idx,
                                 self.cursor_char_idx,
@@ -468,16 +473,18 @@ impl App {
                             self.edited_active_day = true;
                             let stopping_chars = ['.', '!', '?', '\"', ';', ':'];
 
-                            let (history_stack, mut content) = match self.current_editor {
+                            let (history_stack, content) = match self.current_editor {
                                 Editor::Log => (&mut self.log_history_stack, &mut self.content),
-                                Editor::Search => (&mut self.search_history_stack, &mut self.search_content),
+                                Editor::Search => {
+                                    (&mut self.search_history_stack, &mut self.search_content)
+                                }
                             };
 
                             // revert the standard backspace that can't be caught
-                            history_stack.revert(&mut content);
+                            history_stack.revert(content);
 
                             history_stack.push_undo_action(perform_ctrl_backspace(
-                                &mut content,
+                                content,
                                 &stopping_chars,
                                 self.cursor_line_idx,
                                 self.cursor_char_idx,
@@ -527,21 +534,25 @@ impl App {
                         KeyboardAction::Undo => {
                             self.edited_active_day = true;
 
-                            let (history_stack, mut content) = match self.current_editor {
+                            let (history_stack, content) = match self.current_editor {
                                 Editor::Log => (&mut self.log_history_stack, &mut self.content),
-                                Editor::Search => (&mut self.search_history_stack, &mut self.search_content),
+                                Editor::Search => {
+                                    (&mut self.search_history_stack, &mut self.search_content)
+                                }
                             };
-                            history_stack.perform_undo(&mut content);
+                            history_stack.perform_undo(content);
                         }
                         KeyboardAction::Redo => {
                             self.edited_active_day = true;
 
-                            let (history_stack, mut content) = match self.current_editor {
+                            let (history_stack, content) = match self.current_editor {
                                 Editor::Log => (&mut self.log_history_stack, &mut self.content),
-                                Editor::Search => (&mut self.search_history_stack, &mut self.search_content),
+                                Editor::Search => {
+                                    (&mut self.search_history_stack, &mut self.search_content)
+                                }
                             };
 
-                            history_stack.perform_redo(&mut content);
+                            history_stack.perform_redo(content);
                         }
                         KeyboardAction::Debug => {
                             content_tools::select_text(&mut self.content, 3, 3, 5);
