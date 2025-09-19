@@ -134,18 +134,11 @@ impl MonthStore {
         let filename = self.month.clone() + ".json";
         let save_path = setup_savedata_dirs(filename);
 
-        match fs::exists(&save_path) {
-            Err(_) => {
-                panic!("couldn't determine if file exists");
-            }
-            Ok(file_exists) => {
-                if !file_exists {
-                    fs::write(&save_path, "{}").expect("couldn't create month file");
-                }
-            }
-        }
-
-        let month_json = fs::read_to_string(&save_path).expect("couldn't read json into string");
+        let month_json = if let Ok(existing_savedata) = fs::read_to_string(&save_path) {
+            existing_savedata
+        } else {
+            "{}".to_string()
+        };
 
         let mut data: serde_json::Map<String, Value> =
             serde_json::from_str(&month_json).expect("couldn't deserialize");
@@ -168,7 +161,16 @@ impl MonthStore {
         }
 
         let new_json = serde_json::to_string_pretty(&data).expect("couldn't serialize on save");
-        fs::write(&save_path, new_json).expect("couldn't save new json");
-        println!("saved {}", self.month);
+
+        if new_json != "{}" {
+            fs::write(&save_path, new_json).expect("couldn't save new json");
+            println!("saved {}", self.month);
+        } else {
+            // if there previously were entries that got deleted on the current save, resulting in the month store
+            // becoming empty, delete the file
+            if save_path.exists() {
+                fs::remove_file(save_path).expect("couldn't remove existing json");
+            }
+        }
     }
 }
