@@ -1,6 +1,7 @@
 use crate::{
     calender::CalenderMessage,
     content_tools::{perform_ctrl_backspace, perform_ctrl_delete},
+    dictionary::add_word_to_personal_dictionary,
     highlighter::SpellHighlighter,
     history_stack::{HistoryStack, edit_action_to_history_event},
     search_table::{SearchTable, SearchTableMessage},
@@ -22,6 +23,7 @@ use keybinds::Keybinds;
 
 mod calender;
 mod content_tools;
+mod dictionary;
 mod filetools;
 mod highlighter;
 mod history_stack;
@@ -555,7 +557,11 @@ impl App {
                             history_stack.perform_redo(content);
                         }
                         KeyboardAction::Debug => {
-                            content_tools::select_text(&mut self.content, 3, 3, 5);
+                            println!("debug!");
+                            let mut search_text = self.search_content.text();
+                            search_text.pop();
+
+                            add_word_to_personal_dictionary(&search_text);
                         }
                     }
                 }

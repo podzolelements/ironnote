@@ -64,7 +64,7 @@ impl MonthStore {
         self.days_in_month = date.num_days_in_month();
 
         let filename = self.month.clone() + ".json";
-        let save_path = setup_savedata_dirs(filename);
+        let save_path = setup_savedata_dirs(&filename);
 
         self.days.clear();
 
@@ -132,7 +132,7 @@ impl MonthStore {
 
     pub fn save_month(&self) {
         let filename = self.month.clone() + ".json";
-        let save_path = setup_savedata_dirs(filename);
+        let save_path = setup_savedata_dirs(&filename);
 
         let month_json = if let Ok(existing_savedata) = fs::read_to_string(&save_path) {
             existing_savedata
