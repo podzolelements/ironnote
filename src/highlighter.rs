@@ -1,8 +1,7 @@
-use crate::misc_tools::extract_words;
+use crate::{dictionary::DICTIONARY, misc_tools::extract_words};
 use iced::{Color, Font, widget::text::Highlighter};
 use iced_core::text::highlighter::Format;
-use spellbook::Dictionary;
-use std::{fs, ops::Range};
+use std::ops::Range;
 
 /// converts the custom highlighting scheme into and iced font format
 pub fn highlight_to_format(highlight: &SpellHighlightColor, _theme: &iced::Theme) -> Format<Font> {
@@ -16,7 +15,6 @@ pub fn highlight_to_format(highlight: &SpellHighlightColor, _theme: &iced::Theme
 #[derive(Debug)]
 pub struct SpellHighlighter {
     current_line: usize,
-    dictionary: Dictionary,
 }
 
 pub enum SpellHighlightColor {
@@ -29,16 +27,7 @@ impl Highlighter for SpellHighlighter {
     type Iterator<'a> = std::vec::IntoIter<(Range<usize>, Self::Highlight)>;
 
     fn new(_new_settings: &Self::Settings) -> Self {
-        let aff = fs::read_to_string("/usr/share/hunspell/en_US.aff").expect("couldn't read aff");
-        let dic = fs::read_to_string("/usr/share/hunspell/en_US.dic").expect("couldn't read dic");
-
-        let dictionary =
-            spellbook::Dictionary::new(&aff, &dic).expect("couldn't create dictionary");
-
-        SpellHighlighter {
-            current_line: 0,
-            dictionary,
-        }
+        SpellHighlighter { current_line: 0 }
     }
 
     fn update(&mut self, _new_settings: &Self::Settings) {}
@@ -50,8 +39,10 @@ impl Highlighter for SpellHighlighter {
     fn highlight_line(&mut self, line: &str) -> Self::Iterator<'_> {
         let mut highlights = Vec::new();
 
+        let dictionary = DICTIONARY.read().expect("e");
+
         for (word, start, end) in extract_words(line) {
-            if !self.dictionary.check(word) {
+            if !dictionary.check(word) {
                 highlights.push((start..end, SpellHighlightColor::Red));
             }
         }

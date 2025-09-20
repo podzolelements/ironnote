@@ -40,8 +40,8 @@ List of items and features needed for v1.0
   - [ ] Undo/redo size
     - [ ] Unlimited
 - [x] Window title reflects date
-- [ ] Spell check
-  - [ ] Add to dictionary
+- [x] Spell check
+  - [x] Add to dictionary
   - [ ] Remove from dictionary
     - [ ] Ignore for today's entry
 - [ ] Keyboard shortcuts
