@@ -1,4 +1,4 @@
-use crate::{dictionary::DICTIONARY, misc_tools::extract_words};
+use crate::dictionary::{self, DICTIONARY};
 use iced::{Color, Font, widget::text::Highlighter};
 use iced_core::text::highlighter::Format;
 use std::ops::Range;
@@ -41,7 +41,7 @@ impl Highlighter for SpellHighlighter {
 
         let dictionary = DICTIONARY.read().expect("e");
 
-        for (word, start, end) in extract_words(line) {
+        for (word, start, end) in dictionary::extract_words(line) {
             if !dictionary.check(word) {
                 highlights.push((start..end, SpellHighlightColor::Red));
             }

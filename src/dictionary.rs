@@ -1,4 +1,5 @@
 use crate::filetools::{self, system_dictionary_path};
+use regex::Regex;
 use spellbook::Dictionary;
 use std::{
     fs,
@@ -8,6 +9,30 @@ use std::{
 /// global static dictionary
 pub static DICTIONARY: LazyLock<RwLock<Dictionary>> =
     LazyLock::new(|| RwLock::new(composite_dictionary()));
+
+/// pulls the words out from a string, returning the substring and position. the position is defined by its starting
+/// and ending indexes in the original string
+pub fn extract_words(text: &str) -> Vec<(&str, usize, usize)> {
+    // reuse regex on all subsequent calls
+    static WORD_REGEX: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"\b[\w-]+\b").expect("couldn't create regex"));
+
+    // since regex can't do lookahead/lookbehind, anything matching IGNORE_REGEX gets removed from the word list.
+    // removes letter/number combinations, snake and camel case
+    static IGNORE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"([\d]+[\w]*)|([a-zA-Z](_|-))+|([a-zA-Z][A-Z])+")
+            .expect("couldn't create regex")
+    });
+
+    WORD_REGEX
+        .find_iter(text)
+        .filter(|regex_match| {
+            let first_pass_valid_word = regex_match.as_str();
+            !IGNORE_REGEX.is_match(first_pass_valid_word)
+        })
+        .map(|regex_match| (regex_match.as_str(), regex_match.start(), regex_match.end()))
+        .collect()
+}
 
 /// generates a dictionary composed from the system dictionary combined with the personal dictionary
 pub fn composite_dictionary() -> Dictionary {
