@@ -62,7 +62,7 @@ impl Calender {
                         self.month_mapping[pos],
                     )))
                     .width(34)
-                    .height(21);
+                    .height(24);
                 row = row.push(day_button);
             }
             cal = cal.push(row);
