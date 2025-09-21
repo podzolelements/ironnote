@@ -1,4 +1,4 @@
-use crate::filetools;
+use crate::filetools::{self, system_dictionary_path};
 use spellbook::Dictionary;
 use std::{
     fs,
@@ -11,8 +11,10 @@ pub static DICTIONARY: LazyLock<RwLock<Dictionary>> =
 
 /// generates a dictionary composed from the system dictionary combined with the personal dictionary
 pub fn composite_dictionary() -> Dictionary {
-    let sys_aff = fs::read_to_string("/usr/share/hunspell/en_US.aff").expect("couldn't read aff");
-    let sys_dic = fs::read_to_string("/usr/share/hunspell/en_US.dic").expect("couldn't read dic");
+    let (sys_aff_path, sys_dic_path) = system_dictionary_path();
+
+    let sys_aff = fs::read_to_string(sys_aff_path).expect("couldn't read aff");
+    let sys_dic = fs::read_to_string(sys_dic_path).expect("couldn't read dic");
 
     let personal_dic_path = filetools::personal_dictionary_path("personal.dic");
     if !personal_dic_path.exists() {

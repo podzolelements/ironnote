@@ -28,6 +28,26 @@ pub fn setup_savedata_dirs(filename: &str) -> PathBuf {
     save_path
 }
 
+/// returns the paths of the (aff, dic) dictionary files. TODO: make configurable
+pub fn system_dictionary_path() -> (PathBuf, PathBuf) {
+    let mut aff_path = PathBuf::new();
+    let mut dic_path = PathBuf::new();
+
+    if cfg!(target_os = "windows") {
+        aff_path.push("C:/Program Files/LibreOffice/share/extensions/dict-en/en_US.aff");
+        dic_path.push("C:/Program Files/LibreOffice/share/extensions/dict-en/en_US.dic");
+    } else if cfg!(target_os = "linux") {
+        aff_path.push("/usr/share/hunspell/en_US.aff");
+        dic_path.push("/usr/share/hunspell/en_US.dic");
+    } else {
+        todo!("configurable dictionary path");
+    }
+
+    (aff_path, dic_path)
+}
+
+/// returns the path of the personal dictionary, setting up the directories and making a custom.dic if it doesn't
+/// already exist
 pub fn personal_dictionary_path(filename: &str) -> PathBuf {
     let home = dirs::home_dir().expect("couldn't open home directory");
     let mut dictionary_path = PathBuf::new();
