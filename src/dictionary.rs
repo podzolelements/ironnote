@@ -15,7 +15,7 @@ pub static DICTIONARY: LazyLock<RwLock<Dictionary>> =
 pub fn extract_words(text: &str) -> Vec<(&str, usize, usize)> {
     // reuse regex on all subsequent calls
     static WORD_REGEX: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"\b[\w-]+\b").expect("couldn't create regex"));
+        LazyLock::new(|| Regex::new(r"\b[\w'-]+\b").expect("couldn't create regex"));
 
     // since regex can't do lookahead/lookbehind, anything matching IGNORE_REGEX gets removed from the word list.
     // removes letter/number combinations, snake and camel case
