@@ -1,19 +1,27 @@
 use crate::{history_stack::HistoryEvent, misc_tools};
 use iced::widget::text_editor::{self, Action, Content, Motion};
 
-/// Relocates the cursor to a new position by normalizing and manually moving the cursor there
+/// Relocates the cursor to a new position by manually moving the cursor there
 pub fn move_cursor(content: &mut Content, new_line_idx: usize, new_char_idx: usize) {
-    content.perform(Action::Move(Motion::DocumentStart));
-
-    if new_line_idx == 0 && new_char_idx == 0 {
-        return;
-    }
-
     let (mut old_cursor_line, mut old_cursor_char) = content.cursor_position();
+
+    let direction = if old_cursor_line == new_line_idx {
+        if old_cursor_char < new_char_idx {
+            Motion::Right
+        } else if old_cursor_char > new_char_idx {
+            Motion::Left
+        } else {
+            return;
+        }
+    } else if old_cursor_line < new_line_idx {
+        Motion::Right
+    } else {
+        Motion::Left
+    };
 
     loop {
         // TODO: this is really inefficent but other methods are proving unreliable
-        content.perform(Action::Move(Motion::Right));
+        content.perform(Action::Move(direction));
         let (cursor_line, cursor_char) = content.cursor_position();
 
         // quit if reached target or nothing changed since last iteration
