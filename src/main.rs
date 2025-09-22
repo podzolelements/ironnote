@@ -10,11 +10,12 @@ use crate::{
 use calender::Calender;
 use chrono::{DateTime, Datelike, Days, Local, Months, NaiveDate};
 use iced::{
-    Event, Font, Subscription,
+    Event, Font, Length, Subscription,
     event::listen_with,
     keyboard::{self},
     widget::{
         self, Row, Space, Text, column, row,
+        scrollable::{Direction, Scrollbar},
         text::Wrapping,
         text_editor::{self, Action},
     },
@@ -210,16 +211,21 @@ impl App {
                 .height(100),
         ];
 
-        let input = widget::text_editor(&self.content)
+        let log_text_input = widget::text_editor(&self.content)
             .placeholder("Type today's log...")
             .on_action(Message::Edit)
             .size(13)
             .font(Font::DEFAULT)
-            .wrapping(Wrapping::Word)
-            .height(iced::Length::Fill)
+            .wrapping(Wrapping::WordOrGlyph)
+            .height(Length::Shrink)
             .highlight_with::<SpellHighlighter>((), highlighter::highlight_to_format);
 
-        let right_ui = column![right_top_bar, input];
+        let log_edit_area = widget::scrollable(log_text_input)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .direction(Direction::Vertical(Scrollbar::new().spacing(0).margin(2)));
+
+        let right_ui = column![right_top_bar, log_edit_area];
 
         let layout = row![left_ui, right_ui];
 
