@@ -39,7 +39,7 @@ impl Highlighter for SpellHighlighter {
     fn highlight_line(&mut self, line: &str) -> Self::Iterator<'_> {
         let mut highlights = Vec::new();
 
-        let dictionary = DICTIONARY.read().expect("e");
+        let dictionary = DICTIONARY.read().expect("couldn't get dictionary read");
 
         for (word, start, end) in dictionary::extract_words(line) {
             if !dictionary.check(word) {
