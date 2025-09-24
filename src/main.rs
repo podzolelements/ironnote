@@ -318,17 +318,33 @@ impl App {
                 if self.content.selection().is_none() {
                     (self.cursor_line_idx, self.cursor_char_idx) = self.content.cursor_position();
                 }
-                if let text_editor::Action::Edit(edit) = &action {
-                    self.edited_active_day = true;
-                    self.log_history_stack.clear_redo_stack();
 
-                    let history_event = edit_action_to_history_event(
-                        &self.content,
-                        edit.clone(),
-                        self.cursor_line_idx,
-                        self.cursor_char_idx,
-                    );
-                    self.log_history_stack.push_undo_action(history_event);
+                match &action {
+                    Action::SelectWord => {
+                        let content_text = self.content.text();
+                        let (cursor_line, cursor_char) = self.content.cursor_position();
+
+                        let line = content_text
+                            .lines()
+                            .nth(cursor_line)
+                            .expect("couldn't extract line");
+
+                        self.cursor_char_idx = misc_tools::first_whitespace_left(line, cursor_char);
+                        self.cursor_line_idx = cursor_line;
+                    }
+                    Action::Edit(edit) => {
+                        self.edited_active_day = true;
+                        self.log_history_stack.clear_redo_stack();
+
+                        let history_event = edit_action_to_history_event(
+                            &self.content,
+                            edit.clone(),
+                            self.cursor_line_idx,
+                            self.cursor_char_idx,
+                        );
+                        self.log_history_stack.push_undo_action(history_event);
+                    }
+                    _ => {}
                 }
 
                 self.content.perform(action);
