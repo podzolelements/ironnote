@@ -1,7 +1,7 @@
 use crate::{
     calender::CalenderMessage,
     content_tools::{perform_ctrl_backspace, perform_ctrl_delete},
-    dictionary::add_word_to_personal_dictionary,
+    dictionary::{DICTIONARY, add_word_to_personal_dictionary},
     highlighter::SpellHighlighter,
     history_stack::{HistoryStack, edit_action_to_history_event},
     search_table::{SearchTable, SearchTableMessage},
@@ -20,6 +20,7 @@ use iced::{
         text_editor::{self, Action},
     },
 };
+use iced_aw::ContextMenu;
 use keybinds::Keybinds;
 
 mod calender;
@@ -49,6 +50,8 @@ struct App {
     current_editor: Editor,
     cursor_line_idx: usize,
     cursor_char_idx: usize,
+    chars_in_selection: Option<usize>,
+    spell_suggestions: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -89,6 +92,7 @@ pub enum Message {
     TableSearch(SearchTableMessage),
     KeyEvent(keyboard::Event),
     TabSwitched(Tab),
+    AcceptSpellcheck(usize),
 }
 
 impl App {
@@ -136,6 +140,34 @@ impl App {
         self.load_active_entry();
 
         self.log_history_stack.clear();
+    }
+
+    fn update_spellcheck(&mut self) {
+        // TODO: allow direct right clicking on misspelled words without selection requirements
+        // TODO: compute suggestions on another thread for better performance?
+
+        // computing spellcheck suggestions is extremely expensive, so we only do so when the selection size has
+        // changed
+        let recompute_spell_suggestions = if let Some(selection) = self.content.selection() {
+            let char_count = selection.chars().count();
+            self.chars_in_selection.replace(char_count) != Some(char_count)
+        } else {
+            self.spell_suggestions.clear();
+            self.chars_in_selection = None;
+            false
+        };
+
+        if let Some(selection) = self.content.selection()
+            && !selection.contains(char::is_whitespace)
+            && recompute_spell_suggestions
+        {
+            self.spell_suggestions.clear();
+
+            let dictionary = DICTIONARY.read().expect("couldn't get dicitonary read");
+            if !dictionary.check(&selection) {
+                dictionary.suggest(&selection, &mut self.spell_suggestions);
+            }
+        }
     }
 }
 
@@ -225,7 +257,23 @@ impl App {
             .height(Length::Fill)
             .direction(Direction::Vertical(Scrollbar::new().spacing(0).margin(2)));
 
-        let right_ui = column![right_top_bar, log_edit_area];
+        let composite_editor = ContextMenu::new(log_edit_area, || {
+            let mut editor_context_menu = vec![];
+
+            if !self.spell_suggestions.is_empty() {
+                for (i, item) in self.spell_suggestions.iter().enumerate() {
+                    editor_context_menu.push(
+                        widget::button(Text::new(item))
+                            .on_press(Message::AcceptSpellcheck(i))
+                            .into(),
+                    );
+                }
+            }
+
+            column(editor_context_menu).into()
+        });
+
+        let right_ui = column![right_top_bar, composite_editor];
 
         let layout = row![left_ui, right_ui];
 
@@ -284,6 +332,8 @@ impl App {
                 }
 
                 self.content.perform(action);
+
+                self.update_spellcheck();
             }
             Message::EditSearch(action) => {
                 self.current_editor = Editor::Search;
@@ -579,6 +629,21 @@ impl App {
             Message::TabSwitched(tab) => {
                 self.current_tab = tab;
             }
+            Message::AcceptSpellcheck(suggestion_idx) => {
+                let selected_suggestion = self.spell_suggestions[suggestion_idx].clone();
+
+                let equivalent_edit = text_editor::Edit::Paste(selected_suggestion.into());
+
+                let history_event = edit_action_to_history_event(
+                    &self.content,
+                    equivalent_edit.clone(),
+                    self.cursor_line_idx,
+                    self.cursor_char_idx,
+                );
+                self.log_history_stack.push_undo_action(history_event);
+
+                self.content.perform(Action::Edit(equivalent_edit));
+            }
         }
     }
 
@@ -640,6 +705,8 @@ impl Default for App {
             current_editor: Editor::Log,
             cursor_line_idx: 0,
             cursor_char_idx: 0,
+            chars_in_selection: None,
+            spell_suggestions: vec![],
         };
 
         df.month_store.load_month(Local::now());
