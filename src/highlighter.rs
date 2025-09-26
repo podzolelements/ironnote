@@ -12,9 +12,16 @@ pub fn highlight_to_format(highlight: &SpellHighlightColor, _theme: &iced::Theme
     Format { color, font: None }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct HighlightSettings {
+    pub(crate) cursor_line_idx: usize,
+    pub(crate) cursor_char_idx: usize,
+}
+
 #[derive(Debug)]
 pub struct SpellHighlighter {
     current_line: usize,
+    settings: HighlightSettings,
 }
 
 pub enum SpellHighlightColor {
@@ -22,15 +29,20 @@ pub enum SpellHighlightColor {
 }
 
 impl Highlighter for SpellHighlighter {
-    type Settings = ();
+    type Settings = HighlightSettings;
     type Highlight = SpellHighlightColor;
     type Iterator<'a> = std::vec::IntoIter<(Range<usize>, Self::Highlight)>;
 
-    fn new(_new_settings: &Self::Settings) -> Self {
-        SpellHighlighter { current_line: 0 }
+    fn new(settings: &Self::Settings) -> Self {
+        SpellHighlighter {
+            current_line: 0,
+            settings: settings.clone(),
+        }
     }
 
-    fn update(&mut self, _new_settings: &Self::Settings) {}
+    fn update(&mut self, new_settings: &Self::Settings) {
+        self.settings = new_settings.clone();
+    }
 
     fn change_line(&mut self, line: usize) {
         self.current_line = line;
@@ -41,8 +53,13 @@ impl Highlighter for SpellHighlighter {
 
         let dictionary = DICTIONARY.read().expect("couldn't get dictionary read");
 
+        let cursor_line = self.settings.cursor_line_idx;
+        let cursor_char = self.settings.cursor_char_idx;
+
         for (word, start, end) in dictionary::extract_words(line) {
-            if !dictionary.check(word) {
+            if !(dictionary.check(word)
+                || (cursor_line == self.current_line && start <= cursor_char && cursor_char <= end))
+            {
                 highlights.push((start..end, SpellHighlightColor::Red));
             }
         }

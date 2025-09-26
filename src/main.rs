@@ -2,7 +2,7 @@ use crate::{
     calender::CalenderMessage,
     content_tools::{perform_ctrl_backspace, perform_ctrl_delete},
     dictionary::{DICTIONARY, add_word_to_personal_dictionary},
-    highlighter::SpellHighlighter,
+    highlighter::{HighlightSettings, SpellHighlighter},
     history_stack::{HistoryStack, edit_action_to_history_event},
     search_table::{SearchTable, SearchTableMessage},
     text_store::{DayStore, MonthStore},
@@ -177,6 +177,8 @@ impl App {
     }
 
     pub fn view(&'_ self) -> Row<'_, Message> {
+        let (cursor_line_idx, cursor_char_idx) = self.content.cursor_position();
+
         let back_button = widget::button("<--")
             .on_press(Message::BackOneDay)
             .height(100);
@@ -250,7 +252,13 @@ impl App {
             .font(Font::DEFAULT)
             .wrapping(Wrapping::WordOrGlyph)
             .height(Length::Shrink)
-            .highlight_with::<SpellHighlighter>((), highlighter::highlight_to_format);
+            .highlight_with::<SpellHighlighter>(
+                HighlightSettings {
+                    cursor_line_idx,
+                    cursor_char_idx,
+                },
+                highlighter::highlight_to_format,
+            );
 
         let log_edit_area = widget::scrollable(log_text_input)
             .width(Length::Fill)
