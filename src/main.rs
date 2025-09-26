@@ -334,7 +334,6 @@ impl App {
                     }
                     Action::Edit(edit) => {
                         self.edited_active_day = true;
-                        self.log_history_stack.clear_redo_stack();
 
                         let history_event = edit_action_to_history_event(
                             &self.content,
@@ -358,8 +357,6 @@ impl App {
                     (self.cursor_line_idx, self.cursor_char_idx) = self.content.cursor_position();
                 }
                 if let text_editor::Action::Edit(edit) = &action {
-                    self.search_history_stack.clear_redo_stack();
-
                     let history_event = edit_action_to_history_event(
                         &self.search_content,
                         edit.clone(),
@@ -567,7 +564,6 @@ impl App {
                         KeyboardAction::Delete => {
                             // not sure why the text_editor action handler doesn't do this on its own
                             self.edited_active_day = true;
-                            self.log_history_stack.clear_redo_stack();
 
                             let history_event = edit_action_to_history_event(
                                 &self.content,

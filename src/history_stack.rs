@@ -26,11 +26,12 @@ impl HistoryStack {
         self.redo_history.clear();
     }
 
-    pub fn clear_redo_stack(&mut self) {
+    pub fn push_undo_action(&mut self, history_event: HistoryEvent) {
+        self.stack_undo_action(history_event);
         self.redo_history.clear();
     }
 
-    pub fn push_undo_action(&mut self, history_event: HistoryEvent) {
+    fn stack_undo_action(&mut self, history_event: HistoryEvent) {
         if history_event == HistoryEvent::default() {
             return;
         }
@@ -43,7 +44,7 @@ impl HistoryStack {
             }
         }
     }
-    pub fn push_redo_action(&mut self, history_event: HistoryEvent) {
+    fn stack_redo_action(&mut self, history_event: HistoryEvent) {
         self.redo_history.push_front(history_event);
 
         if let Some(max_redo_size) = self.max_redo_size {
@@ -55,7 +56,7 @@ impl HistoryStack {
 
     fn move_undo_to_redo_stack(&mut self) -> Option<HistoryEvent> {
         if let Some(action_being_undone) = self.undo_history.pop_front() {
-            self.push_redo_action(action_being_undone.clone());
+            self.stack_redo_action(action_being_undone.clone());
             Some(action_being_undone)
         } else {
             None
@@ -63,7 +64,7 @@ impl HistoryStack {
     }
     fn move_redo_to_undo_stack(&mut self) -> Option<HistoryEvent> {
         if let Some(action_being_redone) = self.redo_history.pop_front() {
-            self.push_undo_action(action_being_redone.clone());
+            self.stack_undo_action(action_being_redone.clone());
             Some(action_being_redone)
         } else {
             None
@@ -72,7 +73,9 @@ impl HistoryStack {
 
     pub fn perform_undo(&mut self, content: &mut Content) {
         if let Some(history_event) = self.move_undo_to_redo_stack() {
-            if history_event.text_removed.is_some() && history_event.selection.is_none() {
+            if (history_event.text_removed.is_some() && history_event.selection.is_none())
+                || content.selection().is_some()
+            {
                 content_tools::move_cursor(
                     content,
                     history_event.cursor_line_idx,

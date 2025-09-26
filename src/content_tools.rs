@@ -19,16 +19,25 @@ pub fn move_cursor(content: &mut Content, new_line_idx: usize, new_char_idx: usi
         Motion::Left
     };
 
+    let mut first_stop = false;
+
     loop {
         // TODO: this is really inefficent but other methods are proving unreliable
         content.perform(Action::Move(direction));
         let (cursor_line, cursor_char) = content.cursor_position();
 
-        // quit if reached target or nothing changed since last iteration
-        if (cursor_line == new_line_idx && cursor_char == new_char_idx)
-            || (cursor_line == old_cursor_line && cursor_char == old_cursor_char)
-        {
+        if cursor_line == new_line_idx && cursor_char == new_char_idx {
             break;
+        }
+        // quit on second repeat location. two are required, as if there is a selection it is possible to have the
+        // first movement that causes the selction to disappear result in the cursor ending up in the same location as
+        // it "was" with the selection
+        if cursor_line == old_cursor_line && cursor_char == old_cursor_char {
+            if !first_stop {
+                first_stop = true;
+            } else {
+                break;
+            }
         }
 
         (old_cursor_line, old_cursor_char) = (cursor_line, cursor_char);
