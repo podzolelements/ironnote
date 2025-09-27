@@ -43,6 +43,10 @@ impl Highlighter for SpellHighlighter {
 
     fn update(&mut self, new_settings: &Self::Settings) {
         self.settings = new_settings.clone();
+
+        if self.current_line() != 0 {
+            self.change_line(0);
+        }
     }
 
     fn change_line(&mut self, line: usize) {
@@ -56,17 +60,25 @@ impl Highlighter for SpellHighlighter {
 
         let cursor_line = self.settings.cursor_line_idx;
         let cursor_char = self.settings.cursor_char_idx;
+        let timed_out = self.settings.cursor_spellcheck_timed_out;
 
         for (word, start, end) in dictionary::extract_words(line) {
-            if !(dictionary.check(word)
-                || (!self.settings.cursor_spellcheck_timed_out
-                    && (cursor_line == self.current_line
-                        && start <= cursor_char
-                        && cursor_char <= end)))
+            // disable highlighting for the word at the cursor if the edit timeout hasn't triggered yet
+            if !timed_out
+                && cursor_line == self.current_line
+                && cursor_char != 0
+                && start <= cursor_char
+                && cursor_char <= end
             {
+                continue;
+            }
+
+            if !dictionary.check(word) {
                 highlights.push((start..end, SpellHighlightColor::Red));
             }
         }
+
+        self.current_line += 1;
 
         highlights.into_iter()
     }

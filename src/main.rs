@@ -141,6 +141,8 @@ impl App {
         self.calender.update_calender_dates(self.active_date_time);
         self.load_active_entry();
 
+        self.last_edit_time = Local::now();
+
         self.log_history_stack.clear();
     }
 
