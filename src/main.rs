@@ -8,7 +8,7 @@ use crate::{
     text_store::{DayStore, MonthStore},
 };
 use calender::Calender;
-use chrono::{DateTime, Datelike, Days, Local, Months, NaiveDate};
+use chrono::{DateTime, Datelike, Days, Duration, Local, Months, NaiveDate};
 use iced::{
     Event, Font, Length, Subscription,
     event::listen_with,
@@ -52,6 +52,7 @@ struct App {
     cursor_char_idx: usize,
     chars_in_selection: Option<usize>,
     spell_suggestions: Vec<String>,
+    last_edit_time: DateTime<Local>,
 }
 
 #[derive(Debug)]
@@ -93,6 +94,7 @@ pub enum Message {
     KeyEvent(keyboard::Event),
     TabSwitched(Tab),
     AcceptSpellcheck(usize),
+    Render,
 }
 
 impl App {
@@ -178,6 +180,8 @@ impl App {
 
     pub fn view(&'_ self) -> Row<'_, Message> {
         let (cursor_line_idx, cursor_char_idx) = self.content.cursor_position();
+        let cursor_spellcheck_timed_out =
+            Local::now().signed_duration_since(self.last_edit_time) > Duration::milliseconds(500);
 
         let back_button = widget::button("<--")
             .on_press(Message::BackOneDay)
@@ -256,6 +260,7 @@ impl App {
                 HighlightSettings {
                     cursor_line_idx,
                     cursor_char_idx,
+                    cursor_spellcheck_timed_out,
                 },
                 highlighter::highlight_to_format,
             );
@@ -342,6 +347,7 @@ impl App {
                     }
                     Action::Edit(edit) => {
                         self.edited_active_day = true;
+                        self.last_edit_time = Local::now();
 
                         let history_event = edit_action_to_history_event(
                             &self.content,
@@ -526,6 +532,8 @@ impl App {
                         }
                         KeyboardAction::BackspaceWord => {
                             self.edited_active_day = true;
+                            self.last_edit_time = Local::now();
+
                             let stopping_chars = [
                                 ' ', '.', '!', '?', ',', '-', '_', '\"', ';', ':', '(', ')', '{',
                                 '}', '[', ']',
@@ -550,6 +558,8 @@ impl App {
                         }
                         KeyboardAction::BackspaceSentence => {
                             self.edited_active_day = true;
+                            self.last_edit_time = Local::now();
+
                             let stopping_chars = ['.', '!', '?', '\"', ';', ':'];
 
                             let (history_stack, content) = match self.current_editor {
@@ -572,6 +582,7 @@ impl App {
                         KeyboardAction::Delete => {
                             // not sure why the text_editor action handler doesn't do this on its own
                             self.edited_active_day = true;
+                            self.last_edit_time = Local::now();
 
                             let history_event = edit_action_to_history_event(
                                 &self.content,
@@ -586,6 +597,8 @@ impl App {
                         }
                         KeyboardAction::DeleteWord => {
                             self.edited_active_day = true;
+                            self.last_edit_time = Local::now();
+
                             let stopping_chars = [
                                 ' ', '.', '!', '?', ',', '-', '_', '\"', ';', ':', '(', ')', '{',
                                 '}', '[', ']',
@@ -600,6 +613,8 @@ impl App {
                         }
                         KeyboardAction::DeleteSentence => {
                             self.edited_active_day = true;
+                            self.last_edit_time = Local::now();
+
                             let stopping_chars = ['.', '!', '?', '\"', ';', ':'];
 
                             self.log_history_stack.push_undo_action(perform_ctrl_delete(
@@ -611,6 +626,7 @@ impl App {
                         }
                         KeyboardAction::Undo => {
                             self.edited_active_day = true;
+                            self.last_edit_time = Local::now();
 
                             let (history_stack, content) = match self.current_editor {
                                 Editor::Log => (&mut self.log_history_stack, &mut self.content),
@@ -622,6 +638,7 @@ impl App {
                         }
                         KeyboardAction::Redo => {
                             self.edited_active_day = true;
+                            self.last_edit_time = Local::now();
 
                             let (history_stack, content) = match self.current_editor {
                                 Editor::Log => (&mut self.log_history_stack, &mut self.content),
@@ -664,14 +681,24 @@ impl App {
 
                 self.content.perform(Action::Edit(equivalent_edit));
             }
+            Message::Render => {
+                self.view();
+            }
         }
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        listen_with(|event, _, _| match event {
-            Event::Keyboard(event) => Some(Message::KeyEvent(event)),
-            _ => None,
-        })
+        let subscriptions = vec![
+            listen_with(|event, _, _| match event {
+                Event::Keyboard(event) => Some(Message::KeyEvent(event)),
+                _ => None,
+            }),
+            // ensure view() gets called at a minimum of 10 FPS
+            iced::time::every(std::time::Duration::from_millis(100))
+                .map(|_instant| Message::Render),
+        ];
+
+        Subscription::batch(subscriptions)
     }
 }
 
@@ -727,6 +754,7 @@ impl Default for App {
             cursor_char_idx: 0,
             chars_in_selection: None,
             spell_suggestions: vec![],
+            last_edit_time: Local::now(),
         };
 
         df.month_store.load_month(Local::now());

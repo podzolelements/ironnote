@@ -16,6 +16,7 @@ pub fn highlight_to_format(highlight: &SpellHighlightColor, _theme: &iced::Theme
 pub struct HighlightSettings {
     pub(crate) cursor_line_idx: usize,
     pub(crate) cursor_char_idx: usize,
+    pub(crate) cursor_spellcheck_timed_out: bool,
 }
 
 #[derive(Debug)]
@@ -58,7 +59,10 @@ impl Highlighter for SpellHighlighter {
 
         for (word, start, end) in dictionary::extract_words(line) {
             if !(dictionary.check(word)
-                || (cursor_line == self.current_line && start <= cursor_char && cursor_char <= end))
+                || (!self.settings.cursor_spellcheck_timed_out
+                    && (cursor_line == self.current_line
+                        && start <= cursor_char
+                        && cursor_char <= end)))
             {
                 highlights.push((start..end, SpellHighlightColor::Red));
             }
