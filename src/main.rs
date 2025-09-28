@@ -5,7 +5,7 @@ use crate::{
     highlighter::{HighlightSettings, SpellHighlighter},
     history_stack::{HistoryStack, edit_action_to_history_event},
     search_table::{SearchTable, SearchTableMessage},
-    text_store::{DayStore, MonthStore},
+    text_store::{DayStore, GlobalStore, MonthStore},
 };
 use calender::Calender;
 use chrono::{DateTime, Datelike, Days, Duration, Local, Months, NaiveDate};
@@ -44,6 +44,7 @@ struct App {
     keybinds: Keybinds<KeyboardAction>,
     day_store: DayStore,
     month_store: MonthStore,
+    global_store: GlobalStore,
     log_history_stack: HistoryStack,
     search_history_stack: HistoryStack,
     current_tab: Tab,
@@ -55,7 +56,7 @@ struct App {
     last_edit_time: DateTime<Local>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum Editor {
     Log,
     Search,
@@ -116,6 +117,17 @@ impl App {
         self.month_store.save_month();
     }
 
+    fn sync_global_store(&mut self) {
+        self.global_store.push_month_store(self.month_store.clone());
+    }
+
+    fn write_all(&mut self) {
+        self.write_active_entry_to_store();
+        self.write_store_to_disk();
+
+        self.sync_global_store();
+    }
+
     fn update_window_title(&mut self) {
         let formated_date = self.active_date_time.format("%A, %B %d, %Y").to_string();
         let new_title = "ironnote - ".to_string() + &formated_date;
@@ -130,8 +142,7 @@ impl App {
         let new_year = new_datetime.year();
 
         if (current_month != new_month) || (current_year != new_year) {
-            self.write_active_entry_to_store();
-            self.write_store_to_disk();
+            self.write_all();
 
             self.month_store.load_month(new_datetime);
         }
@@ -382,7 +393,12 @@ impl App {
                 self.update_spellcheck();
             }
             Message::EditSearch(action) => {
-                self.current_editor = Editor::Search;
+                if self.current_editor != Editor::Search {
+                    self.current_editor = Editor::Search;
+
+                    self.write_active_entry_to_store();
+                    self.sync_global_store();
+                }
 
                 if self.content.selection().is_none() {
                     (self.cursor_line_idx, self.cursor_char_idx) = self.content.cursor_position();
@@ -404,42 +420,44 @@ impl App {
                 let mut search_text = self.search_content.text();
                 search_text.pop();
 
-                for day_store in self.month_store.days() {
-                    let search_text = search_text.clone();
-                    let content_text = day_store.get_day_text();
+                for month_store in self.global_store.month_stores().rev() {
+                    for day_store in month_store.days().rev() {
+                        let search_text = search_text.clone();
+                        let content_text = day_store.get_day_text();
 
-                    if search_text.is_empty() || search_text == " " {
-                        continue;
-                    }
+                        if search_text.is_empty() || search_text == " " {
+                            continue;
+                        }
 
-                    if let Some(subtext_idx) = content_text.find(&search_text) {
-                        let start_idx = if ((subtext_idx as i32) - 30) < 0 {
-                            0
-                        } else {
-                            subtext_idx - 30
-                        };
-                        let end_idx = if subtext_idx + 50 > content_text.chars().count() {
-                            content_text.chars().count()
-                        } else {
-                            subtext_idx + 50
-                        };
+                        if let Some(subtext_idx) = content_text.find(&search_text) {
+                            let start_idx = if ((subtext_idx as i32) - 30) < 0 {
+                                0
+                            } else {
+                                subtext_idx - 30
+                            };
+                            let end_idx = if subtext_idx + 50 > content_text.chars().count() {
+                                content_text.chars().count()
+                            } else {
+                                subtext_idx + 50
+                            };
 
-                        let start_text = (day_store.date()
-                            + " ... "
-                            + content_text
-                                .get(start_idx..subtext_idx)
-                                .expect("couldn't get start content_text"))
-                        .replace("\n", "");
-
-                        let end_text = (content_text
-                            .get((subtext_idx + search_text.chars().count())..end_idx)
-                            .expect("couldn't get end content_text")
-                            .to_string()
-                            + " ...")
+                            let start_text = (day_store.date()
+                                + " ... "
+                                + content_text
+                                    .get(start_idx..subtext_idx)
+                                    .expect("couldn't get start content_text"))
                             .replace("\n", "");
 
-                        self.search_table
-                            .insert_element(start_text, search_text, end_text);
+                            let end_text = (content_text
+                                .get((subtext_idx + search_text.chars().count())..end_idx)
+                                .expect("couldn't get end content_text")
+                                .to_string()
+                                + " ...")
+                                .replace("\n", "");
+
+                            self.search_table
+                                .insert_element(start_text, search_text, end_text);
+                        }
                     }
                 }
             }
@@ -544,8 +562,7 @@ impl App {
                 if let Some(action) = self.keybinds.dispatch(event) {
                     match action {
                         KeyboardAction::Save => {
-                            self.write_active_entry_to_store();
-                            self.write_store_to_disk();
+                            self.write_all();
                         }
                         KeyboardAction::BackspaceWord => {
                             self.edited_active_day = true;
@@ -762,6 +779,7 @@ impl Default for App {
             keybinds,
             day_store: DayStore::default(),
             month_store: MonthStore::default(),
+            global_store: GlobalStore::default(),
             log_history_stack: HistoryStack::default(),
             search_history_stack: HistoryStack::default(),
             current_tab: Tab::Search,
@@ -774,6 +792,8 @@ impl Default for App {
         };
 
         df.month_store.load_month(Local::now());
+        df.global_store.load_all();
+
         df.update(Message::JumpToToday);
 
         df
