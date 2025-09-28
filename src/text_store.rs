@@ -1,8 +1,9 @@
-use crate::filetools::setup_savedata_dirs;
-use chrono::{DateTime, Datelike, Days, Local};
+use crate::filetools::{self, setup_savedata_dirs};
+use chrono::{DateTime, Datelike, Days, Local, NaiveDate, TimeZone};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::fs;
+use std::{fs, sync::LazyLock};
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct DayStore {
@@ -26,7 +27,7 @@ impl DayStore {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MonthStore {
     days: Vec<DayStore>,
     month: String,
@@ -54,8 +55,8 @@ impl MonthStore {
         self.days[day].modified = true;
     }
 
-    pub fn days(&self) -> &Vec<DayStore> {
-        &self.days
+    pub fn days(&self) -> impl DoubleEndedIterator<Item = &DayStore> {
+        self.days.iter()
     }
 
     pub fn load_month(&mut self, date: DateTime<Local>) {
@@ -172,5 +173,66 @@ impl MonthStore {
                 fs::remove_file(save_path).expect("couldn't remove existing json");
             }
         }
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct GlobalStore {
+    entries: Vec<MonthStore>,
+}
+
+impl GlobalStore {
+    pub fn load_all(&mut self) {
+        self.entries.clear();
+
+        static FILENAME_REGEX: LazyLock<Regex> =
+            LazyLock::new(|| Regex::new(r"\d\d\d\d-\d\d\.json").expect("couldn't create regex"));
+
+        let filepath = filetools::savedata_path();
+
+        if let Ok(files_in_savedir) = filepath.read_dir() {
+            for file in files_in_savedir.flatten() {
+                if !file.path().is_file() {
+                    continue;
+                }
+
+                let filename = file
+                    .file_name()
+                    .into_string()
+                    .expect("couldn't convert filename to string");
+
+                if !FILENAME_REGEX.is_match(&filename) {
+                    continue;
+                }
+
+                let file_date = filename[0..7].to_string() + "-01";
+                let nd =
+                    NaiveDate::parse_from_str(&file_date, "%Y-%m-%d").expect("couldn't parse date");
+                let ndt = nd.and_hms_opt(0, 0, 0).expect("couldn't create ndt");
+                let date_time = Local.from_local_datetime(&ndt).unwrap();
+
+                let mut month_store = MonthStore::default();
+                month_store.load_month(date_time);
+
+                self.entries.push(month_store);
+            }
+        }
+
+        self.entries
+            .sort_by_key(|month_store| month_store.month.clone());
+    }
+
+    pub fn push_month_store(&mut self, new_month_store: MonthStore) {
+        self.entries
+            .retain(|month_store| month_store.month != new_month_store.month.clone());
+
+        self.entries.push(new_month_store);
+
+        self.entries
+            .sort_by_key(|month_store| month_store.month.clone());
+    }
+
+    pub fn month_stores(&self) -> impl DoubleEndedIterator<Item = &MonthStore> {
+        self.entries.iter()
     }
 }
