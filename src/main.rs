@@ -1,7 +1,7 @@
 use crate::{
     calender::CalenderMessage,
     content_tools::{perform_ctrl_backspace, perform_ctrl_delete},
-    dictionary::{DICTIONARY, add_word_to_personal_dictionary},
+    dictionary::DICTIONARY,
     highlighter::{HighlightSettings, SpellHighlighter},
     history_stack::{HistoryStack, edit_action_to_history_event},
     search_table::{SearchTable, SearchTableMessage},
@@ -50,7 +50,7 @@ struct App {
     current_editor: Editor,
     cursor_line_idx: usize,
     cursor_char_idx: usize,
-    chars_in_selection: Option<usize>,
+    selected_misspelled_word: Option<String>,
     spell_suggestions: Vec<String>,
     last_edit_time: DateTime<Local>,
 }
@@ -94,6 +94,7 @@ pub enum Message {
     KeyEvent(keyboard::Event),
     TabSwitched(Tab),
     AcceptSpellcheck(usize),
+    AddToDictionary(String),
     Render,
 }
 
@@ -153,11 +154,10 @@ impl App {
         // computing spellcheck suggestions is extremely expensive, so we only do so when the selection size has
         // changed
         let recompute_spell_suggestions = if let Some(selection) = self.content.selection() {
-            let char_count = selection.chars().count();
-            self.chars_in_selection.replace(char_count) != Some(char_count)
+            self.selected_misspelled_word.replace(selection.clone()) != Some(selection)
         } else {
             self.spell_suggestions.clear();
-            self.chars_in_selection = None;
+            self.selected_misspelled_word = None;
             false
         };
 
@@ -170,6 +170,9 @@ impl App {
             let dictionary = DICTIONARY.read().expect("couldn't get dicitonary read");
             if !dictionary.check(&selection) {
                 dictionary.suggest(&selection, &mut self.spell_suggestions);
+                self.selected_misspelled_word = Some(selection.clone());
+            } else {
+                self.selected_misspelled_word = None;
             }
         }
     }
@@ -272,17 +275,29 @@ impl App {
             .height(Length::Fill)
             .direction(Direction::Vertical(Scrollbar::new().spacing(0).margin(2)));
 
-        let composite_editor = ContextMenu::new(log_edit_area, || {
+        let mut editor_context_menu_contents: Vec<(String, Message)> = vec![];
+
+        if let Some(word) = &self.selected_misspelled_word {
+            for (i, suggestion) in self.spell_suggestions.iter().enumerate() {
+                editor_context_menu_contents
+                    .push((suggestion.to_string(), Message::AcceptSpellcheck(i)));
+            }
+
+            editor_context_menu_contents.push((
+                "Add \"".to_string() + word + "\" to dictionary",
+                Message::AddToDictionary(word.clone()),
+            ));
+        }
+
+        let composite_editor = ContextMenu::new(log_edit_area, move || {
             let mut editor_context_menu = vec![];
 
-            if !self.spell_suggestions.is_empty() {
-                for (i, item) in self.spell_suggestions.iter().enumerate() {
-                    editor_context_menu.push(
-                        widget::button(Text::new(item))
-                            .on_press(Message::AcceptSpellcheck(i))
-                            .into(),
-                    );
-                }
+            for (button_text, button_message) in editor_context_menu_contents.iter() {
+                editor_context_menu.push(
+                    widget::button(Text::new(button_text.clone()))
+                        .on_press(button_message.clone())
+                        .into(),
+                );
             }
 
             column(editor_context_menu).into()
@@ -653,10 +668,6 @@ impl App {
                         }
                         KeyboardAction::Debug => {
                             println!("debug!");
-                            let mut search_text = self.search_content.text();
-                            search_text.pop();
-
-                            add_word_to_personal_dictionary(&search_text);
                         }
                     }
                 }
@@ -682,6 +693,9 @@ impl App {
                 self.log_history_stack.push_undo_action(history_event);
 
                 self.content.perform(Action::Edit(equivalent_edit));
+            }
+            Message::AddToDictionary(word) => {
+                dictionary::add_word_to_personal_dictionary(&word);
             }
             Message::Render => {
                 self.view();
@@ -754,7 +768,7 @@ impl Default for App {
             current_editor: Editor::Log,
             cursor_line_idx: 0,
             cursor_char_idx: 0,
-            chars_in_selection: None,
+            selected_misspelled_word: None,
             spell_suggestions: vec![],
             last_edit_time: Local::now(),
         };
