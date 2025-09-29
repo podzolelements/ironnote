@@ -1,5 +1,8 @@
-use crate::filetools::{self, setup_savedata_dirs};
-use chrono::{DateTime, Datelike, Days, Local, NaiveDate, TimeZone};
+use crate::{
+    filetools::{self, setup_savedata_dirs},
+    misc_tools,
+};
+use chrono::{DateTime, Datelike, Days, Local};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -206,10 +209,7 @@ impl GlobalStore {
                 }
 
                 let file_date = filename[0..7].to_string() + "-01";
-                let nd =
-                    NaiveDate::parse_from_str(&file_date, "%Y-%m-%d").expect("couldn't parse date");
-                let ndt = nd.and_hms_opt(0, 0, 0).expect("couldn't create ndt");
-                let date_time = Local.from_local_datetime(&ndt).unwrap();
+                let date_time = misc_tools::string_to_datetime(&file_date);
 
                 let mut month_store = MonthStore::default();
                 month_store.load_month(date_time);

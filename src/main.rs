@@ -455,8 +455,14 @@ impl App {
                                 + " ...")
                                 .replace("\n", "");
 
-                            self.search_table
-                                .insert_element(start_text, search_text, end_text);
+                            let date = misc_tools::string_to_datetime(&day_store.date());
+
+                            self.search_table.insert_element(
+                                start_text,
+                                search_text,
+                                end_text,
+                                date,
+                            );
                         }
                     }
                 }
@@ -690,8 +696,9 @@ impl App {
                 }
             }
             Message::TableSearch(table_message) => {
-                let SearchTableMessage::EntryClicked(table_id) = table_message;
-                println!("search table {}", table_id);
+                let SearchTableMessage::EntryClicked(table_time) = table_message;
+
+                self.reload_date(table_time);
             }
             Message::TabSwitched(tab) => {
                 self.current_tab = tab;
