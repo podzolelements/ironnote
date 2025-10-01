@@ -7,6 +7,7 @@ use std::ops::Range;
 pub fn highlight_to_format(highlight: &SpellHighlightColor, _theme: &iced::Theme) -> Format<Font> {
     let color = match highlight {
         SpellHighlightColor::Red => Some(Color::new(1.0, 0.0, 0.0, 1.0)),
+        SpellHighlightColor::Green => Some(Color::new(0.0, 1.0, 0.0, 1.0)),
     };
 
     Format { color, font: None }
@@ -17,6 +18,7 @@ pub struct HighlightSettings {
     pub(crate) cursor_line_idx: usize,
     pub(crate) cursor_char_idx: usize,
     pub(crate) cursor_spellcheck_timed_out: bool,
+    pub(crate) search_text: String,
 }
 
 #[derive(Debug)]
@@ -27,6 +29,7 @@ pub struct SpellHighlighter {
 
 pub enum SpellHighlightColor {
     Red,
+    Green,
 }
 
 impl Highlighter for SpellHighlighter {
@@ -75,6 +78,19 @@ impl Highlighter for SpellHighlighter {
 
             if !dictionary.check(word) {
                 highlights.push((start..end, SpellHighlightColor::Red));
+            }
+        }
+
+        if !self.settings.search_text.is_empty() {
+            let indexes: Vec<usize> = line
+                .match_indices(&self.settings.search_text)
+                .map(|(idx, _)| idx)
+                .collect();
+
+            let search_length = self.settings.search_text.chars().count();
+
+            for index in indexes.iter() {
+                highlights.push((*index..(*index + search_length), SpellHighlightColor::Green));
             }
         }
 
