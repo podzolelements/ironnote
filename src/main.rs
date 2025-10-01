@@ -265,6 +265,9 @@ impl App {
                 .height(100),
         ];
 
+        let mut search_text = self.search_content.text();
+        search_text.pop();
+
         let log_text_input = widget::text_editor(&self.content)
             .placeholder("Type today's log...")
             .on_action(Message::Edit)
@@ -277,6 +280,7 @@ impl App {
                     cursor_line_idx,
                     cursor_char_idx,
                     cursor_spellcheck_timed_out,
+                    search_text,
                 },
                 highlighter::highlight_to_format,
             );
