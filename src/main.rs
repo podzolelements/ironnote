@@ -111,6 +111,9 @@ impl App {
     fn write_active_entry_to_store(&mut self) {
         self.month_store
             .set_day_text(self.active_date_time.day0() as usize, self.content.text());
+
+        self.calender
+            .set_edited_days(self.month_store.edited_days());
     }
 
     fn write_store_to_disk(&self) {
@@ -152,6 +155,9 @@ impl App {
         self.update_window_title();
         self.calender.update_calender_dates(self.active_date_time);
         self.load_active_entry();
+
+        self.calender
+            .set_edited_days(self.month_store.edited_days());
 
         self.last_edit_time = Local::now();
 

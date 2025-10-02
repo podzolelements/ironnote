@@ -28,7 +28,7 @@ List of items and features needed for v1.0
     - [x] Month
     - [x] Year
   - [x] Calender
-- [ ] Seachable entries
+- [x] Seachable entries
   - [ ] Range constriants
 - [ ] Configuration
   - [ ] Editor font
@@ -87,7 +87,7 @@ List of items and features needed for v1.0
   - [ ] Month navigation
   - [ ] Year navigation
   - [x] Clicking on date jumps to the day
-  - [ ] Days with entries have styling
+  - [x] Days with entries have styling
 - [ ] Top menu bar
 - [ ] Right click menu?
 - [ ] External buttons above typing area

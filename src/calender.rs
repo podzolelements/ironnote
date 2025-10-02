@@ -1,5 +1,9 @@
 use chrono::{DateTime, Datelike, Local, NaiveDate};
-use iced::widget::{Button, Column, Row, Text};
+use iced::{
+    Font,
+    font::Weight,
+    widget::{Button, Column, Row, Text, rich_text, span},
+};
 
 use crate::Message;
 
@@ -22,6 +26,8 @@ pub enum Month {
 pub struct Calender {
     day_list: [u32; 42],
     month_mapping: [Month; 42],
+    edited_days: [bool; 42],
+    datetime: DateTime<Local>,
     month_text: String,
     year_text: String,
 }
@@ -56,7 +62,19 @@ impl Calender {
             for x in 0..7 {
                 let pos = y * 7 + x;
                 let day_string = (self.day_list[pos]).to_string();
-                let day_button = Button::new(Text::new(day_string).size(11).center())
+
+                let button_content = rich_text![span(day_string).font(Font {
+                    weight: if self.edited_days[pos] {
+                        Weight::Bold
+                    } else {
+                        Weight::Normal
+                    },
+                    ..Font::DEFAULT
+                })]
+                .size(11)
+                .center();
+
+                let day_button = Button::new(button_content)
                     .on_press(Message::Calender(CalenderMessage::DayButton(
                         self.day_list[pos],
                         self.month_mapping[pos],
@@ -71,7 +89,7 @@ impl Calender {
         cal
     }
 
-    pub fn update_calender_dates(&mut self, active_datetime: DateTime<Local>) {
+    fn start_day_offset(active_datetime: DateTime<Local>) -> u32 {
         let nd = NaiveDate::from_ymd_opt(active_datetime.year(), active_datetime.month(), 1)
             .expect("first day is invalid?");
         let mut start_offset = nd.weekday().num_days_from_sunday();
@@ -80,12 +98,27 @@ impl Calender {
             start_offset = 7;
         }
 
-        let days_in_last_month = if active_datetime.month() == 1 {
+        start_offset
+    }
+
+    pub fn set_edited_days(&mut self, edited_days: [bool; 31]) {
+        self.edited_days = [false; 42];
+
+        let start_offset = Self::start_day_offset(self.datetime) as usize;
+
+        self.edited_days[start_offset..(start_offset + 31)].copy_from_slice(&edited_days);
+    }
+
+    pub fn update_calender_dates(&mut self, active_datetime: DateTime<Local>) {
+        self.datetime = active_datetime;
+
+        let start_offset = Self::start_day_offset(self.datetime);
+
+        let days_in_last_month = if self.datetime.month() == 1 {
             31
         } else {
-            let nd =
-                NaiveDate::from_ymd_opt(active_datetime.year(), active_datetime.month() - 1, 1)
-                    .expect("bad date");
+            let nd = NaiveDate::from_ymd_opt(self.datetime.year(), self.datetime.month() - 1, 1)
+                .expect("bad date");
 
             nd.num_days_in_month() as u32
         };
@@ -100,7 +133,7 @@ impl Calender {
             cal_first_date += 1;
         }
 
-        for day_in_month in 1..=(nd.num_days_in_month() as u32) {
+        for day_in_month in 1..=(self.datetime.num_days_in_month() as u32) {
             self.day_list[current_day_addr] = day_in_month;
             self.month_mapping[current_day_addr] = Month::Current;
             current_day_addr += 1;
@@ -115,8 +148,8 @@ impl Calender {
             current_day_addr += 1;
         }
 
-        self.month_text = active_datetime.format("%B").to_string();
-        self.year_text = active_datetime.format("%Y").to_string();
+        self.month_text = self.datetime.format("%B").to_string();
+        self.year_text = self.datetime.format("%Y").to_string();
     }
 }
 
@@ -125,6 +158,8 @@ impl Default for Calender {
         Self {
             day_list: [0; 42],
             month_mapping: [Month::Last; 42],
+            edited_days: [false; 42],
+            datetime: Local::now(),
             month_text: String::new(),
             year_text: String::new(),
         }

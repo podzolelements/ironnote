@@ -53,6 +53,15 @@ impl MonthStore {
         self.days[day].clone()
     }
 
+    pub fn edited_days(&self) -> [bool; 31] {
+        let mut edited_days = [false; 31];
+        for (i, day_store) in self.days.iter().enumerate().take(31) {
+            edited_days[i] = !day_store.entry_text.is_empty();
+        }
+
+        edited_days
+    }
+
     pub fn set_day_text(&mut self, day: usize, text: String) {
         self.days[day].set_day_text(text);
         self.days[day].modified = true;
