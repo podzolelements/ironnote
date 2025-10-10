@@ -5,6 +5,7 @@ use crate::{
     highlighter::{HighlightSettings, SpellHighlighter},
     history_stack::{HistoryStack, edit_action_to_history_event},
     search_table::{SearchTable, SearchTableMessage},
+    statistics::{BoundedDateStats, Stats},
     text_store::{DayStore, GlobalStore, MonthStore},
 };
 use calender::Calender;
@@ -31,6 +32,7 @@ mod highlighter;
 mod history_stack;
 mod misc_tools;
 mod search_table;
+mod statistics;
 mod text_store;
 
 struct App {
@@ -111,6 +113,10 @@ impl App {
     fn write_active_entry_to_store(&mut self) {
         self.month_store
             .set_day_text(self.active_date_time.day0() as usize, self.content.text());
+
+        self.day_store = self
+            .month_store
+            .get_day_store(self.active_date_time.day0() as usize);
 
         self.calender
             .set_edited_days(self.month_store.edited_days());
@@ -247,7 +253,35 @@ impl App {
                 column![seachbar, search_results]
             }
             Tab::Stats => {
-                column![Text::new("Stats area")]
+                let dwc = self.day_store.word_count().to_string();
+                let dcc = self.day_store.char_count().to_string();
+
+                let mwc = self.month_store.word_count().to_string();
+                let mcc = self.month_store.char_count().to_string();
+
+                let twc = self.global_store.word_count().to_string();
+                let tcc = self.global_store.char_count().to_string();
+
+                let maw = format!("{:.2}", self.month_store.average_words());
+                let taw = format!("{:.2}", self.global_store.average_words());
+                let mac = format!("{:.2}", self.month_store.average_chars());
+                let tac = format!("{:.2}", self.global_store.average_chars());
+
+                column![
+                    Text::new("Current Day"),
+                    Text::new("     Words:      ".to_string() + &dwc),
+                    Text::new("     Characters: ".to_string() + &dcc),
+                    Text::new("This Month"),
+                    Text::new("     Words:      ".to_string() + &mwc),
+                    Text::new("     Characters: ".to_string() + &mcc),
+                    Text::new("     Average Words: ".to_string() + &maw),
+                    Text::new("     Average Chars: ".to_string() + &mac),
+                    Text::new("Total"),
+                    Text::new("     Words:      ".to_string() + &twc),
+                    Text::new("     Characters: ".to_string() + &tcc),
+                    Text::new("     Average Words: ".to_string() + &taw),
+                    Text::new("     Average Chars: ".to_string() + &tac),
+                ]
             }
             Tab::Todo => {
                 column![Text::new("Todo area")]

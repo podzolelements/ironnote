@@ -1,6 +1,7 @@
 use crate::{
     filetools::{self, setup_savedata_dirs},
     misc_tools,
+    statistics::{BoundedDateStats, Stats},
 };
 use chrono::{DateTime, Datelike, Days, Local};
 use regex::Regex;
@@ -27,6 +28,16 @@ impl DayStore {
 
     pub fn date(&self) -> String {
         self.date.clone()
+    }
+}
+
+impl Stats for DayStore {
+    fn word_count(&self) -> usize {
+        self.entry_text.split_whitespace().count()
+    }
+
+    fn char_count(&self) -> usize {
+        self.entry_text.chars().count()
     }
 }
 
@@ -60,6 +71,10 @@ impl MonthStore {
         }
 
         edited_days
+    }
+
+    pub fn edited_day_count(&self) -> usize {
+        self.edited_days().iter().filter(|day| **day).count()
     }
 
     pub fn set_day_text(&mut self, day: usize, text: String) {
@@ -188,6 +203,26 @@ impl MonthStore {
     }
 }
 
+impl Stats for MonthStore {
+    fn word_count(&self) -> usize {
+        self.days().map(|day_store| day_store.word_count()).sum()
+    }
+
+    fn char_count(&self) -> usize {
+        self.days().map(|day_store| day_store.char_count()).sum()
+    }
+}
+
+impl BoundedDateStats for MonthStore {
+    fn average_words(&self) -> f64 {
+        self.word_count() as f64 / self.edited_day_count() as f64
+    }
+
+    fn average_chars(&self) -> f64 {
+        self.char_count() as f64 / self.edited_day_count() as f64
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct GlobalStore {
     entries: Vec<MonthStore>,
@@ -243,5 +278,29 @@ impl GlobalStore {
 
     pub fn month_stores(&self) -> impl DoubleEndedIterator<Item = &MonthStore> {
         self.entries.iter()
+    }
+
+    pub fn edited_day_count(&self) -> usize {
+        self.month_stores().map(|ms| ms.edited_day_count()).sum()
+    }
+}
+
+impl Stats for GlobalStore {
+    fn word_count(&self) -> usize {
+        self.month_stores().map(|ms| ms.word_count()).sum()
+    }
+
+    fn char_count(&self) -> usize {
+        self.month_stores().map(|ms| ms.char_count()).sum()
+    }
+}
+
+impl BoundedDateStats for GlobalStore {
+    fn average_words(&self) -> f64 {
+        self.word_count() as f64 / self.edited_day_count() as f64
+    }
+
+    fn average_chars(&self) -> f64 {
+        self.char_count() as f64 / self.edited_day_count() as f64
     }
 }
