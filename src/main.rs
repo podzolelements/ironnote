@@ -11,11 +11,14 @@ use crate::{
 use calender::Calender;
 use chrono::{DateTime, Datelike, Days, Duration, Local, Months, NaiveDate};
 use iced::{
-    Event, Font, Length, Subscription,
+    Alignment::Center,
+    Event, Font,
+    Length::{self, FillPortion},
+    Subscription,
     event::listen_with,
     keyboard::{self},
     widget::{
-        self, Row, Space, Text, column, row,
+        self, Row, column, row,
         scrollable::{Direction, Scrollbar},
         text::Wrapping,
         text_editor::{self, Action},
@@ -211,30 +214,30 @@ impl App {
         let cursor_spellcheck_timed_out =
             Local::now().signed_duration_since(self.last_edit_time) > Duration::milliseconds(500);
 
-        let back_button = widget::button("<--")
+        let back_button = widget::button(widget::Text::new("<---").align_x(Center))
             .on_press(Message::BackOneDay)
+            .width(FillPortion(1))
             .height(100);
-        let today_button = widget::button("Today")
+        let today_button = widget::button(widget::Text::new("Today").align_x(Center))
             .on_press(Message::JumpToToday)
+            .width(FillPortion(1))
             .height(100);
-        let forward_button = widget::button("-->")
+        let forward_button = widget::button(widget::Text::new("--->").align_x(Center))
             .on_press(Message::ForwardOneDay)
+            .width(FillPortion(1))
             .height(100);
 
-        let hspace = Space::new(5, 5);
-        let hspace2 = Space::new(5, 5);
-
-        let buttonbar = row![back_button, hspace, today_button, hspace2, forward_button];
+        let daily_nav_bar = row![back_button, today_button, forward_button].width(7 * 36);
 
         let cal = Calender::view(&self.calender);
         let temp_calender_bar = row![cal];
 
-        let search_tab_btn = widget::button(Text::new("Search").size(12))
+        let search_tab_btn = widget::button(widget::Text::new("Search").size(12))
             .on_press(Message::TabSwitched(Tab::Search));
-        let stats_tab_btn =
-            widget::button(Text::new("Stats").size(12)).on_press(Message::TabSwitched(Tab::Stats));
-        let todo_tab_btn =
-            widget::button(Text::new("Todo").size(12)).on_press(Message::TabSwitched(Tab::Todo));
+        let stats_tab_btn = widget::button(widget::Text::new("Stats").size(12))
+            .on_press(Message::TabSwitched(Tab::Stats));
+        let todo_tab_btn = widget::button(widget::Text::new("Todo").size(12))
+            .on_press(Message::TabSwitched(Tab::Todo));
 
         let tab_bar = row![search_tab_btn, stats_tab_btn, todo_tab_btn];
 
@@ -268,30 +271,30 @@ impl App {
                 let tac = format!("{:.2}", self.global_store.average_chars());
 
                 column![
-                    Text::new("Current Day"),
-                    Text::new("     Words:      ".to_string() + &dwc),
-                    Text::new("     Characters: ".to_string() + &dcc),
-                    Text::new("This Month"),
-                    Text::new("     Words:      ".to_string() + &mwc),
-                    Text::new("     Characters: ".to_string() + &mcc),
-                    Text::new("     Average Words: ".to_string() + &maw),
-                    Text::new("     Average Chars: ".to_string() + &mac),
-                    Text::new("Total"),
-                    Text::new("     Words:      ".to_string() + &twc),
-                    Text::new("     Characters: ".to_string() + &tcc),
-                    Text::new("     Average Words: ".to_string() + &taw),
-                    Text::new("     Average Chars: ".to_string() + &tac),
+                    widget::Text::new("Current Day"),
+                    widget::Text::new("     Words:      ".to_string() + &dwc),
+                    widget::Text::new("     Characters: ".to_string() + &dcc),
+                    widget::Text::new("This Month"),
+                    widget::Text::new("     Words:      ".to_string() + &mwc),
+                    widget::Text::new("     Characters: ".to_string() + &mcc),
+                    widget::Text::new("     Average Words: ".to_string() + &maw),
+                    widget::Text::new("     Average Chars: ".to_string() + &mac),
+                    widget::Text::new("Total"),
+                    widget::Text::new("     Words:      ".to_string() + &twc),
+                    widget::Text::new("     Characters: ".to_string() + &tcc),
+                    widget::Text::new("     Average Words: ".to_string() + &taw),
+                    widget::Text::new("     Average Chars: ".to_string() + &tac),
                 ]
             }
             Tab::Todo => {
-                column![Text::new("Todo area")]
+                column![widget::Text::new("Todo area")]
             }
         }
         .width(250);
 
         let tab_view = column![tab_bar, tab_area];
 
-        let left_ui = column![buttonbar, temp_calender_bar, tab_view];
+        let left_ui = column![daily_nav_bar, temp_calender_bar, tab_view];
 
         let right_top_bar = row![
             widget::button("test button 0")
@@ -349,7 +352,7 @@ impl App {
 
             for (button_text, button_message) in editor_context_menu_contents.iter() {
                 editor_context_menu.push(
-                    widget::button(Text::new(button_text.clone()))
+                    widget::button(widget::Text::new(button_text.clone()))
                         .on_press(button_message.clone())
                         .into(),
                 );

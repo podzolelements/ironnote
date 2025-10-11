@@ -1,8 +1,10 @@
 use chrono::{DateTime, Datelike, Local, NaiveDate};
 use iced::{
+    Alignment::Center,
     Font,
+    Length::FillPortion,
     font::Weight,
-    widget::{Button, Column, Row, Text, rich_text, span},
+    widget::{Button, Column, Row, Text, rich_text, row, span},
 };
 
 use crate::Message;
@@ -36,26 +38,56 @@ impl Calender {
     pub fn view<'a>(&self) -> Column<'a, Message> {
         let mut cal = Column::new();
 
-        let month_back_btn =
-            Button::new("<").on_press(Message::Calender(CalenderMessage::BackMonth));
-        let month_text = Text::new(self.month_text.clone()).center().size(14);
-        let month_forward_btn =
-            Button::new(">").on_press(Message::Calender(CalenderMessage::ForwardMonth));
+        let month_back_btn = Button::new("<")
+            .on_press(Message::Calender(CalenderMessage::BackMonth))
+            .width(30)
+            .height(30);
+        let month_text = Text::new(self.month_text.clone())
+            .center()
+            .size(14)
+            .width(75)
+            .height(34);
+        let month_forward_btn = Button::new(">")
+            .on_press(Message::Calender(CalenderMessage::ForwardMonth))
+            .width(30)
+            .height(30);
 
-        let year_back_btn = Button::new("<").on_press(Message::Calender(CalenderMessage::BackYear));
-        let year_text = Text::new(self.year_text.clone()).center().size(14);
-        let year_forward_btn =
-            Button::new(">").on_press(Message::Calender(CalenderMessage::ForwardYear));
+        let month_nav = row![month_back_btn, month_text, month_forward_btn];
 
-        let month_year_bar = Row::new()
-            .push(month_back_btn)
-            .push(month_text)
-            .push(month_forward_btn)
-            .push(year_back_btn)
-            .push(year_text)
-            .push(year_forward_btn);
+        let year_back_btn = Button::new("<")
+            .on_press(Message::Calender(CalenderMessage::BackYear))
+            .width(30)
+            .height(30);
+        let year_text = Text::new(self.year_text.clone())
+            .center()
+            .size(14)
+            .width(40)
+            .height(34);
+        let year_forward_btn = Button::new(">")
+            .on_press(Message::Calender(CalenderMessage::ForwardYear))
+            .width(30)
+            .height(30);
+
+        let year_nav = row![year_back_btn, year_text, year_forward_btn];
+
+        let month_year_spacing = Text::new("").width(36 * 7 - 30 * 4 - 40 - 75);
+
+        let month_year_bar = row![month_nav, month_year_spacing, year_nav];
+
+        let days_text = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+        let mut day_bar = Row::new().width(7 * 36);
+
+        for day in days_text {
+            day_bar = day_bar.push(
+                Text::new(day)
+                    .width(FillPortion(1))
+                    .align_x(Center)
+                    .size(14),
+            )
+        }
 
         cal = cal.push(month_year_bar);
+        cal = cal.push(day_bar);
 
         for y in 0..6 {
             let mut row = Row::new();
