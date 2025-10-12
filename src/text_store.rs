@@ -1,5 +1,6 @@
 use crate::{
     filetools::{self, setup_savedata_dirs},
+    logbox::LOGBOX,
     misc_tools,
     statistics::{BoundedDateStats, Stats},
 };
@@ -192,7 +193,6 @@ impl MonthStore {
 
         if new_json != "{}" {
             fs::write(&save_path, new_json).expect("couldn't save new json");
-            println!("saved {}", self.month);
         } else {
             // if there previously were entries that got deleted on the current save, resulting in the month store
             // becoming empty, delete the file
@@ -200,6 +200,11 @@ impl MonthStore {
                 fs::remove_file(save_path).expect("couldn't remove existing json");
             }
         }
+
+        LOGBOX
+            .write()
+            .expect("couldn't get logbox write")
+            .log("Saved");
     }
 }
 
