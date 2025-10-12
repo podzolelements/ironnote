@@ -4,6 +4,7 @@ use crate::{
     dictionary::DICTIONARY,
     highlighter::{HighlightSettings, SpellHighlighter},
     history_stack::{HistoryStack, edit_action_to_history_event},
+    logbox::LOGBOX,
     search_table::{SearchTable, SearchTableMessage},
     statistics::{BoundedDateStats, Stats},
     text_store::{DayStore, GlobalStore, MonthStore},
@@ -18,7 +19,7 @@ use iced::{
     event::listen_with,
     keyboard::{self},
     widget::{
-        self, Row, column, row,
+        self, Column, column, row,
         scrollable::{Direction, Scrollbar},
         text::Wrapping,
         text_editor::{self, Action},
@@ -33,6 +34,7 @@ mod dictionary;
 mod filetools;
 mod highlighter;
 mod history_stack;
+mod logbox;
 mod misc_tools;
 mod search_table;
 mod statistics;
@@ -53,7 +55,7 @@ struct App {
     log_history_stack: HistoryStack,
     search_history_stack: HistoryStack,
     current_tab: Tab,
-    current_editor: Editor,
+    current_editor: Option<Editor>,
     cursor_line_idx: usize,
     cursor_char_idx: usize,
     selected_misspelled_word: Option<String>,
@@ -209,7 +211,7 @@ impl App {
         self.window_title.clone()
     }
 
-    pub fn view(&'_ self) -> Row<'_, Message> {
+    pub fn view(&'_ self) -> Column<'_, Message> {
         let (cursor_line_idx, cursor_char_idx) = self.content.cursor_position();
         let cursor_spellcheck_timed_out =
             Local::now().signed_duration_since(self.last_edit_time) > Duration::milliseconds(500);
@@ -363,7 +365,21 @@ impl App {
 
         let right_ui = column![right_top_bar, composite_editor];
 
-        let layout = row![left_ui, right_ui];
+        let top_ui = row![left_ui, right_ui];
+
+        let logbox = widget::text(
+            LOGBOX
+                .read()
+                .expect("couldn't get logbox read")
+                .get_log_at_time(),
+        )
+        .size(14)
+        .font(Font::DEFAULT)
+        .height(Length::Shrink);
+
+        let bottom_ui = row![logbox];
+
+        let layout = column![top_ui, bottom_ui];
 
         layout
     }
@@ -401,7 +417,7 @@ impl App {
                 println!("cal");
             }
             Message::Edit(action) => {
-                self.current_editor = Editor::Log;
+                self.current_editor = Some(Editor::Log);
 
                 if self.content.selection().is_none() {
                     (self.cursor_line_idx, self.cursor_char_idx) = self.content.cursor_position();
@@ -440,8 +456,8 @@ impl App {
                 self.update_spellcheck();
             }
             Message::EditSearch(action) => {
-                if self.current_editor != Editor::Search {
-                    self.current_editor = Editor::Search;
+                if self.current_editor != Some(Editor::Search) {
+                    self.current_editor = Some(Editor::Search);
 
                     self.write_active_entry_to_store();
                     self.sync_global_store();
@@ -626,45 +642,48 @@ impl App {
                                 '}', '[', ']',
                             ];
 
-                            let (history_stack, content) = match self.current_editor {
-                                Editor::Log => (&mut self.log_history_stack, &mut self.content),
-                                Editor::Search => {
-                                    (&mut self.search_history_stack, &mut self.search_content)
-                                }
-                            };
+                            if let Some(editor) = &self.current_editor {
+                                let (history_stack, content) = match editor {
+                                    Editor::Log => (&mut self.log_history_stack, &mut self.content),
+                                    Editor::Search => {
+                                        (&mut self.search_history_stack, &mut self.search_content)
+                                    }
+                                };
 
-                            // revert the standard backspace that can't be caught
-                            history_stack.revert(content);
+                                // revert the standard backspace that can't be caught
+                                history_stack.revert(content);
 
-                            history_stack.push_undo_action(perform_ctrl_backspace(
-                                content,
-                                &stopping_chars,
-                                self.cursor_line_idx,
-                                self.cursor_char_idx,
-                            ));
+                                history_stack.push_undo_action(perform_ctrl_backspace(
+                                    content,
+                                    &stopping_chars,
+                                    self.cursor_line_idx,
+                                    self.cursor_char_idx,
+                                ));
+                            }
                         }
                         KeyboardAction::BackspaceSentence => {
                             self.edited_active_day = true;
                             self.last_edit_time = Local::now();
 
                             let stopping_chars = ['.', '!', '?', '\"', ';', ':'];
+                            if let Some(editor) = &self.current_editor {
+                                let (history_stack, content) = match editor {
+                                    Editor::Log => (&mut self.log_history_stack, &mut self.content),
+                                    Editor::Search => {
+                                        (&mut self.search_history_stack, &mut self.search_content)
+                                    }
+                                };
 
-                            let (history_stack, content) = match self.current_editor {
-                                Editor::Log => (&mut self.log_history_stack, &mut self.content),
-                                Editor::Search => {
-                                    (&mut self.search_history_stack, &mut self.search_content)
-                                }
-                            };
+                                // revert the standard backspace that can't be caught
+                                history_stack.revert(content);
 
-                            // revert the standard backspace that can't be caught
-                            history_stack.revert(content);
-
-                            history_stack.push_undo_action(perform_ctrl_backspace(
-                                content,
-                                &stopping_chars,
-                                self.cursor_line_idx,
-                                self.cursor_char_idx,
-                            ));
+                                history_stack.push_undo_action(perform_ctrl_backspace(
+                                    content,
+                                    &stopping_chars,
+                                    self.cursor_line_idx,
+                                    self.cursor_char_idx,
+                                ));
+                            }
                         }
                         KeyboardAction::Delete => {
                             // not sure why the text_editor action handler doesn't do this on its own
@@ -714,27 +733,29 @@ impl App {
                         KeyboardAction::Undo => {
                             self.edited_active_day = true;
                             self.last_edit_time = Local::now();
-
-                            let (history_stack, content) = match self.current_editor {
-                                Editor::Log => (&mut self.log_history_stack, &mut self.content),
-                                Editor::Search => {
-                                    (&mut self.search_history_stack, &mut self.search_content)
-                                }
-                            };
-                            history_stack.perform_undo(content);
+                            if let Some(editor) = &self.current_editor {
+                                let (history_stack, content) = match editor {
+                                    Editor::Log => (&mut self.log_history_stack, &mut self.content),
+                                    Editor::Search => {
+                                        (&mut self.search_history_stack, &mut self.search_content)
+                                    }
+                                };
+                                history_stack.perform_undo(content);
+                            }
                         }
                         KeyboardAction::Redo => {
                             self.edited_active_day = true;
                             self.last_edit_time = Local::now();
+                            if let Some(editor) = &self.current_editor {
+                                let (history_stack, content) = match editor {
+                                    Editor::Log => (&mut self.log_history_stack, &mut self.content),
+                                    Editor::Search => {
+                                        (&mut self.search_history_stack, &mut self.search_content)
+                                    }
+                                };
 
-                            let (history_stack, content) = match self.current_editor {
-                                Editor::Log => (&mut self.log_history_stack, &mut self.content),
-                                Editor::Search => {
-                                    (&mut self.search_history_stack, &mut self.search_content)
-                                }
-                            };
-
-                            history_stack.perform_redo(content);
+                                history_stack.perform_redo(content);
+                            }
                         }
                         KeyboardAction::Debug => {
                             println!("debug!");
@@ -837,7 +858,7 @@ impl Default for App {
             log_history_stack: HistoryStack::default(),
             search_history_stack: HistoryStack::default(),
             current_tab: Tab::Search,
-            current_editor: Editor::Log,
+            current_editor: None,
             cursor_line_idx: 0,
             cursor_char_idx: 0,
             selected_misspelled_word: None,
