@@ -19,6 +19,7 @@ pub struct HighlightSettings {
     pub(crate) cursor_char_idx: usize,
     pub(crate) cursor_spellcheck_timed_out: bool,
     pub(crate) search_text: String,
+    pub(crate) ignore_search_case: bool,
 }
 
 #[derive(Debug)]
@@ -81,13 +82,22 @@ impl Highlighter for SpellHighlighter {
             }
         }
 
-        if !self.settings.search_text.is_empty() {
-            let indexes: Vec<usize> = line
-                .match_indices(&self.settings.search_text)
+        let (search_line, search_text) = if self.settings.ignore_search_case {
+            (
+                line.to_lowercase(),
+                self.settings.search_text.to_lowercase(),
+            )
+        } else {
+            (line.to_string(), self.settings.search_text.clone())
+        };
+
+        if !search_text.is_empty() {
+            let indexes: Vec<usize> = search_line
+                .match_indices(&search_text)
                 .map(|(idx, _)| idx)
                 .collect();
 
-            let search_length = self.settings.search_text.chars().count();
+            let search_length = search_text.chars().count();
 
             for index in indexes.iter() {
                 highlights.push((*index..(*index + search_length), SpellHighlightColor::Green));

@@ -1,5 +1,6 @@
 use crate::{
     calender::CalenderMessage,
+    config::UserSettings,
     content_tools::{perform_ctrl_backspace, perform_ctrl_delete},
     dictionary::DICTIONARY,
     highlighter::{HighlightSettings, SpellHighlighter},
@@ -22,13 +23,14 @@ use iced::{
         self, Column, column, row,
         scrollable::{Direction, Scrollbar},
         text::Wrapping,
-        text_editor::{self, Action},
+        text_editor::{self, Action, Content},
     },
 };
 use iced_aw::ContextMenu;
 use keybinds::Keybinds;
 
 mod calender;
+mod config;
 mod content_tools;
 mod dictionary;
 mod filetools;
@@ -45,6 +47,7 @@ struct App {
     content: text_editor::Content,
     edited_active_day: bool,
     search_content: text_editor::Content,
+    search_text: String,
     active_date_time: DateTime<Local>,
     calender: Calender,
     search_table: SearchTable,
@@ -61,6 +64,7 @@ struct App {
     selected_misspelled_word: Option<String>,
     spell_suggestions: Vec<String>,
     last_edit_time: DateTime<Local>,
+    settings: UserSettings,
 }
 
 #[derive(Debug, PartialEq)]
@@ -104,6 +108,8 @@ pub enum Message {
     AcceptSpellcheck(usize),
     AddToDictionary(String),
     Render,
+    ClearSearch,
+    ToggleSearchCase,
 }
 
 impl App {
@@ -245,17 +251,28 @@ impl App {
 
         let tab_area = match self.current_tab {
             Tab::Search => {
-                let seachbar = widget::text_editor(&self.search_content)
+                let searchbar = widget::text_editor(&self.search_content)
                     .placeholder("Search entries...")
                     .on_action(Message::EditSearch)
                     .size(13)
                     .font(Font::DEFAULT)
                     .wrapping(Wrapping::None);
 
+                let clear_search_button = widget::button(widget::Text::new("<=").size(9).center())
+                    .on_press(Message::ClearSearch)
+                    .width(32)
+                    .height(26);
+                let match_case_button = widget::button(widget::Text::new("Aa").size(9).center())
+                    .on_press(Message::ToggleSearchCase)
+                    .width(32)
+                    .height(26);
+
+                let search_line = row![searchbar, clear_search_button, match_case_button];
+
                 let table = SearchTable::view(&self.search_table);
 
                 let search_results = column![table];
-                column![seachbar, search_results]
+                column![search_line, search_results]
             }
             Tab::Stats => {
                 let dwc = self.day_store.word_count().to_string();
@@ -310,9 +327,6 @@ impl App {
                 .height(100),
         ];
 
-        let mut search_text = self.search_content.text();
-        search_text.pop();
-
         let log_text_input = widget::text_editor(&self.content)
             .placeholder("Type today's log...")
             .on_action(Message::Edit)
@@ -325,7 +339,8 @@ impl App {
                     cursor_line_idx,
                     cursor_char_idx,
                     cursor_spellcheck_timed_out,
-                    search_text,
+                    search_text: self.search_text.clone(),
+                    ignore_search_case: self.settings.ignore_search_case,
                 },
                 highlighter::highlight_to_format,
             );
@@ -479,18 +494,28 @@ impl App {
                 self.search_content.perform(action);
 
                 self.search_table.clear();
+                self.search_text.clear();
 
                 let mut search_text = self.search_content.text();
                 search_text.pop();
 
+                if self.settings.ignore_search_case {
+                    search_text = search_text.to_lowercase();
+                }
+
+                if search_text.is_empty() || search_text == " " {
+                    return;
+                }
+
                 for month_store in self.global_store.month_stores().rev() {
                     for day_store in month_store.days().rev() {
-                        let search_text = search_text.clone();
-                        let content_text = day_store.get_day_text();
+                        let original_content_text = day_store.get_day_text();
 
-                        if search_text.is_empty() || search_text == " " {
-                            continue;
-                        }
+                        let content_text = if self.settings.ignore_search_case {
+                            original_content_text.to_lowercase()
+                        } else {
+                            original_content_text.clone()
+                        };
 
                         if let Some(subtext_idx) = content_text.find(&search_text) {
                             let start_idx = if ((subtext_idx as i32) - 30) < 0 {
@@ -506,23 +531,30 @@ impl App {
 
                             let start_text = (day_store.date()
                                 + " ... "
-                                + content_text
+                                + original_content_text
                                     .get(start_idx..subtext_idx)
                                     .expect("couldn't get start content_text"))
-                            .replace("\n", "");
+                            .replace("\n", " ");
 
-                            let end_text = (content_text
+                            let bolded_text = original_content_text
+                                .get(subtext_idx..(subtext_idx + search_text.chars().count()))
+                                .expect("couldn't get bolded content_text")
+                                .to_string();
+
+                            let end_text = (original_content_text
                                 .get((subtext_idx + search_text.chars().count())..end_idx)
                                 .expect("couldn't get end content_text")
                                 .to_string()
                                 + " ...")
-                                .replace("\n", "");
+                                .replace("\n", " ");
 
                             let date = misc_tools::string_to_datetime(&day_store.date());
 
+                            self.search_text = bolded_text.clone();
+
                             self.search_table.insert_element(
                                 start_text,
-                                search_text,
+                                bolded_text,
                                 end_text,
                                 date,
                             );
@@ -792,6 +824,20 @@ impl App {
             Message::Render => {
                 self.view();
             }
+            Message::ClearSearch => {
+                self.search_content = Content::new();
+
+                self.update(Message::EditSearch(Action::Move(
+                    text_editor::Motion::DocumentEnd,
+                )));
+            }
+            Message::ToggleSearchCase => {
+                self.settings.ignore_search_case = !self.settings.ignore_search_case;
+
+                self.update(Message::EditSearch(Action::Move(
+                    text_editor::Motion::DocumentEnd,
+                )));
+            }
         }
     }
 
@@ -849,6 +895,7 @@ impl Default for App {
             edited_active_day: false,
             content: text_editor::Content::default(),
             search_content: text_editor::Content::default(),
+            search_text: String::default(),
             calender: Calender::default(),
             search_table: SearchTable::default(),
             keybinds,
@@ -864,6 +911,7 @@ impl Default for App {
             selected_misspelled_word: None,
             spell_suggestions: vec![],
             last_edit_time: Local::now(),
+            settings: UserSettings::default(),
         };
 
         df.month_store.load_month(Local::now());
