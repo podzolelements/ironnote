@@ -210,6 +210,84 @@ impl App {
             }
         }
     }
+
+    fn recompute_search(&mut self) {
+        self.search_table.clear();
+        self.search_text.clear();
+
+        let mut search_text = self.search_content.text();
+        search_text.pop();
+
+        if self.settings.ignore_search_case {
+            search_text = search_text.to_lowercase();
+        }
+
+        if search_text.is_empty() || search_text == " " {
+            return;
+        }
+
+        for month_store in self.global_store.month_stores().rev() {
+            for day_store in month_store.days().rev() {
+                let original_content_text = day_store.get_day_text();
+
+                let content_text = if self.settings.ignore_search_case {
+                    original_content_text.to_lowercase()
+                } else {
+                    original_content_text.clone()
+                };
+
+                if let Some(subtext_idx) = content_text.find(&search_text) {
+                    let start_idx = if ((subtext_idx as i32) - 30) < 0 {
+                        0
+                    } else {
+                        subtext_idx - 30
+                    };
+                    let end_idx = if subtext_idx + 50 > content_text.chars().count() {
+                        content_text.chars().count()
+                    } else {
+                        subtext_idx + 50
+                    };
+
+                    let start_text = (day_store.date()
+                        + " ... "
+                        + original_content_text
+                            .get(start_idx..subtext_idx)
+                            .expect("couldn't get start content_text"))
+                    .replace("\n", " ");
+
+                    let bolded_text = original_content_text
+                        .get(subtext_idx..(subtext_idx + search_text.chars().count()))
+                        .expect("couldn't get bolded content_text")
+                        .to_string();
+
+                    let end_text = (original_content_text
+                        .get((subtext_idx + search_text.chars().count())..end_idx)
+                        .expect("couldn't get end content_text")
+                        .to_string()
+                        + " ...")
+                        .replace("\n", " ");
+
+                    let date = misc_tools::string_to_datetime(&day_store.date());
+
+                    self.search_text = bolded_text.clone();
+
+                    self.search_table
+                        .insert_element(start_text, bolded_text, end_text, date);
+                }
+            }
+        }
+    }
+
+    fn active_content_and_history_stack(&mut self) -> Option<(&mut Content, &mut HistoryStack)> {
+        if let Some(editor) = &self.current_editor {
+            match editor {
+                Editor::Log => Some((&mut self.content, &mut self.log_history_stack)),
+                Editor::Search => Some((&mut self.search_content, &mut self.search_history_stack)),
+            }
+        } else {
+            None
+        }
+    }
 }
 
 impl App {
@@ -493,74 +571,7 @@ impl App {
 
                 self.search_content.perform(action);
 
-                self.search_table.clear();
-                self.search_text.clear();
-
-                let mut search_text = self.search_content.text();
-                search_text.pop();
-
-                if self.settings.ignore_search_case {
-                    search_text = search_text.to_lowercase();
-                }
-
-                if search_text.is_empty() || search_text == " " {
-                    return;
-                }
-
-                for month_store in self.global_store.month_stores().rev() {
-                    for day_store in month_store.days().rev() {
-                        let original_content_text = day_store.get_day_text();
-
-                        let content_text = if self.settings.ignore_search_case {
-                            original_content_text.to_lowercase()
-                        } else {
-                            original_content_text.clone()
-                        };
-
-                        if let Some(subtext_idx) = content_text.find(&search_text) {
-                            let start_idx = if ((subtext_idx as i32) - 30) < 0 {
-                                0
-                            } else {
-                                subtext_idx - 30
-                            };
-                            let end_idx = if subtext_idx + 50 > content_text.chars().count() {
-                                content_text.chars().count()
-                            } else {
-                                subtext_idx + 50
-                            };
-
-                            let start_text = (day_store.date()
-                                + " ... "
-                                + original_content_text
-                                    .get(start_idx..subtext_idx)
-                                    .expect("couldn't get start content_text"))
-                            .replace("\n", " ");
-
-                            let bolded_text = original_content_text
-                                .get(subtext_idx..(subtext_idx + search_text.chars().count()))
-                                .expect("couldn't get bolded content_text")
-                                .to_string();
-
-                            let end_text = (original_content_text
-                                .get((subtext_idx + search_text.chars().count())..end_idx)
-                                .expect("couldn't get end content_text")
-                                .to_string()
-                                + " ...")
-                                .replace("\n", " ");
-
-                            let date = misc_tools::string_to_datetime(&day_store.date());
-
-                            self.search_text = bolded_text.clone();
-
-                            self.search_table.insert_element(
-                                start_text,
-                                bolded_text,
-                                end_text,
-                                date,
-                            );
-                        }
-                    }
-                }
+                self.recompute_search();
             }
             Message::TempTopBarMessage => {
                 println!("topbar");
@@ -674,23 +685,25 @@ impl App {
                                 '}', '[', ']',
                             ];
 
-                            if let Some(editor) = &self.current_editor {
-                                let (history_stack, content) = match editor {
-                                    Editor::Log => (&mut self.log_history_stack, &mut self.content),
-                                    Editor::Search => {
-                                        (&mut self.search_history_stack, &mut self.search_content)
-                                    }
-                                };
+                            let cursor_line_idx = self.cursor_line_idx;
+                            let cursor_char_idx = self.cursor_char_idx;
 
+                            if let Some((content, history_stack)) =
+                                self.active_content_and_history_stack()
+                            {
                                 // revert the standard backspace that can't be caught
                                 history_stack.revert(content);
 
                                 history_stack.push_undo_action(perform_ctrl_backspace(
                                     content,
                                     &stopping_chars,
-                                    self.cursor_line_idx,
-                                    self.cursor_char_idx,
+                                    cursor_line_idx,
+                                    cursor_char_idx,
                                 ));
+                            }
+
+                            if self.current_editor == Some(Editor::Search) {
+                                self.recompute_search();
                             }
                         }
                         KeyboardAction::BackspaceSentence => {
@@ -698,23 +711,26 @@ impl App {
                             self.last_edit_time = Local::now();
 
                             let stopping_chars = ['.', '!', '?', '\"', ';', ':'];
-                            if let Some(editor) = &self.current_editor {
-                                let (history_stack, content) = match editor {
-                                    Editor::Log => (&mut self.log_history_stack, &mut self.content),
-                                    Editor::Search => {
-                                        (&mut self.search_history_stack, &mut self.search_content)
-                                    }
-                                };
 
+                            let cursor_line_idx = self.cursor_line_idx;
+                            let cursor_char_idx = self.cursor_char_idx;
+
+                            if let Some((content, history_stack)) =
+                                self.active_content_and_history_stack()
+                            {
                                 // revert the standard backspace that can't be caught
                                 history_stack.revert(content);
 
                                 history_stack.push_undo_action(perform_ctrl_backspace(
                                     content,
                                     &stopping_chars,
-                                    self.cursor_line_idx,
-                                    self.cursor_char_idx,
+                                    cursor_line_idx,
+                                    cursor_char_idx,
                                 ));
+                            }
+
+                            if self.current_editor == Some(Editor::Search) {
+                                self.recompute_search();
                             }
                         }
                         KeyboardAction::Delete => {
@@ -722,16 +738,26 @@ impl App {
                             self.edited_active_day = true;
                             self.last_edit_time = Local::now();
 
-                            let history_event = edit_action_to_history_event(
-                                &self.content,
-                                text_editor::Edit::Delete,
-                                self.cursor_line_idx,
-                                self.cursor_char_idx,
-                            );
-                            self.log_history_stack.push_undo_action(history_event);
+                            let cursor_line_idx = self.cursor_line_idx;
+                            let cursor_char_idx = self.cursor_char_idx;
 
-                            self.content
-                                .perform(Action::Edit(text_editor::Edit::Delete));
+                            if let Some((content, history_stack)) =
+                                self.active_content_and_history_stack()
+                            {
+                                let history_event = edit_action_to_history_event(
+                                    content,
+                                    text_editor::Edit::Delete,
+                                    cursor_line_idx,
+                                    cursor_char_idx,
+                                );
+                                history_stack.push_undo_action(history_event);
+
+                                content.perform(Action::Edit(text_editor::Edit::Delete));
+                            }
+
+                            if self.current_editor == Some(Editor::Search) {
+                                self.recompute_search();
+                            }
                         }
                         KeyboardAction::DeleteWord => {
                             self.edited_active_day = true;
@@ -742,12 +768,23 @@ impl App {
                                 '}', '[', ']',
                             ];
 
-                            self.log_history_stack.push_undo_action(perform_ctrl_delete(
-                                &mut self.content,
-                                &stopping_chars,
-                                self.cursor_line_idx,
-                                self.cursor_char_idx,
-                            ));
+                            let cursor_line_idx = self.cursor_line_idx;
+                            let cursor_char_idx = self.cursor_char_idx;
+
+                            if let Some((content, history_stack)) =
+                                self.active_content_and_history_stack()
+                            {
+                                history_stack.push_undo_action(perform_ctrl_delete(
+                                    content,
+                                    &stopping_chars,
+                                    cursor_line_idx,
+                                    cursor_char_idx,
+                                ));
+                            }
+
+                            if self.current_editor == Some(Editor::Search) {
+                                self.recompute_search();
+                            }
                         }
                         KeyboardAction::DeleteSentence => {
                             self.edited_active_day = true;
@@ -755,38 +792,50 @@ impl App {
 
                             let stopping_chars = ['.', '!', '?', '\"', ';', ':'];
 
-                            self.log_history_stack.push_undo_action(perform_ctrl_delete(
-                                &mut self.content,
-                                &stopping_chars,
-                                self.cursor_line_idx,
-                                self.cursor_char_idx,
-                            ));
+                            let cursor_line_idx = self.cursor_line_idx;
+                            let cursor_char_idx = self.cursor_char_idx;
+
+                            if let Some((content, history_stack)) =
+                                self.active_content_and_history_stack()
+                            {
+                                history_stack.push_undo_action(perform_ctrl_delete(
+                                    content,
+                                    &stopping_chars,
+                                    cursor_line_idx,
+                                    cursor_char_idx,
+                                ));
+                            }
+
+                            if self.current_editor == Some(Editor::Search) {
+                                self.recompute_search();
+                            }
                         }
                         KeyboardAction::Undo => {
                             self.edited_active_day = true;
                             self.last_edit_time = Local::now();
-                            if let Some(editor) = &self.current_editor {
-                                let (history_stack, content) = match editor {
-                                    Editor::Log => (&mut self.log_history_stack, &mut self.content),
-                                    Editor::Search => {
-                                        (&mut self.search_history_stack, &mut self.search_content)
-                                    }
-                                };
+
+                            if let Some((content, history_stack)) =
+                                self.active_content_and_history_stack()
+                            {
                                 history_stack.perform_undo(content);
+                            }
+
+                            if self.current_editor == Some(Editor::Search) {
+                                self.recompute_search();
                             }
                         }
                         KeyboardAction::Redo => {
                             self.edited_active_day = true;
                             self.last_edit_time = Local::now();
-                            if let Some(editor) = &self.current_editor {
-                                let (history_stack, content) = match editor {
-                                    Editor::Log => (&mut self.log_history_stack, &mut self.content),
-                                    Editor::Search => {
-                                        (&mut self.search_history_stack, &mut self.search_content)
-                                    }
-                                };
 
+                            if let Some((content, history_stack)) =
+                                self.active_content_and_history_stack()
+                            {
                                 history_stack.perform_redo(content);
+                            }
+
+                            if self.current_editor == Some(Editor::Search) {
+                                self.recompute_search();
                             }
                         }
                         KeyboardAction::Debug => {
