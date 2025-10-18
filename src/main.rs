@@ -436,10 +436,14 @@ impl App {
                     .push((suggestion.to_string(), Message::AcceptSpellcheck(i)));
             }
 
-            editor_context_menu_contents.push((
-                "Add \"".to_string() + word + "\" to dictionary",
-                Message::AddToDictionary(word.clone()),
-            ));
+            let contains_whitespace = word.chars().any(|chara| chara.is_whitespace());
+
+            if !contains_whitespace {
+                editor_context_menu_contents.push((
+                    "Add \"".to_string() + word + "\" to dictionary",
+                    Message::AddToDictionary(word.clone()),
+                ));
+            }
         }
 
         let composite_editor = ContextMenu::new(log_edit_area, move || {
