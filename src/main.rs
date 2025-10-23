@@ -592,7 +592,28 @@ impl App {
                 if self.content.selection().is_none() {
                     (self.cursor_line_idx, self.cursor_char_idx) = self.content.cursor_position();
                 }
+
                 if let text_editor::Action::Edit(edit) = &action {
+                    // prevent newlines from being entered into the searchbar since it causes issues with the
+                    // highlighted search results, among other things
+                    match edit {
+                        text_editor::Edit::Insert(inserted_char) => {
+                            if *inserted_char == '\n' {
+                                return;
+                            }
+                        }
+                        text_editor::Edit::Paste(pasted_text) => {
+                            let pasted_string = pasted_text.to_string();
+                            if pasted_string.contains("\n") {
+                                return;
+                            }
+                        }
+                        text_editor::Edit::Enter => {
+                            return;
+                        }
+                        _ => {}
+                    }
+
                     let history_event = edit_action_to_history_event(
                         &self.search_content,
                         edit.clone(),
