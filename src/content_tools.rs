@@ -123,6 +123,29 @@ pub fn get_selection_bounds(
     ((cursor_line, cursor_char), selection_length)
 }
 
+/// if the cursor is on the first line, hitting the up arrow does not move the cursor to the start of the content, it
+/// will remain in place. this also occurs when pressing the down arrow on the last of the document. this fixes this
+/// behavior, and properly moves the cursor when an arrow key is pressed on the first/last line of the document
+pub fn correct_arrow_movement(
+    content: &mut Content,
+    old_cursor_position: (usize, usize),
+    direction: Motion,
+) {
+    let new_cursor_position = content.cursor_position();
+
+    if old_cursor_position == new_cursor_position {
+        match direction {
+            text_editor::Motion::Up => {
+                content.perform(Action::Move(text_editor::Motion::DocumentStart));
+            }
+            text_editor::Motion::Down => {
+                content.perform(Action::Move(text_editor::Motion::End));
+            }
+            _ => {}
+        }
+    }
+}
+
 /// performs a ctrl+backspace on the content, for a given set of stopping_chars, which dictates the characters that
 /// stop the ctrl+backspace from continuing. the last_known_cursor is the last place the cursor position was known
 /// before a selection occurred, used for calculating the start of the selection. returns the corrensponding

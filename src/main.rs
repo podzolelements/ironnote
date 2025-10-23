@@ -1,7 +1,7 @@
 use crate::{
     calender::CalenderMessage,
     config::UserSettings,
-    content_tools::{perform_ctrl_backspace, perform_ctrl_delete},
+    content_tools::{correct_arrow_movement, perform_ctrl_backspace, perform_ctrl_delete},
     dictionary::DICTIONARY,
     highlighter::{HighlightSettings, SpellHighlighter},
     history_stack::{HistoryStack, edit_action_to_history_event},
@@ -571,7 +571,13 @@ impl App {
                     _ => {}
                 }
 
-                self.content.perform(action);
+                let old_cursor_position = self.content.cursor_position();
+
+                self.content.perform(action.clone());
+
+                if let Action::Move(motion) = action {
+                    correct_arrow_movement(&mut self.content, old_cursor_position, motion);
+                }
 
                 self.update_spellcheck();
             }
@@ -596,7 +602,13 @@ impl App {
                     self.search_history_stack.push_undo_action(history_event);
                 }
 
-                self.search_content.perform(action);
+                let old_cursor_position = self.search_content.cursor_position();
+
+                self.search_content.perform(action.clone());
+
+                if let Action::Move(motion) = action {
+                    correct_arrow_movement(&mut self.search_content, old_cursor_position, motion);
+                }
 
                 self.recompute_search();
             }
