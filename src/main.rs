@@ -428,36 +428,59 @@ impl App {
             .height(Length::Fill)
             .direction(Direction::Vertical(Scrollbar::new().spacing(0).margin(2)));
 
-        let mut editor_context_menu_contents: Vec<(String, Message)> = vec![];
+        let mut spellcheck_context_menu_contents: Vec<(String, Message)> = vec![];
 
-        if let Some(word) = &self.selected_misspelled_word {
+        if self.selected_misspelled_word.is_some() {
             for (i, suggestion) in self.spell_suggestions.iter().enumerate() {
-                editor_context_menu_contents
+                spellcheck_context_menu_contents
                     .push((suggestion.to_string(), Message::AcceptSpellcheck(i)));
-            }
-
-            let contains_whitespace = word.chars().any(|chara| chara.is_whitespace());
-
-            if !contains_whitespace {
-                editor_context_menu_contents.push((
-                    "Add \"".to_string() + word + "\" to dictionary",
-                    Message::AddToDictionary(word.clone()),
-                ));
             }
         }
 
         let composite_editor = ContextMenu::new(log_edit_area, move || {
-            let mut editor_context_menu = vec![];
+            let mut spellcheck_context_menu_buttons = vec![];
 
-            for (button_text, button_message) in editor_context_menu_contents.iter() {
-                editor_context_menu.push(
-                    widget::button(widget::Text::new(button_text.clone()))
+            for (button_text, button_message) in spellcheck_context_menu_contents.iter() {
+                spellcheck_context_menu_buttons.push(
+                    widget::button(widget::Text::new(button_text.clone()).size(12))
                         .on_press(button_message.clone())
+                        .width(125)
                         .into(),
                 );
             }
 
-            column(editor_context_menu).into()
+            let suggestion_count = spellcheck_context_menu_buttons.len();
+
+            let suggestions_scroll = if suggestion_count < 6 {
+                column(spellcheck_context_menu_buttons)
+            } else {
+                column![widget::scrollable(column(spellcheck_context_menu_buttons)).height(125)]
+            };
+
+            let mut suggestion_menu = if suggestion_count > 0 {
+                column![
+                    widget::Text::new("Did you mean:").size(12),
+                    suggestions_scroll
+                ]
+            } else {
+                column![]
+            };
+
+            if let Some(word) = &self.selected_misspelled_word {
+                let contains_whitespace = word.chars().any(|chara| chara.is_whitespace());
+
+                if !contains_whitespace {
+                    suggestion_menu = suggestion_menu.push(
+                        widget::button(
+                            widget::Text::new("Add \"".to_string() + word + "\" to dictionary")
+                                .size(13),
+                        )
+                        .on_press(Message::AddToDictionary(word.clone()))
+                        .width(125),
+                    )
+                }
+            }
+            suggestion_menu.into()
         });
 
         let right_ui = column![right_top_bar, composite_editor];
