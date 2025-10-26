@@ -367,6 +367,9 @@ impl App {
                 let mac = format!("{:.2}", self.month_store.average_chars());
                 let tac = format!("{:.2}", self.global_store.average_chars());
 
+                let longest_streak = format!("{}", self.global_store.longest_streak());
+                let current_streak = format!("{}", self.global_store.current_streak());
+
                 column![
                     widget::Text::new("Current Day"),
                     widget::Text::new("     Words:      ".to_string() + &dwc),
@@ -381,6 +384,12 @@ impl App {
                     widget::Text::new("     Characters: ".to_string() + &tcc),
                     widget::Text::new("     Average Words: ".to_string() + &taw),
                     widget::Text::new("     Average Chars: ".to_string() + &tac),
+                    widget::Text::new(
+                        "     Current Streak: ".to_string() + &current_streak + " days"
+                    ),
+                    widget::Text::new(
+                        "     Longest Streak: ".to_string() + &longest_streak + " days"
+                    ),
                 ]
             }
             Tab::Todo => {

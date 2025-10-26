@@ -30,6 +30,10 @@ impl DayStore {
     pub fn date(&self) -> String {
         self.date.clone()
     }
+
+    pub fn contains_entry(&self) -> bool {
+        !(self.entry_text.is_empty() || self.entry_text == "\n")
+    }
 }
 
 impl Stats for DayStore {
@@ -68,7 +72,7 @@ impl MonthStore {
     pub fn edited_days(&self) -> [bool; 31] {
         let mut edited_days = [false; 31];
         for (i, day_store) in self.days.iter().enumerate().take(31) {
-            edited_days[i] = !day_store.entry_text.is_empty();
+            edited_days[i] = day_store.contains_entry();
         }
 
         edited_days
@@ -179,7 +183,7 @@ impl MonthStore {
                 continue;
             }
 
-            if new_entry.entry_text.is_empty() || new_entry.entry_text == "\n" {
+            if !new_entry.contains_entry() {
                 data.remove_entry(&new_entry.date);
             } else {
                 data.insert(
@@ -287,6 +291,52 @@ impl GlobalStore {
 
     pub fn edited_day_count(&self) -> usize {
         self.month_stores().map(|ms| ms.edited_day_count()).sum()
+    }
+
+    /// gets the number of the longest streak of consecutively edited days
+    pub fn longest_streak(&self) -> u32 {
+        let mut longest_found_streak = 0;
+        let mut current_search_streak = 0;
+
+        for month in self.month_stores() {
+            for day in month.days() {
+                if day.contains_entry() {
+                    current_search_streak += 1;
+                } else {
+                    if current_search_streak > longest_found_streak {
+                        longest_found_streak = current_search_streak;
+                    }
+
+                    current_search_streak = 0;
+                }
+            }
+        }
+
+        longest_found_streak
+    }
+
+    /// gets the number of consecutive edited days that connect to the last (most recent) edited day in the global store
+    pub fn current_streak(&self) -> u32 {
+        let mut current_streak = 0;
+        let mut found_most_recent_day = false;
+
+        for month in self.month_stores().rev() {
+            for day in month.days().rev() {
+                if !day.contains_entry() && !found_most_recent_day {
+                    continue;
+                }
+                if !day.contains_entry() && found_most_recent_day {
+                    return current_streak;
+                }
+
+                if day.contains_entry() {
+                    found_most_recent_day = true;
+                    current_streak += 1;
+                }
+            }
+        }
+
+        current_streak
     }
 }
 
