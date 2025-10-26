@@ -1,7 +1,7 @@
 use crate::{
     filetools::{self, setup_savedata_dirs},
     logbox::LOGBOX,
-    misc_tools,
+    misc_tools::{self, string_to_datetime},
     statistics::{BoundedDateStats, Stats},
 };
 use chrono::{DateTime, Datelike, Days, Local};
@@ -289,8 +289,110 @@ impl GlobalStore {
         self.entries.iter()
     }
 
+    /// retrieves the day store at the given date, if it exists
+    pub fn get_day(&self, datetime: DateTime<Local>) -> Option<DayStore> {
+        let year_month = datetime.format("%Y-%m").to_string();
+        let day = datetime.day0() as usize;
+
+        for month_store in self.month_stores() {
+            if month_store.month == year_month {
+                return Some(month_store.get_day_store(day));
+            }
+        }
+
+        None
+    }
+
     pub fn edited_day_count(&self) -> usize {
         self.month_stores().map(|ms| ms.edited_day_count()).sum()
+    }
+
+    /// returns the datetime of the first edited day in the store, if it exists
+    pub fn first_edited_day(&self) -> Option<DateTime<Local>> {
+        for month in self.month_stores() {
+            for day in month.days() {
+                if day.contains_entry() {
+                    return Some(string_to_datetime(&day.date()));
+                }
+            }
+        }
+
+        None
+    }
+
+    /// returns the datetime of the last edited day in the store, if it exists
+    pub fn last_edited_day(&self) -> Option<DateTime<Local>> {
+        for month in self.month_stores().rev() {
+            for day in month.days().rev() {
+                if day.contains_entry() {
+                    return Some(string_to_datetime(&day.date()));
+                }
+            }
+        }
+
+        None
+    }
+
+    /// returns the previously edited day relative to the given datetime, if it exists
+    pub fn get_previous_edited_day(
+        &self,
+        active_entry: DateTime<Local>,
+    ) -> Option<DateTime<Local>> {
+        let earliest_entry = self.first_edited_day()?;
+
+        if active_entry.date_naive() <= earliest_entry.date_naive() {
+            return None;
+        }
+
+        let mut test_datetime = active_entry
+            .checked_sub_days(Days::new(1))
+            .expect("couldn't subtract day");
+
+        while test_datetime.date_naive() >= earliest_entry.date_naive() {
+            if !self
+                .get_day(test_datetime)
+                .is_some_and(|ds| ds.contains_entry())
+            {
+                test_datetime = test_datetime
+                    .checked_sub_days(Days::new(1))
+                    .expect("couldn't subtract day");
+                continue;
+            }
+
+            return Some(test_datetime);
+        }
+
+        None
+    }
+
+    /// returns the next edited day relative to the given datetime, if it exists
+    pub fn get_next_edited_day(&self, active_entry: DateTime<Local>) -> Option<DateTime<Local>> {
+        let latest_entry = self.last_edited_day()?;
+
+        if active_entry.date_naive() >= latest_entry.date_naive() {
+            return None;
+        }
+
+        let mut test_datetime = active_entry
+            .checked_add_days(Days::new(1))
+            .expect("couldn't add day");
+
+        while test_datetime.date_naive() <= latest_entry.date_naive() {
+            if !self
+                .get_day(test_datetime)
+                .is_some_and(|ds| ds.contains_entry())
+            {
+                test_datetime = test_datetime
+                    .checked_add_days(Days::new(1))
+                    .expect("couldn't add day");
+
+                continue;
+            }
+
+            return Some(test_datetime);
+        }
+
+        None
     }
 
     /// gets the number of the longest streak of consecutively edited days

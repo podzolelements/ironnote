@@ -520,10 +520,20 @@ impl App {
                     self.write_active_entry_to_store();
                     self.edited_active_day = false;
                 }
-                let new_datetime = self
+
+                let previous_day = self
                     .active_date_time
                     .checked_sub_days(Days::new(1))
                     .expect("failed to go to previous day");
+
+                let new_datetime = if self.day_store.contains_entry() {
+                    previous_day
+                } else {
+                    self.global_store
+                        .get_previous_edited_day(self.active_date_time)
+                        .unwrap_or(previous_day)
+                };
+
                 self.reload_date(new_datetime);
             }
             Message::ForwardOneDay => {
@@ -531,10 +541,19 @@ impl App {
                     self.write_active_entry_to_store();
                     self.edited_active_day = false;
                 }
-                let new_datetime = self
+
+                let next_day = self
                     .active_date_time
                     .checked_add_days(Days::new(1))
                     .expect("failed to go to next day");
+
+                let new_datetime = if self.day_store.contains_entry() {
+                    next_day
+                } else {
+                    self.global_store
+                        .get_next_edited_day(self.active_date_time)
+                        .unwrap_or(next_day)
+                };
 
                 self.reload_date(new_datetime);
             }
@@ -909,6 +928,16 @@ impl App {
                         }
                         KeyboardAction::Debug => {
                             println!("debug!");
+                            // println!("{:?}", self.global_store.get_day(Local::now()));
+                            println!(
+                                "{:?}",
+                                self.global_store
+                                    .get_previous_edited_day(self.active_date_time)
+                            );
+                            println!(
+                                "{:?}",
+                                self.global_store.get_next_edited_day(self.active_date_time)
+                            );
                         }
                     }
                 }
