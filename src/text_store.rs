@@ -4,7 +4,7 @@ use crate::{
     misc_tools::{self, string_to_datetime},
     statistics::{BoundedDateStats, Stats},
 };
-use chrono::{DateTime, Datelike, Days, Local};
+use chrono::{DateTime, Datelike, Days, Local, Months, NaiveDate};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -65,6 +65,20 @@ impl Default for MonthStore {
 }
 
 impl MonthStore {
+    /// creates a new month store from the given naive_date
+    pub fn new(naive_date: NaiveDate) -> Self {
+        let days_in_month = naive_date.num_days_in_month();
+
+        let days = vec![DayStore::default(); days_in_month as usize];
+        let month = naive_date.format("%Y-%m").to_string();
+
+        Self {
+            days,
+            month,
+            days_in_month,
+        }
+    }
+
     pub fn get_day_store(&self, day: usize) -> DayStore {
         self.days[day].clone()
     }
@@ -267,20 +281,64 @@ impl GlobalStore {
                 let mut month_store = MonthStore::default();
                 month_store.load_month(date_time);
 
-                self.entries.push(month_store);
+                self.add_month_to_store(month_store);
             }
         }
 
-        self.entries
-            .sort_by_key(|month_store| month_store.month.clone());
+        self.add_empty_months();
     }
 
-    pub fn push_month_store(&mut self, new_month_store: MonthStore) {
+    /// since adding months can be discontinuous in time, the missing ones should be added to ensure time continuity
+    fn add_empty_months(&mut self) {
+        self.sort_month_stores();
+
+        let current_months: Vec<NaiveDate> = self
+            .entries
+            .iter()
+            .map(|g| string_to_datetime(&(g.month.clone() + "-01")).date_naive())
+            .collect();
+
+        if current_months.len() < 2 {
+            return;
+        }
+
+        let start_month = current_months.first().expect("couldn't get start month");
+        let mut current_month = *start_month;
+        let end_month = current_months.last().expect("couldn't get end month");
+
+        let mut missing_months = vec![];
+
+        while current_month < *end_month {
+            if !current_months.contains(&current_month) {
+                missing_months.push(current_month);
+            }
+
+            current_month = current_month
+                .checked_add_months(Months::new(1))
+                .expect("couldn't add month");
+        }
+
+        for month_date in missing_months {
+            self.add_month_to_store(MonthStore::new(month_date));
+        }
+
+        self.sort_month_stores();
+    }
+
+    fn add_month_to_store(&mut self, new_month_store: MonthStore) {
         self.entries
             .retain(|month_store| month_store.month != new_month_store.month.clone());
 
         self.entries.push(new_month_store);
+    }
 
+    pub fn push_month_store(&mut self, new_month_store: MonthStore) {
+        self.add_month_to_store(new_month_store);
+        self.add_empty_months();
+        self.sort_month_stores();
+    }
+
+    fn sort_month_stores(&mut self) {
         self.entries
             .sort_by_key(|month_store| month_store.month.clone());
     }

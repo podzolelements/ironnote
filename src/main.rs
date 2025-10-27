@@ -928,16 +928,6 @@ impl App {
                         }
                         KeyboardAction::Debug => {
                             println!("debug!");
-                            // println!("{:?}", self.global_store.get_day(Local::now()));
-                            println!(
-                                "{:?}",
-                                self.global_store
-                                    .get_previous_edited_day(self.active_date_time)
-                            );
-                            println!(
-                                "{:?}",
-                                self.global_store.get_next_edited_day(self.active_date_time)
-                            );
                         }
                     }
                 }
