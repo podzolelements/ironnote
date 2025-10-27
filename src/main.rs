@@ -1,7 +1,10 @@
 use crate::{
     calender::CalenderMessage,
     config::UserSettings,
-    content_tools::{correct_arrow_movement, perform_ctrl_backspace, perform_ctrl_delete},
+    content_tools::{
+        correct_arrow_movement, locate_actual_line, perform_ctrl_backspace, perform_ctrl_delete,
+        total_actual_line_count,
+    },
     dictionary::DICTIONARY,
     highlighter::{HighlightSettings, SpellHighlighter},
     history_stack::{HistoryStack, edit_action_to_history_event},
@@ -21,7 +24,6 @@ use iced::{
     keyboard::{self},
     widget::{
         self, Column, column, row,
-        scrollable::{Direction, Scrollbar},
         text::Wrapping,
         text_editor::{self, Action, Content},
     },
@@ -420,7 +422,7 @@ impl App {
             .size(13)
             .font(Font::DEFAULT)
             .wrapping(Wrapping::WordOrGlyph)
-            .height(Length::Shrink)
+            .height(Length::Fill)
             .highlight_with::<SpellHighlighter>(
                 HighlightSettings {
                     cursor_line_idx,
@@ -432,11 +434,6 @@ impl App {
                 highlighter::highlight_to_format,
             );
 
-        let log_edit_area = widget::scrollable(log_text_input)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .direction(Direction::Vertical(Scrollbar::new().spacing(0).margin(2)));
-
         let mut spellcheck_context_menu_contents: Vec<(String, Message)> = vec![];
 
         if self.selected_misspelled_word.is_some() {
@@ -446,7 +443,7 @@ impl App {
             }
         }
 
-        let composite_editor = ContextMenu::new(log_edit_area, move || {
+        let composite_editor = ContextMenu::new(log_text_input, move || {
             let mut spellcheck_context_menu_buttons = vec![];
 
             for (button_text, button_message) in spellcheck_context_menu_contents.iter() {
@@ -595,6 +592,19 @@ impl App {
                             self.cursor_char_idx,
                         );
                         self.log_history_stack.push_undo_action(history_event);
+                    }
+                    Action::Scroll { lines: _ } => {
+                        let current_line = locate_actual_line(&mut self.content);
+
+                        let total_lines = total_actual_line_count(&mut self.content);
+
+                        println!("total lines: {}", total_lines);
+
+                        if total_lines < 38 {
+                            return;
+                        }
+
+                        println!("current: {:?}", current_line);
                     }
                     _ => {}
                 }
