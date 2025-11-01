@@ -92,55 +92,6 @@ pub fn locate_cursor_start(
     }
 }
 
-pub fn locate_actual_line(content: &mut Content) -> u32 {
-    if content.selection().is_some() {
-        todo!();
-    }
-
-    let intial_cursor_position = content.cursor_position();
-
-    let mut line_count = 0;
-
-    let mut current_cursor_position = intial_cursor_position.clone();
-
-    loop {
-        content.perform(Action::Move(Motion::Up));
-        let new_cursor_position = content.cursor_position();
-
-        line_count += 1;
-
-        if new_cursor_position == current_cursor_position {
-            break;
-        }
-
-        current_cursor_position = new_cursor_position;
-    }
-
-    for _i in 0..line_count {
-        content.perform(Action::Move(Motion::Down));
-    }
-
-    move_cursor(content, intial_cursor_position.0, intial_cursor_position.1);
-
-    line_count
-}
-
-pub fn total_actual_line_count(content: &mut Content) -> u32 {
-    if content.selection().is_some() {
-        todo!();
-    }
-
-    let cursor_position = content.cursor_position();
-
-    content.perform(Action::Move(Motion::DocumentEnd));
-
-    let line_count = locate_actual_line(content);
-
-    move_cursor(content, cursor_position.0, cursor_position.1);
-
-    line_count
-}
-
 /// selects the number of characters specified in length, starting at line index, char index
 pub fn select_text(content: &mut Content, line_start: usize, char_start: usize, length: usize) {
     move_cursor(content, line_start, char_start);
