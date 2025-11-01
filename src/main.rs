@@ -2,7 +2,8 @@ use crate::{
     calender::CalenderMessage,
     config::UserSettings,
     content_tools::{
-        correct_arrow_movement, cursor_actual_line, perform_ctrl_backspace, perform_ctrl_delete,
+        correct_arrow_movement, locate_actual_line, perform_ctrl_backspace, perform_ctrl_delete,
+        total_actual_line_count,
     },
     dictionary::DICTIONARY,
     highlighter::{HighlightSettings, SpellHighlighter},
@@ -62,7 +63,6 @@ struct App {
     current_editor: Option<Editor>,
     cursor_line_idx: usize,
     cursor_char_idx: usize,
-    current_scroll_level: u32,
     selected_misspelled_word: Option<String>,
     spell_suggestions: Vec<String>,
     last_edit_time: DateTime<Local>,
@@ -85,8 +85,6 @@ enum KeyboardAction {
     Undo,
     Redo,
     Debug,
-    JumpToContentStart,
-    JumpToContentEnd,
 }
 
 #[derive(Debug, Clone)]
@@ -123,8 +121,6 @@ impl App {
             .get_day_store(self.active_date_time.day0() as usize);
 
         self.content = text_editor::Content::with_text(&self.day_store.get_day_text());
-
-        self.current_scroll_level = 0;
     }
 
     fn write_active_entry_to_store(&mut self) {
@@ -597,41 +593,18 @@ impl App {
                         );
                         self.log_history_stack.push_undo_action(history_event);
                     }
-                    Action::Scroll { lines } => {
-                        let lines_per_scroll = 1;
+                    Action::Scroll { lines: _ } => {
+                        let current_line = locate_actual_line(&mut self.content);
 
-                        match lines.signum() {
-                            1 => {
-                                let current_actual_line = cursor_actual_line(&mut self.content);
+                        let total_lines = total_actual_line_count(&mut self.content);
 
-                                // prevent 'scroll flashing' by stopping the scroll that would cause the flash from
-                                // even happening. unfortunately, this still prevents the cursor from going up off
-                                // screen, but at least the flash is prevented
-                                if current_actual_line
-                                    <= (self.current_scroll_level + lines_per_scroll)
-                                {
-                                    // TODO: allow single scrolls for lines_per_scroll > 1
-                                    return;
-                                }
+                        println!("total lines: {}", total_lines);
 
-                                self.current_scroll_level += lines_per_scroll;
-                                self.content.perform(Action::Scroll {
-                                    lines: (lines_per_scroll as i32),
-                                });
-                            }
-                            -1 => {
-                                if self.current_scroll_level > (lines_per_scroll - 1) {
-                                    self.current_scroll_level -= lines_per_scroll;
-
-                                    self.content.perform(Action::Scroll {
-                                        lines: -1 * (lines_per_scroll as i32),
-                                    });
-                                }
-                            }
-                            _ => {}
+                        if total_lines < 38 {
+                            return;
                         }
-                        // since we are intercepting the scrolls, do not proceed with standard action handling
-                        return;
+
+                        println!("current: {:?}", current_line);
                     }
                     _ => {}
                 }
@@ -966,22 +939,6 @@ impl App {
                         KeyboardAction::Debug => {
                             println!("debug!");
                         }
-                        KeyboardAction::JumpToContentStart => {
-                            if let Some((active_content, _)) =
-                                self.active_content_and_history_stack()
-                            {
-                                active_content
-                                    .perform(Action::Move(text_editor::Motion::DocumentStart));
-                            }
-                        }
-                        KeyboardAction::JumpToContentEnd => {
-                            if let Some((active_content, _)) =
-                                self.active_content_and_history_stack()
-                            {
-                                active_content
-                                    .perform(Action::Move(text_editor::Motion::DocumentEnd));
-                            }
-                        }
                     }
                 }
             }
@@ -1078,12 +1035,6 @@ impl Default for App {
         keybinds
             .bind("Ctrl+d", KeyboardAction::Debug)
             .expect("couldn't bind Ctrl+d");
-        keybinds
-            .bind("Ctrl+Up", KeyboardAction::JumpToContentStart)
-            .expect("couldn't bind Ctrl+Up");
-        keybinds
-            .bind("Ctrl+Down", KeyboardAction::JumpToContentEnd)
-            .expect("couldn't bind Ctrl+Down");
 
         let mut df = Self {
             window_title: String::default(),
@@ -1104,7 +1055,6 @@ impl Default for App {
             current_editor: None,
             cursor_line_idx: 0,
             cursor_char_idx: 0,
-            current_scroll_level: 0,
             selected_misspelled_word: None,
             spell_suggestions: vec![],
             last_edit_time: Local::now(),

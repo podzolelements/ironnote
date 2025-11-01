@@ -92,18 +92,15 @@ pub fn locate_cursor_start(
     }
 }
 
-/// this locates the "actual line number" the cursor takes up on the content. for long lines (as in a single line
-/// that's width wraps to the next line) the newline count does not return the 'actual line' as visible on the
-/// text_editor. this returns the line count adjusted for these wrappings, regardless of the newline count. the Content
-/// parameter must be a &mut, since Contents can't be cloned, and it requires movements to determine the position.
-pub fn cursor_actual_line(content: &mut Content) -> u32 {
+pub fn locate_actual_line(content: &mut Content) -> u32 {
     if content.selection().is_some() {
-        todo!("actual lines with selections");
+        todo!();
     }
 
     let intial_cursor_position = content.cursor_position();
 
     let mut line_count = 0;
+
     let mut current_cursor_position = intial_cursor_position.clone();
 
     loop {
@@ -119,12 +116,27 @@ pub fn cursor_actual_line(content: &mut Content) -> u32 {
         current_cursor_position = new_cursor_position;
     }
 
-    // since move_cursor() is so expensive, this is a decent approximation of the original cursor position
-    for _i in 0..(line_count - 1) {
+    for _i in 0..line_count {
         content.perform(Action::Move(Motion::Down));
     }
 
     move_cursor(content, intial_cursor_position.0, intial_cursor_position.1);
+
+    line_count
+}
+
+pub fn total_actual_line_count(content: &mut Content) -> u32 {
+    if content.selection().is_some() {
+        todo!();
+    }
+
+    let cursor_position = content.cursor_position();
+
+    content.perform(Action::Move(Motion::DocumentEnd));
+
+    let line_count = locate_actual_line(content);
+
+    move_cursor(content, cursor_position.0, cursor_position.1);
 
     line_count
 }
