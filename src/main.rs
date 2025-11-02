@@ -6,6 +6,7 @@ use crate::{
     highlighter::{HighlightSettings, SpellHighlighter},
     history_stack::{HistoryStack, edit_action_to_history_event},
     logbox::LOGBOX,
+    misc_tools::point_on_edge_of_text,
     search_table::{SearchTable, SearchTableMessage},
     statistics::{BoundedDateStats, Stats},
     text_store::{DayStore, GlobalStore, MonthStore},
@@ -16,12 +17,12 @@ use iced::{
     Alignment::Center,
     Event, Font,
     Length::{self, FillPortion},
-    Subscription,
+    Subscription, Task,
     event::listen_with,
     keyboard::{self},
     widget::{
         self, Column, column, row,
-        scrollable::{Direction, Scrollbar},
+        scrollable::{Direction, Id, RelativeOffset, Scrollbar, snap_to},
         text::Wrapping,
         text_editor::{self, Action, Content},
     },
@@ -97,7 +98,6 @@ pub enum Message {
     BackOneDay,
     ForwardOneDay,
     JumpToToday,
-    UpdateCalender,
     Edit(text_editor::Action),
     EditSearch(text_editor::Action),
     TempTopBarMessage,
@@ -290,6 +290,8 @@ impl App {
     }
 }
 
+const LOG_EDIT_AREA_ID: &str = "log_edit_area";
+
 impl App {
     fn title(&self) -> String {
         self.window_title.clone()
@@ -435,7 +437,8 @@ impl App {
         let log_edit_area = widget::scrollable(log_text_input)
             .width(Length::Fill)
             .height(Length::Fill)
-            .direction(Direction::Vertical(Scrollbar::new().spacing(0).margin(2)));
+            .direction(Direction::Vertical(Scrollbar::new().spacing(0).margin(2)))
+            .id(Id::new(LOG_EDIT_AREA_ID));
 
         let mut spellcheck_context_menu_contents: Vec<(String, Message)> = vec![];
 
@@ -513,7 +516,7 @@ impl App {
         layout
     }
 
-    pub fn update(&mut self, message: Message) {
+    pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::BackOneDay => {
                 if self.edited_active_day {
@@ -535,6 +538,8 @@ impl App {
                 };
 
                 self.reload_date(new_datetime);
+
+                snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::START)
             }
             Message::ForwardOneDay => {
                 if self.edited_active_day {
@@ -556,13 +561,14 @@ impl App {
                 };
 
                 self.reload_date(new_datetime);
+
+                snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::START)
             }
             Message::JumpToToday => {
                 let new_datetime = Local::now();
                 self.reload_date(new_datetime);
-            }
-            Message::UpdateCalender => {
-                println!("cal");
+
+                snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::START)
             }
             Message::Edit(action) => {
                 self.current_editor = Some(Editor::Log);
@@ -608,6 +614,16 @@ impl App {
                 }
 
                 self.update_spellcheck();
+
+                let text = self.content.text();
+                let (cursor_y, cursor_x) = self.content.cursor_position();
+                let cursor_location = point_on_edge_of_text(&text, cursor_x, cursor_y, 3, 400);
+
+                match cursor_location {
+                    Some(true) => snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::START),
+                    Some(false) => snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::END),
+                    None => Task::none(),
+                }
             }
             Message::EditSearch(action) => {
                 if self.current_editor != Some(Editor::Search) {
@@ -627,17 +643,17 @@ impl App {
                     match edit {
                         text_editor::Edit::Insert(inserted_char) => {
                             if *inserted_char == '\n' {
-                                return;
+                                return Task::none();
                             }
                         }
                         text_editor::Edit::Paste(pasted_text) => {
                             let pasted_string = pasted_text.to_string();
                             if pasted_string.contains("\n") {
-                                return;
+                                return Task::none();
                             }
                         }
                         text_editor::Edit::Enter => {
-                            return;
+                            return Task::none();
                         }
                         _ => {}
                     }
@@ -660,104 +676,113 @@ impl App {
                 }
 
                 self.recompute_search();
+
+                Task::none()
             }
             Message::TempTopBarMessage => {
                 println!("topbar");
+
+                Task::none()
             }
-            Message::Calender(calmes) => match calmes {
-                CalenderMessage::DayButton(new_day, month) => {
-                    if self.edited_active_day {
-                        self.write_active_entry_to_store();
-                        self.edited_active_day = false;
+            Message::Calender(calmes) => {
+                match calmes {
+                    CalenderMessage::DayButton(new_day, month) => {
+                        if self.edited_active_day {
+                            self.write_active_entry_to_store();
+                            self.edited_active_day = false;
+                        }
+
+                        let new_datetime = match month {
+                            calender::Month::Last => {
+                                let days_in_last_month = if self.active_date_time.month() == 1 {
+                                    31
+                                } else {
+                                    let nd = NaiveDate::from_ymd_opt(
+                                        self.active_date_time.year(),
+                                        self.active_date_time.month() - 1,
+                                        1,
+                                    )
+                                    .expect("bad date");
+
+                                    nd.num_days_in_month() as u32
+                                };
+
+                                let days_to_go_back =
+                                    (days_in_last_month - new_day) + self.active_date_time.day();
+
+                                self.active_date_time
+                                    .checked_sub_days(Days::new(days_to_go_back as u64))
+                                    .expect("couldn't go into the past")
+                            }
+                            calender::Month::Current => {
+                                let delta_day =
+                                    (new_day as i32) - (self.active_date_time.day() as i32);
+
+                                let mag_delta_day = delta_day.unsigned_abs() as u64;
+
+                                if delta_day == 0 {
+                                    return Task::none();
+                                }
+                                if delta_day < 0 {
+                                    self.active_date_time
+                                        .checked_sub_days(Days::new(mag_delta_day))
+                                        .expect("couldn't jump into the past")
+                                } else {
+                                    self.active_date_time
+                                        .checked_add_days(Days::new(mag_delta_day))
+                                        .expect("couldn't jump into the future")
+                                }
+                            }
+                            calender::Month::Next => {
+                                let days_to_go_forward = (self.active_date_time.num_days_in_month()
+                                    as u64
+                                    - self.active_date_time.day() as u64)
+                                    + new_day as u64;
+
+                                self.active_date_time
+                                    .checked_add_days(Days::new(days_to_go_forward))
+                                    .expect("couldn't go into the future")
+                            }
+                        };
+
+                        self.reload_date(new_datetime);
                     }
+                    CalenderMessage::BackMonth => {
+                        let new_datetime = self
+                            .active_date_time
+                            .checked_sub_months(Months::new(1))
+                            .expect("couldn't go back a month");
 
-                    let new_datetime = match month {
-                        calender::Month::Last => {
-                            let days_in_last_month = if self.active_date_time.month() == 1 {
-                                31
-                            } else {
-                                let nd = NaiveDate::from_ymd_opt(
-                                    self.active_date_time.year(),
-                                    self.active_date_time.month() - 1,
-                                    1,
-                                )
-                                .expect("bad date");
+                        self.reload_date(new_datetime);
+                    }
+                    CalenderMessage::ForwardMonth => {
+                        let new_datetime = self
+                            .active_date_time
+                            .checked_add_months(Months::new(1))
+                            .expect("couldn't go forward a month");
 
-                                nd.num_days_in_month() as u32
-                            };
+                        self.reload_date(new_datetime);
+                    }
+                    CalenderMessage::BackYear => {
+                        let new_datetime = self
+                            .active_date_time
+                            .checked_sub_months(Months::new(12))
+                            .expect("couldn't go back a year");
 
-                            let days_to_go_back =
-                                (days_in_last_month - new_day) + self.active_date_time.day();
+                        self.reload_date(new_datetime);
+                    }
+                    CalenderMessage::ForwardYear => {
+                        let new_datetime = self
+                            .active_date_time
+                            .checked_add_months(Months::new(12))
+                            .expect("couldn't go forward a year");
 
-                            self.active_date_time
-                                .checked_sub_days(Days::new(days_to_go_back as u64))
-                                .expect("couldn't go into the past")
-                        }
-                        calender::Month::Current => {
-                            let delta_day = (new_day as i32) - (self.active_date_time.day() as i32);
-
-                            let mag_delta_day = delta_day.unsigned_abs() as u64;
-
-                            if delta_day == 0 {
-                                return;
-                            }
-                            if delta_day < 0 {
-                                self.active_date_time
-                                    .checked_sub_days(Days::new(mag_delta_day))
-                                    .expect("couldn't jump into the past")
-                            } else {
-                                self.active_date_time
-                                    .checked_add_days(Days::new(mag_delta_day))
-                                    .expect("couldn't jump into the future")
-                            }
-                        }
-                        calender::Month::Next => {
-                            let days_to_go_forward = (self.active_date_time.num_days_in_month()
-                                as u64
-                                - self.active_date_time.day() as u64)
-                                + new_day as u64;
-
-                            self.active_date_time
-                                .checked_add_days(Days::new(days_to_go_forward))
-                                .expect("couldn't go into the future")
-                        }
-                    };
-
-                    self.reload_date(new_datetime);
+                        self.reload_date(new_datetime);
+                    }
                 }
-                CalenderMessage::BackMonth => {
-                    let new_datetime = self
-                        .active_date_time
-                        .checked_sub_months(Months::new(1))
-                        .expect("couldn't go back a month");
 
-                    self.reload_date(new_datetime);
-                }
-                CalenderMessage::ForwardMonth => {
-                    let new_datetime = self
-                        .active_date_time
-                        .checked_add_months(Months::new(1))
-                        .expect("couldn't go forward a month");
-
-                    self.reload_date(new_datetime);
-                }
-                CalenderMessage::BackYear => {
-                    let new_datetime = self
-                        .active_date_time
-                        .checked_sub_months(Months::new(12))
-                        .expect("couldn't go back a year");
-
-                    self.reload_date(new_datetime);
-                }
-                CalenderMessage::ForwardYear => {
-                    let new_datetime = self
-                        .active_date_time
-                        .checked_add_months(Months::new(12))
-                        .expect("couldn't go forward a year");
-
-                    self.reload_date(new_datetime);
-                }
-            },
+                Task::none()
+            }
             Message::KeyEvent(event) => {
                 if let Some(action) = self.keybinds.dispatch(event) {
                     match action {
@@ -931,14 +956,20 @@ impl App {
                         }
                     }
                 }
+
+                Task::none()
             }
             Message::TableSearch(table_message) => {
                 let SearchTableMessage::EntryClicked(table_time) = table_message;
 
                 self.reload_date(table_time);
+
+                snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::START)
             }
             Message::TabSwitched(tab) => {
                 self.current_tab = tab;
+
+                Task::none()
             }
             Message::AcceptSpellcheck(suggestion_idx) => {
                 let selected_suggestion = self.spell_suggestions[suggestion_idx].clone();
@@ -954,26 +985,32 @@ impl App {
                 self.log_history_stack.push_undo_action(history_event);
 
                 self.content.perform(Action::Edit(equivalent_edit));
+
+                Task::none()
             }
             Message::AddToDictionary(word) => {
                 dictionary::add_word_to_personal_dictionary(&word);
+
+                Task::none()
             }
             Message::Render => {
                 self.view();
+
+                Task::none()
             }
             Message::ClearSearch => {
                 self.search_content = Content::new();
 
                 self.update(Message::EditSearch(Action::Move(
                     text_editor::Motion::DocumentEnd,
-                )));
+                )))
             }
             Message::ToggleSearchCase => {
                 self.settings.ignore_search_case = !self.settings.ignore_search_case;
 
                 self.update(Message::EditSearch(Action::Move(
                     text_editor::Motion::DocumentEnd,
-                )));
+                )))
             }
         }
     }
@@ -1054,7 +1091,7 @@ impl Default for App {
         df.month_store.load_month(Local::now());
         df.global_store.load_all();
 
-        df.update(Message::JumpToToday);
+        let _ = df.update(Message::JumpToToday);
 
         df
     }
