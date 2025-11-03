@@ -84,6 +84,8 @@ enum KeyboardAction {
     Undo,
     Redo,
     Debug,
+    JumpToContentStart,
+    JumpToContentEnd,
 }
 
 #[derive(Debug, Clone)]
@@ -954,6 +956,26 @@ impl App {
                         KeyboardAction::Debug => {
                             println!("debug!");
                         }
+                        KeyboardAction::JumpToContentStart => {
+                            if let Some((active_content, _)) =
+                                self.active_content_and_history_stack()
+                            {
+                                active_content
+                                    .perform(Action::Move(text_editor::Motion::DocumentStart));
+
+                                return snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::START);
+                            }
+                        }
+                        KeyboardAction::JumpToContentEnd => {
+                            if let Some((active_content, _)) =
+                                self.active_content_and_history_stack()
+                            {
+                                active_content
+                                    .perform(Action::Move(text_editor::Motion::DocumentEnd));
+
+                                return snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::END);
+                            }
+                        }
                     }
                 }
 
@@ -1062,6 +1084,12 @@ impl Default for App {
         keybinds
             .bind("Ctrl+d", KeyboardAction::Debug)
             .expect("couldn't bind Ctrl+d");
+        keybinds
+            .bind("Ctrl+Up", KeyboardAction::JumpToContentStart)
+            .expect("couldn't bind Ctrl+Up");
+        keybinds
+            .bind("Ctrl+Down", KeyboardAction::JumpToContentEnd)
+            .expect("couldn't bind Ctrl+Down");
 
         let mut df = Self {
             window_title: String::default(),
