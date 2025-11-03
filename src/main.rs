@@ -2,6 +2,7 @@ use crate::{
     calender::CalenderMessage,
     config::UserSettings,
     content_tools::{correct_arrow_movement, perform_ctrl_backspace, perform_ctrl_delete},
+    context_menu::context_menu,
     dictionary::DICTIONARY,
     highlighter::{HighlightSettings, SpellHighlighter},
     history_stack::{HistoryStack, edit_action_to_history_event},
@@ -17,22 +18,22 @@ use iced::{
     Alignment::Center,
     Event, Font,
     Length::{self, FillPortion},
-    Subscription, Task,
+    Point, Subscription, Task,
     event::listen_with,
     keyboard::{self},
     widget::{
-        self, Column, column, row,
+        self, Column, column, mouse_area, row,
         scrollable::{Direction, Id, RelativeOffset, Scrollbar, snap_to},
         text::Wrapping,
         text_editor::{self, Action, Content},
     },
 };
-use iced_aw::ContextMenu;
 use keybinds::Keybinds;
 
 mod calender;
 mod config;
 mod content_tools;
+mod context_menu;
 mod dictionary;
 mod filetools;
 mod highlighter;
@@ -66,6 +67,9 @@ struct App {
     spell_suggestions: Vec<String>,
     last_edit_time: DateTime<Local>,
     settings: UserSettings,
+    show_context_menu: bool,
+    mouse_position: Point,
+    captured_mouse_position: Point,
 }
 
 #[derive(Debug, PartialEq)]
@@ -112,6 +116,9 @@ pub enum Message {
     Render,
     ClearSearch,
     ToggleSearchCase,
+    MouseMoved(Point),
+    RightClickEditArea,
+    ExitContextMenu,
 }
 
 impl App {
@@ -442,6 +449,10 @@ impl App {
             .direction(Direction::Vertical(Scrollbar::new().spacing(0).margin(2)))
             .id(Id::new(LOG_EDIT_AREA_ID));
 
+        let mouse_log_edit_area = mouse_area(log_edit_area)
+            .on_right_release(Message::RightClickEditArea)
+            .on_move(Message::MouseMoved);
+
         let mut spellcheck_context_menu_contents: Vec<(String, Message)> = vec![];
 
         if self.selected_misspelled_word.is_some() {
@@ -451,53 +462,57 @@ impl App {
             }
         }
 
-        let composite_editor = ContextMenu::new(log_edit_area, move || {
-            let mut spellcheck_context_menu_buttons = vec![];
+        let mut spellcheck_context_menu_buttons = column![];
 
-            for (button_text, button_message) in spellcheck_context_menu_contents.iter() {
-                spellcheck_context_menu_buttons.push(
-                    widget::button(widget::Text::new(button_text.clone()).size(12))
-                        .on_press(button_message.clone())
-                        .width(125)
-                        .into(),
-                );
-            }
+        for (button_text, button_message) in spellcheck_context_menu_contents.iter() {
+            spellcheck_context_menu_buttons = spellcheck_context_menu_buttons.push(
+                widget::button(widget::Text::new(button_text.clone()).size(12))
+                    .on_press(button_message.clone())
+                    .width(125),
+            );
+        }
 
-            let suggestion_count = spellcheck_context_menu_buttons.len();
+        let suggestion_count = spellcheck_context_menu_contents.len();
 
-            let suggestions_scroll = if suggestion_count < 6 {
-                column(spellcheck_context_menu_buttons)
-            } else {
-                column![widget::scrollable(column(spellcheck_context_menu_buttons)).height(125)]
-            };
+        let suggestions_scroll = if suggestion_count < 6 {
+            spellcheck_context_menu_buttons
+        } else {
+            column![widget::scrollable(spellcheck_context_menu_buttons).height(125)]
+        };
 
-            let mut suggestion_menu = if suggestion_count > 0 {
-                column![
-                    widget::Text::new("Did you mean:").size(12),
-                    suggestions_scroll
-                ]
-            } else {
-                column![]
-            };
+        let mut suggestion_menu = if suggestion_count > 0 {
+            column![
+                widget::Text::new("Did you mean:").size(12),
+                suggestions_scroll
+            ]
+        } else {
+            column![]
+        };
 
-            if let Some(word) = &self.selected_misspelled_word {
-                let contains_whitespace = word.chars().any(|chara| chara.is_whitespace());
+        if let Some(word) = &self.selected_misspelled_word {
+            let contains_whitespace = word.chars().any(|chara| chara.is_whitespace());
 
-                if !contains_whitespace {
-                    suggestion_menu = suggestion_menu.push(
-                        widget::button(
-                            widget::Text::new("Add \"".to_string() + word + "\" to dictionary")
-                                .size(13),
-                        )
-                        .on_press(Message::AddToDictionary(word.clone()))
-                        .width(125),
+            if !contains_whitespace {
+                suggestion_menu = suggestion_menu.push(
+                    widget::button(
+                        widget::Text::new("Add \"".to_string() + word + "\" to dictionary")
+                            .size(13),
                     )
-                }
+                    .on_press(Message::AddToDictionary(word.clone()))
+                    .width(125),
+                )
             }
-            suggestion_menu.into()
-        });
+        }
 
-        let right_ui = column![right_top_bar, composite_editor];
+        let composite_editor = context_menu(
+            mouse_log_edit_area,
+            suggestion_menu,
+            self.show_context_menu,
+            self.captured_mouse_position,
+            Message::ExitContextMenu,
+        );
+
+        let right_ui = column![right_top_bar, composite_editor.into()];
 
         let top_ui = row![left_ui, right_ui];
 
@@ -994,6 +1009,8 @@ impl App {
                 Task::none()
             }
             Message::AcceptSpellcheck(suggestion_idx) => {
+                let exit_message = self.update(Message::ExitContextMenu);
+
                 let selected_suggestion = self.spell_suggestions[suggestion_idx].clone();
 
                 let equivalent_edit = text_editor::Edit::Paste(selected_suggestion.into());
@@ -1008,12 +1025,14 @@ impl App {
 
                 self.content.perform(Action::Edit(equivalent_edit));
 
-                Task::none()
+                exit_message
             }
             Message::AddToDictionary(word) => {
+                let exit_message = self.update(Message::ExitContextMenu);
+
                 dictionary::add_word_to_personal_dictionary(&word);
 
-                Task::none()
+                exit_message
             }
             Message::Render => {
                 self.view();
@@ -1033,6 +1052,22 @@ impl App {
                 self.update(Message::EditSearch(Action::Move(
                     text_editor::Motion::DocumentEnd,
                 )))
+            }
+            Message::MouseMoved(new_position) => {
+                self.mouse_position = new_position;
+
+                Task::none()
+            }
+            Message::RightClickEditArea => {
+                self.captured_mouse_position = self.mouse_position;
+                self.show_context_menu = true;
+
+                Task::none()
+            }
+            Message::ExitContextMenu => {
+                self.show_context_menu = false;
+
+                Task::none()
             }
         }
     }
@@ -1114,6 +1149,9 @@ impl Default for App {
             spell_suggestions: vec![],
             last_edit_time: Local::now(),
             settings: UserSettings::default(),
+            show_context_menu: false,
+            mouse_position: Point::default(),
+            captured_mouse_position: Point::default(),
         };
 
         df.month_store.load_month(Local::now());
