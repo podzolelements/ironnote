@@ -4,13 +4,13 @@ use crate::{
     content_tools::{correct_arrow_movement, perform_ctrl_backspace, perform_ctrl_delete},
     context_menu::context_menu,
     dictionary::DICTIONARY,
+    global_store::GlobalStore,
     highlighter::{HighlightSettings, SpellHighlighter},
     history_stack::{HistoryStack, edit_action_to_history_event},
     logbox::LOGBOX,
     misc_tools::point_on_edge_of_text,
     search_table::{SearchTable, SearchTableMessage},
     statistics::{BoundedDateStats, Stats},
-    text_store::GlobalStore,
 };
 use calender::Calender;
 use chrono::{DateTime, Datelike, Days, Duration, Local, Months, NaiveDate};
@@ -34,15 +34,17 @@ mod calender;
 mod config;
 mod content_tools;
 mod context_menu;
+mod day_store;
 mod dictionary;
 mod filetools;
+mod global_store;
 mod highlighter;
 mod history_stack;
 mod logbox;
 mod misc_tools;
+mod month_store;
 mod search_table;
 mod statistics;
-mod text_store;
 
 struct App {
     window_title: String,
