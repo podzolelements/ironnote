@@ -96,11 +96,6 @@ impl MonthStore {
         self.edited_days().iter().filter(|day| **day).count()
     }
 
-    pub fn set_day_text(&mut self, day: usize, text: String) {
-        self.days[day].set_day_text(text);
-        self.days[day].modified = true;
-    }
-
     pub fn days(&self) -> impl DoubleEndedIterator<Item = &DayStore> {
         self.days.iter()
     }
@@ -246,12 +241,81 @@ impl BoundedDateStats for MonthStore {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct GlobalStore {
     entries: Vec<MonthStore>,
+    date_time: DateTime<Local>,
+}
+
+impl Default for GlobalStore {
+    fn default() -> Self {
+        let mut global_store = Self {
+            entries: Vec::default(),
+            date_time: DateTime::default(),
+        };
+
+        global_store.set_current_store_date(Local::now());
+
+        global_store
+    }
 }
 
 impl GlobalStore {
+    /// changes the active date_time, adding the month if it doesn't exist
+    pub fn set_current_store_date(&mut self, new_date_time: DateTime<Local>) {
+        self.date_time = new_date_time;
+
+        if !self
+            .entries
+            .iter()
+            .any(|month_store| month_store.month == self.date_time.format("%Y-%m").to_string())
+        {
+            self.push_month_store(MonthStore::new(self.date_time.date_naive()));
+        }
+    }
+
+    /// mutable reference to the current month store based on the active date_time
+    pub fn month_mut(&mut self) -> &mut MonthStore {
+        let month_index = self
+            .entries
+            .iter()
+            .position(|m| m.month == self.date_time.format("%Y-%m").to_string())
+            .expect("month doesn't exist");
+
+        &mut self.entries[month_index]
+    }
+
+    /// mutable reference to the current day store based on the active date_time
+    pub fn day_mut(&mut self) -> &mut DayStore {
+        let day_index = self.date_time.day0() as usize;
+
+        &mut self.month_mut().days[day_index]
+    }
+
+    /// reference to the current month store based on the active date_time
+    pub fn month(&self) -> &MonthStore {
+        let month_index = self
+            .entries
+            .iter()
+            .position(|m| m.month == self.date_time.format("%Y-%m").to_string())
+            .expect("month doesn't exist");
+
+        &self.entries[month_index]
+    }
+
+    /// reference to the current day store based on the active date_time
+    pub fn day(&self) -> &DayStore {
+        let day_index = self.date_time.day0() as usize;
+
+        &self.month().days[day_index]
+    }
+
+    /// returns the active date_time of the global store
+    pub fn date_time(&self) -> DateTime<Local> {
+        self.date_time
+    }
+
+    /// loads all entries from disk, clearing any existing data
     pub fn load_all(&mut self) {
         self.entries.clear();
 

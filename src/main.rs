@@ -10,7 +10,7 @@ use crate::{
     misc_tools::point_on_edge_of_text,
     search_table::{SearchTable, SearchTableMessage},
     statistics::{BoundedDateStats, Stats},
-    text_store::{DayStore, GlobalStore, MonthStore},
+    text_store::GlobalStore,
 };
 use calender::Calender;
 use chrono::{DateTime, Datelike, Days, Duration, Local, Months, NaiveDate};
@@ -50,12 +50,9 @@ struct App {
     edited_active_day: bool,
     search_content: text_editor::Content,
     search_text: String,
-    active_date_time: DateTime<Local>,
     calender: Calender,
     search_table: SearchTable,
     keybinds: Keybinds<KeyboardAction>,
-    day_store: DayStore,
-    month_store: MonthStore,
     global_store: GlobalStore,
     log_history_stack: HistoryStack,
     search_history_stack: HistoryStack,
@@ -122,68 +119,59 @@ pub enum Message {
 }
 
 impl App {
+    /// retrieves the text from the store and overwrites the content with it
     fn load_active_entry(&mut self) {
-        self.day_store = self
-            .month_store
-            .get_day_store(self.active_date_time.day0() as usize);
-
-        self.content = text_editor::Content::with_text(&self.day_store.get_day_text());
+        self.content = text_editor::Content::with_text(&self.global_store.day().get_day_text());
     }
 
+    /// if the day has been edited, push the text into the store
     fn write_active_entry_to_store(&mut self) {
-        self.month_store
-            .set_day_text(self.active_date_time.day0() as usize, self.content.text());
-
-        self.day_store = self
-            .month_store
-            .get_day_store(self.active_date_time.day0() as usize);
+        if self.edited_active_day {
+            self.global_store
+                .day_mut()
+                .set_day_text(self.content.text());
+            self.edited_active_day = false;
+        }
 
         self.calender
-            .set_edited_days(self.month_store.edited_days());
+            .set_edited_days(self.global_store.month().edited_days());
     }
 
-    fn write_store_to_disk(&self) {
-        self.month_store.save_month();
+    /// saves the current month to disk
+    fn write_month_to_disk(&self) {
+        self.global_store.month().save_month();
     }
 
-    fn sync_global_store(&mut self) {
-        self.global_store.push_month_store(self.month_store.clone());
-    }
-
+    /// writes entry to store and saves month to disk
     fn write_all(&mut self) {
         self.write_active_entry_to_store();
-        self.write_store_to_disk();
-
-        self.sync_global_store();
+        self.write_month_to_disk();
     }
 
+    /// reloads the window's title based on the current active date
     fn update_window_title(&mut self) {
-        let formated_date = self.active_date_time.format("%A, %B %d, %Y").to_string();
+        let formated_date = self
+            .global_store
+            .date_time()
+            .format("%A, %B %d, %Y")
+            .to_string();
         let new_title = "ironnote - ".to_string() + &formated_date;
 
         self.window_title = new_title;
     }
 
+    /// changes the date of the current entry
     fn reload_date(&mut self, new_datetime: DateTime<Local>) {
-        let current_month = self.active_date_time.month();
-        let current_year = self.active_date_time.year();
-        let new_month = new_datetime.month();
-        let new_year = new_datetime.year();
-
-        if (current_month != new_month) || (current_year != new_year) {
-            self.write_all();
-
-            self.month_store.load_month(new_datetime);
-        }
-
-        self.active_date_time = new_datetime;
+        self.write_all();
+        self.global_store.set_current_store_date(new_datetime);
 
         self.update_window_title();
-        self.calender.update_calender_dates(self.active_date_time);
+        self.calender
+            .update_calender_dates(self.global_store.date_time());
         self.load_active_entry();
 
         self.calender
-            .set_edited_days(self.month_store.edited_days());
+            .set_edited_days(self.global_store.month().edited_days());
 
         self.last_edit_time = Local::now();
 
@@ -364,18 +352,18 @@ impl App {
                 column![search_line, search_results]
             }
             Tab::Stats => {
-                let dwc = self.day_store.word_count().to_string();
-                let dcc = self.day_store.char_count().to_string();
+                let dwc = self.global_store.day().word_count().to_string();
+                let dcc = self.global_store.day().char_count().to_string();
 
-                let mwc = self.month_store.word_count().to_string();
-                let mcc = self.month_store.char_count().to_string();
+                let mwc = self.global_store.month().word_count().to_string();
+                let mcc = self.global_store.month().char_count().to_string();
 
                 let twc = self.global_store.word_count().to_string();
                 let tcc = self.global_store.char_count().to_string();
 
-                let maw = format!("{:.2}", self.month_store.average_words());
+                let maw = format!("{:.2}", self.global_store.month().average_words());
                 let taw = format!("{:.2}", self.global_store.average_words());
-                let mac = format!("{:.2}", self.month_store.average_chars());
+                let mac = format!("{:.2}", self.global_store.month().average_chars());
                 let tac = format!("{:.2}", self.global_store.average_chars());
 
                 let longest_streak = format!("{}", self.global_store.longest_streak());
@@ -542,15 +530,16 @@ impl App {
                 }
 
                 let previous_day = self
-                    .active_date_time
+                    .global_store
+                    .date_time()
                     .checked_sub_days(Days::new(1))
                     .expect("failed to go to previous day");
 
-                let new_datetime = if self.day_store.contains_entry() {
+                let new_datetime = if self.global_store.day().contains_entry() {
                     previous_day
                 } else {
                     self.global_store
-                        .get_previous_edited_day(self.active_date_time)
+                        .get_previous_edited_day(self.global_store.date_time())
                         .unwrap_or(previous_day)
                 };
 
@@ -565,15 +554,16 @@ impl App {
                 }
 
                 let next_day = self
-                    .active_date_time
+                    .global_store
+                    .date_time()
                     .checked_add_days(Days::new(1))
                     .expect("failed to go to next day");
 
-                let new_datetime = if self.day_store.contains_entry() {
+                let new_datetime = if self.global_store.day().contains_entry() {
                     next_day
                 } else {
                     self.global_store
-                        .get_next_edited_day(self.active_date_time)
+                        .get_next_edited_day(self.global_store.date_time())
                         .unwrap_or(next_day)
                 };
 
@@ -647,7 +637,6 @@ impl App {
                     self.current_editor = Some(Editor::Search);
 
                     self.write_active_entry_to_store();
-                    self.sync_global_store();
                 }
 
                 if self.content.selection().is_none() {
@@ -711,29 +700,31 @@ impl App {
 
                         let new_datetime = match month {
                             calender::Month::Last => {
-                                let days_in_last_month = if self.active_date_time.month() == 1 {
-                                    31
-                                } else {
-                                    let nd = NaiveDate::from_ymd_opt(
-                                        self.active_date_time.year(),
-                                        self.active_date_time.month() - 1,
-                                        1,
-                                    )
-                                    .expect("bad date");
+                                let days_in_last_month =
+                                    if self.global_store.date_time().month() == 1 {
+                                        31
+                                    } else {
+                                        let nd = NaiveDate::from_ymd_opt(
+                                            self.global_store.date_time().year(),
+                                            self.global_store.date_time().month() - 1,
+                                            1,
+                                        )
+                                        .expect("bad date");
 
-                                    nd.num_days_in_month() as u32
-                                };
+                                        nd.num_days_in_month() as u32
+                                    };
 
-                                let days_to_go_back =
-                                    (days_in_last_month - new_day) + self.active_date_time.day();
+                                let days_to_go_back = (days_in_last_month - new_day)
+                                    + self.global_store.date_time().day();
 
-                                self.active_date_time
+                                self.global_store
+                                    .date_time()
                                     .checked_sub_days(Days::new(days_to_go_back as u64))
                                     .expect("couldn't go into the past")
                             }
                             calender::Month::Current => {
                                 let delta_day =
-                                    (new_day as i32) - (self.active_date_time.day() as i32);
+                                    (new_day as i32) - (self.global_store.date_time().day() as i32);
 
                                 let mag_delta_day = delta_day.unsigned_abs() as u64;
 
@@ -741,22 +732,25 @@ impl App {
                                     return Task::none();
                                 }
                                 if delta_day < 0 {
-                                    self.active_date_time
+                                    self.global_store
+                                        .date_time()
                                         .checked_sub_days(Days::new(mag_delta_day))
                                         .expect("couldn't jump into the past")
                                 } else {
-                                    self.active_date_time
+                                    self.global_store
+                                        .date_time()
                                         .checked_add_days(Days::new(mag_delta_day))
                                         .expect("couldn't jump into the future")
                                 }
                             }
                             calender::Month::Next => {
-                                let days_to_go_forward = (self.active_date_time.num_days_in_month()
-                                    as u64
-                                    - self.active_date_time.day() as u64)
-                                    + new_day as u64;
+                                let days_to_go_forward =
+                                    (self.global_store.date_time().num_days_in_month() as u64
+                                        - self.global_store.date_time().day() as u64)
+                                        + new_day as u64;
 
-                                self.active_date_time
+                                self.global_store
+                                    .date_time()
                                     .checked_add_days(Days::new(days_to_go_forward))
                                     .expect("couldn't go into the future")
                             }
@@ -766,7 +760,8 @@ impl App {
                     }
                     CalenderMessage::BackMonth => {
                         let new_datetime = self
-                            .active_date_time
+                            .global_store
+                            .date_time()
                             .checked_sub_months(Months::new(1))
                             .expect("couldn't go back a month");
 
@@ -774,7 +769,8 @@ impl App {
                     }
                     CalenderMessage::ForwardMonth => {
                         let new_datetime = self
-                            .active_date_time
+                            .global_store
+                            .date_time()
                             .checked_add_months(Months::new(1))
                             .expect("couldn't go forward a month");
 
@@ -782,7 +778,8 @@ impl App {
                     }
                     CalenderMessage::BackYear => {
                         let new_datetime = self
-                            .active_date_time
+                            .global_store
+                            .date_time()
                             .checked_sub_months(Months::new(12))
                             .expect("couldn't go back a year");
 
@@ -790,7 +787,8 @@ impl App {
                     }
                     CalenderMessage::ForwardYear => {
                         let new_datetime = self
-                            .active_date_time
+                            .global_store
+                            .date_time()
                             .checked_add_months(Months::new(12))
                             .expect("couldn't go forward a year");
 
@@ -1128,7 +1126,6 @@ impl Default for App {
 
         let mut df = Self {
             window_title: String::default(),
-            active_date_time: Local::now(),
             edited_active_day: false,
             content: text_editor::Content::default(),
             search_content: text_editor::Content::default(),
@@ -1136,8 +1133,6 @@ impl Default for App {
             calender: Calender::default(),
             search_table: SearchTable::default(),
             keybinds,
-            day_store: DayStore::default(),
-            month_store: MonthStore::default(),
             global_store: GlobalStore::default(),
             log_history_stack: HistoryStack::default(),
             search_history_stack: HistoryStack::default(),
@@ -1154,7 +1149,6 @@ impl Default for App {
             captured_mouse_position: Point::default(),
         };
 
-        df.month_store.load_month(Local::now());
         df.global_store.load_all();
 
         let _ = df.update(Message::JumpToToday);
