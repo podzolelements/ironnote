@@ -11,6 +11,7 @@ use crate::{
     misc_tools::point_on_edge_of_text,
     search_table::{SearchTable, SearchTableMessage},
     statistics::{BoundedDateStats, Stats},
+    word_count::WordCount,
 };
 use calender::Calender;
 use chrono::{DateTime, Datelike, Days, Duration, Local, Months, NaiveDate};
@@ -45,6 +46,7 @@ mod misc_tools;
 mod month_store;
 mod search_table;
 mod statistics;
+mod word_count;
 
 struct App {
     window_title: String,
@@ -198,12 +200,31 @@ impl App {
             && !selection.contains(char::is_whitespace)
             && recompute_spell_suggestions
         {
-            self.spell_suggestions.clear();
+            let mut spell_suggestions = vec![];
 
             let dictionary = DICTIONARY.read().expect("couldn't get dicitonary read");
             if !dictionary.check(&selection) {
-                dictionary.suggest(&selection, &mut self.spell_suggestions);
+                dictionary.suggest(&selection, &mut spell_suggestions);
                 self.selected_misspelled_word = Some(selection.clone());
+
+                self.global_store.update_word_count();
+
+                let mut sorted_suggestions: Vec<_> = spell_suggestions
+                    .iter()
+                    .map(|word| {
+                        let word_count = self.global_store.get_word_count(&word.to_lowercase());
+
+                        (word_count, word)
+                    })
+                    .collect();
+
+                sorted_suggestions.sort_by_key(|(word_count, _word)| *word_count);
+
+                self.spell_suggestions = sorted_suggestions
+                    .iter()
+                    .map(|(_count, word)| word.to_string())
+                    .rev()
+                    .collect();
             } else {
                 self.selected_misspelled_word = None;
             }
@@ -1022,6 +1043,7 @@ impl App {
                     self.cursor_char_idx,
                 );
                 self.log_history_stack.push_undo_action(history_event);
+                self.edited_active_day = true;
 
                 self.content.perform(Action::Edit(equivalent_edit));
 

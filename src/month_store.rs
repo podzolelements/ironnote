@@ -3,6 +3,7 @@ use crate::{
     filetools::setup_savedata_dirs,
     logbox::LOGBOX,
     statistics::{BoundedDateStats, Stats},
+    word_count::{WordCount, WordCounts},
 };
 use chrono::{DateTime, Datelike, Days, Local, NaiveDate};
 use serde_json::Value;
@@ -13,6 +14,7 @@ pub struct MonthStore {
     days: Vec<DayStore>,
     month: String,
     days_in_month: u8,
+    word_counts: WordCounts,
 }
 
 impl Default for MonthStore {
@@ -22,6 +24,7 @@ impl Default for MonthStore {
             days,
             month: Default::default(),
             days_in_month: Default::default(),
+            word_counts: WordCounts::default(),
         }
     }
 }
@@ -38,6 +41,7 @@ impl MonthStore {
             days,
             month,
             days_in_month,
+            word_counts: WordCounts::default(),
         }
     }
 
@@ -201,5 +205,52 @@ impl BoundedDateStats for MonthStore {
 
     fn average_chars(&self) -> f64 {
         self.char_count() as f64 / self.edited_day_count() as f64
+    }
+}
+
+impl WordCount for MonthStore {
+    fn reload_current_counts(&mut self) {
+        if self.is_word_count_in_sync() {
+            return;
+        }
+
+        let mut day_diffs = vec![];
+
+        for day in &mut self.days {
+            let diff = day.update_word_count();
+
+            if !diff.is_empty() {
+                day_diffs.push(diff);
+            }
+        }
+
+        for diff in day_diffs {
+            for (word, diff_count) in diff {
+                self.word_counts.insert_or_add(&word, diff_count);
+            }
+        }
+    }
+
+    fn is_word_count_in_sync(&mut self) -> bool {
+        let current_sync = self
+            .days
+            .iter_mut()
+            .all(|day_store| day_store.is_word_count_in_sync());
+
+        self.word_counts.set_sync(current_sync);
+
+        self.word_counts.in_sync()
+    }
+
+    fn word_diff(&self) -> Vec<(String, i32)> {
+        self.word_counts.word_diff()
+    }
+
+    fn sync_current_to_upstream(&mut self) {
+        self.word_counts.sync_current_to_upstream()
+    }
+
+    fn get_word_count(&self, word: &str) -> usize {
+        self.word_counts.get_word_count(word)
     }
 }

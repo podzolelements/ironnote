@@ -1,20 +1,20 @@
-use std::sync::LazyLock;
-
-use chrono::{DateTime, Datelike, Days, Local, Months, NaiveDate};
-use regex::Regex;
-
 use crate::{
     day_store::DayStore,
     filetools,
     misc_tools::{self, string_to_datetime},
     month_store::MonthStore,
     statistics::{BoundedDateStats, Stats},
+    word_count::{WordCount, WordCounts},
 };
+use chrono::{DateTime, Datelike, Days, Local, Months, NaiveDate};
+use regex::Regex;
+use std::sync::LazyLock;
 
 #[derive(Debug)]
 pub struct GlobalStore {
     entries: Vec<MonthStore>,
     date_time: DateTime<Local>,
+    word_counts: WordCounts,
 }
 
 impl Default for GlobalStore {
@@ -22,6 +22,7 @@ impl Default for GlobalStore {
         let mut global_store = Self {
             entries: Vec::default(),
             date_time: DateTime::default(),
+            word_counts: WordCounts::default(),
         };
 
         global_store.set_current_store_date(Local::now());
@@ -356,5 +357,52 @@ impl BoundedDateStats for GlobalStore {
 
     fn average_chars(&self) -> f64 {
         self.char_count() as f64 / self.edited_day_count() as f64
+    }
+}
+
+impl WordCount for GlobalStore {
+    fn reload_current_counts(&mut self) {
+        if self.is_word_count_in_sync() {
+            return;
+        }
+
+        let mut month_diffs = vec![];
+
+        for month in &mut self.entries {
+            let diff = month.update_word_count();
+
+            if !diff.is_empty() {
+                month_diffs.push(diff);
+            }
+        }
+
+        for diff in month_diffs {
+            for (word, diff_count) in diff {
+                self.word_counts.insert_or_add(&word, diff_count);
+            }
+        }
+    }
+
+    fn is_word_count_in_sync(&mut self) -> bool {
+        let current_sync = self
+            .entries
+            .iter_mut()
+            .all(|month_store| month_store.is_word_count_in_sync());
+
+        self.word_counts.set_sync(current_sync);
+
+        self.word_counts.in_sync()
+    }
+
+    fn word_diff(&self) -> Vec<(String, i32)> {
+        self.word_counts.word_diff()
+    }
+
+    fn sync_current_to_upstream(&mut self) {
+        self.word_counts.sync_current_to_upstream()
+    }
+
+    fn get_word_count(&self, word: &str) -> usize {
+        self.word_counts.get_word_count(word)
     }
 }
