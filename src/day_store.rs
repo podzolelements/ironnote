@@ -1,10 +1,14 @@
-use crate::statistics::Stats;
+use crate::{
+    statistics::Stats,
+    word_count::{WordCount, WordCounts},
+};
 
 #[derive(Debug, Default, Clone)]
 pub struct DayStore {
     date: String,
     entry_text: String,
     modified: bool,
+    word_counts: WordCounts,
 }
 
 impl DayStore {
@@ -13,6 +17,7 @@ impl DayStore {
             date: date.to_string(),
             entry_text: String::default(),
             modified: false,
+            word_counts: WordCounts::default(),
         }
     }
 
@@ -23,6 +28,8 @@ impl DayStore {
     pub fn set_day_text(&mut self, new_text: String) {
         self.entry_text = new_text;
         self.modified = true;
+
+        self.word_counts.set_sync(false);
     }
 
     pub fn date(&self) -> String {
@@ -45,5 +52,47 @@ impl Stats for DayStore {
 
     fn char_count(&self) -> usize {
         self.entry_text.chars().count()
+    }
+}
+
+impl WordCount for DayStore {
+    fn reload_current_counts(&mut self) {
+        self.word_counts.clear_current();
+
+        let words: Vec<String> = self
+            .entry_text
+            .split_whitespace()
+            .map(|word| word.to_string())
+            .collect();
+
+        for word in words {
+            self.word_counts.insert_or_add(&word, 1);
+        }
+    }
+
+    fn is_word_count_in_sync(&mut self) -> bool {
+        self.word_counts.in_sync()
+    }
+
+    fn update_word_count(&mut self) -> Vec<(String, i32)> {
+        self.reload_current_counts();
+
+        let word_diff = self.word_counts.word_diff();
+
+        self.word_counts.sync_current_to_upstream();
+
+        word_diff
+    }
+
+    fn word_diff(&self) -> Vec<(String, i32)> {
+        self.word_counts.word_diff()
+    }
+
+    fn sync_current_to_upstream(&mut self) {
+        self.word_counts.sync_current_to_upstream()
+    }
+
+    fn get_word_count(&self, word: &str) -> usize {
+        self.word_counts.get_word_count(word)
     }
 }
