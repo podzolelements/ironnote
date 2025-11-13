@@ -2,8 +2,7 @@ use crate::{
     day_store::DayStore,
     filetools::setup_savedata_dirs,
     logbox::LOGBOX,
-    statistics::{BoundedDateStats, Stats},
-    word_count::{WordCount, WordCounts},
+    word_count::{TimedWordCount, WordCount, WordCounts},
 };
 use chrono::{DateTime, Datelike, Days, Local, NaiveDate};
 use serde_json::Value;
@@ -188,26 +187,6 @@ impl MonthStore {
     }
 }
 
-impl Stats for MonthStore {
-    fn word_count(&self) -> usize {
-        self.days().map(|day_store| day_store.word_count()).sum()
-    }
-
-    fn char_count(&self) -> usize {
-        self.days().map(|day_store| day_store.char_count()).sum()
-    }
-}
-
-impl BoundedDateStats for MonthStore {
-    fn average_words(&self) -> f64 {
-        self.word_count() as f64 / self.edited_day_count() as f64
-    }
-
-    fn average_chars(&self) -> f64 {
-        self.char_count() as f64 / self.edited_day_count() as f64
-    }
-}
-
 impl WordCount for MonthStore {
     fn reload_current_counts(&mut self) {
         if self.is_word_count_in_sync() {
@@ -229,6 +208,13 @@ impl WordCount for MonthStore {
                 self.word_counts.insert_or_add(&word, diff_count);
             }
         }
+
+        let char_count = self
+            .days
+            .iter()
+            .map(|day_store| day_store.total_char_count())
+            .sum();
+        self.word_counts.set_total_char_count(char_count);
     }
 
     fn is_word_count_in_sync(&mut self) -> bool {
@@ -252,5 +238,23 @@ impl WordCount for MonthStore {
 
     fn get_word_count(&self, word: &str) -> usize {
         self.word_counts.get_word_count(word)
+    }
+
+    fn total_word_count(&self) -> usize {
+        self.word_counts.total_word_count()
+    }
+
+    fn total_char_count(&self) -> usize {
+        self.word_counts.total_char_count()
+    }
+}
+
+impl TimedWordCount for MonthStore {
+    fn average_words(&self) -> f64 {
+        (self.total_word_count() as f64) / (self.edited_day_count() as f64)
+    }
+
+    fn average_chars(&self) -> f64 {
+        (self.total_char_count() as f64) / (self.edited_day_count() as f64)
     }
 }

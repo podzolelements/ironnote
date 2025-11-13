@@ -1,7 +1,4 @@
-use crate::{
-    statistics::Stats,
-    word_count::{WordCount, WordCounts},
-};
+use crate::word_count::{WordCount, WordCounts};
 
 #[derive(Debug, Default, Clone)]
 pub struct DayStore {
@@ -45,16 +42,6 @@ impl DayStore {
     }
 }
 
-impl Stats for DayStore {
-    fn word_count(&self) -> usize {
-        self.entry_text.split_whitespace().count()
-    }
-
-    fn char_count(&self) -> usize {
-        self.entry_text.chars().count()
-    }
-}
-
 impl WordCount for DayStore {
     fn reload_current_counts(&mut self) {
         self.word_counts.clear_current();
@@ -68,20 +55,13 @@ impl WordCount for DayStore {
         for word in words {
             self.word_counts.insert_or_add(&word, 1);
         }
+
+        let char_count = self.entry_text.chars().count();
+        self.word_counts.set_total_char_count(char_count);
     }
 
     fn is_word_count_in_sync(&mut self) -> bool {
         self.word_counts.in_sync()
-    }
-
-    fn update_word_count(&mut self) -> Vec<(String, i32)> {
-        self.reload_current_counts();
-
-        let word_diff = self.word_counts.word_diff();
-
-        self.word_counts.sync_current_to_upstream();
-
-        word_diff
     }
 
     fn word_diff(&self) -> Vec<(String, i32)> {
@@ -94,5 +74,13 @@ impl WordCount for DayStore {
 
     fn get_word_count(&self, word: &str) -> usize {
         self.word_counts.get_word_count(word)
+    }
+
+    fn total_word_count(&self) -> usize {
+        self.word_counts.total_word_count()
+    }
+
+    fn total_char_count(&self) -> usize {
+        self.word_counts.total_char_count()
     }
 }

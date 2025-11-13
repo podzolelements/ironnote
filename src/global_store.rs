@@ -3,8 +3,7 @@ use crate::{
     filetools,
     misc_tools::{self, string_to_datetime},
     month_store::MonthStore,
-    statistics::{BoundedDateStats, Stats},
-    word_count::{WordCount, WordCounts},
+    word_count::{TimedWordCount, WordCount, WordCounts},
 };
 use chrono::{DateTime, Datelike, Days, Local, Months, NaiveDate};
 use regex::Regex;
@@ -340,26 +339,6 @@ impl GlobalStore {
     }
 }
 
-impl Stats for GlobalStore {
-    fn word_count(&self) -> usize {
-        self.month_stores().map(|ms| ms.word_count()).sum()
-    }
-
-    fn char_count(&self) -> usize {
-        self.month_stores().map(|ms| ms.char_count()).sum()
-    }
-}
-
-impl BoundedDateStats for GlobalStore {
-    fn average_words(&self) -> f64 {
-        self.word_count() as f64 / self.edited_day_count() as f64
-    }
-
-    fn average_chars(&self) -> f64 {
-        self.char_count() as f64 / self.edited_day_count() as f64
-    }
-}
-
 impl WordCount for GlobalStore {
     fn reload_current_counts(&mut self) {
         if self.is_word_count_in_sync() {
@@ -381,6 +360,13 @@ impl WordCount for GlobalStore {
                 self.word_counts.insert_or_add(&word, diff_count);
             }
         }
+
+        let char_count = self
+            .entries
+            .iter()
+            .map(|month_store| month_store.total_char_count())
+            .sum();
+        self.word_counts.set_total_char_count(char_count);
     }
 
     fn is_word_count_in_sync(&mut self) -> bool {
@@ -404,5 +390,23 @@ impl WordCount for GlobalStore {
 
     fn get_word_count(&self, word: &str) -> usize {
         self.word_counts.get_word_count(word)
+    }
+
+    fn total_word_count(&self) -> usize {
+        self.word_counts.total_word_count()
+    }
+
+    fn total_char_count(&self) -> usize {
+        self.word_counts.total_char_count()
+    }
+}
+
+impl TimedWordCount for GlobalStore {
+    fn average_words(&self) -> f64 {
+        (self.total_word_count() as f64) / (self.edited_day_count() as f64)
+    }
+
+    fn average_chars(&self) -> f64 {
+        (self.total_char_count() as f64) / (self.edited_day_count() as f64)
     }
 }

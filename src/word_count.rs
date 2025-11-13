@@ -31,6 +31,20 @@ pub trait WordCount {
 
     /// returns the upstream word count
     fn get_word_count(&self, word: &str) -> usize;
+
+    /// returns the total number of words present in the structure
+    fn total_word_count(&self) -> usize;
+
+    /// returns the total number of characters present in the structure
+    fn total_char_count(&self) -> usize;
+}
+
+pub trait TimedWordCount: WordCount {
+    // the average number of characters in the structure's timeframe
+    fn average_chars(&self) -> f64;
+
+    // the average number of words in the structure's timeframe
+    fn average_words(&self) -> f64;
 }
 
 #[derive(Debug, Clone, Default)]
@@ -42,10 +56,15 @@ pub struct WordCounts {
     /// the current word count table. this reflects the actual word count at the current instant in time, regardless of
     /// the upstream status
     current: HashMap<String, usize>,
+
     /// the word count that the upstream word counter is aware of. likely to not reflect the current actual word counts
     upstream: HashMap<String, usize>,
+
     /// the synchronization status between upstream and current word counts
     in_sync: bool,
+
+    /// total number of characters in the structure
+    total_chars: usize,
 }
 
 impl WordCounts {
@@ -66,6 +85,21 @@ impl WordCounts {
         }
 
         word_set
+    }
+
+    /// gets the total number of words in the 'upstream' table
+    pub fn total_word_count(&self) -> usize {
+        self.upstream.iter().map(|(_word, count)| count).sum()
+    }
+
+    /// returns the total character count stored in the structure
+    pub fn total_char_count(&self) -> usize {
+        self.total_chars
+    }
+
+    /// sets the total character count of the structure
+    pub fn set_total_char_count(&mut self, new_count: usize) {
+        self.total_chars = new_count;
     }
 
     /// gets the word count of the specified word from the 'upstream' table

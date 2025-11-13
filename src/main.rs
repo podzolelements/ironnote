@@ -10,8 +10,7 @@ use crate::{
     logbox::LOGBOX,
     misc_tools::point_on_edge_of_text,
     search_table::{SearchTable, SearchTableMessage},
-    statistics::{BoundedDateStats, Stats},
-    word_count::WordCount,
+    word_count::{TimedWordCount, WordCount},
 };
 use calender::Calender;
 use chrono::{DateTime, Datelike, Days, Duration, Local, Months, NaiveDate};
@@ -45,7 +44,6 @@ mod logbox;
 mod misc_tools;
 mod month_store;
 mod search_table;
-mod statistics;
 mod word_count;
 
 struct App {
@@ -139,6 +137,8 @@ impl App {
 
         self.calender
             .set_edited_days(self.global_store.month().edited_days());
+
+        self.global_store.update_word_count();
     }
 
     /// saves the current month to disk
@@ -375,14 +375,14 @@ impl App {
                 column![search_line, search_results]
             }
             Tab::Stats => {
-                let dwc = self.global_store.day().word_count().to_string();
-                let dcc = self.global_store.day().char_count().to_string();
+                let dwc = self.global_store.day().total_word_count().to_string();
+                let dcc = self.global_store.day().total_char_count().to_string();
 
-                let mwc = self.global_store.month().word_count().to_string();
-                let mcc = self.global_store.month().char_count().to_string();
+                let mwc = self.global_store.month().total_word_count().to_string();
+                let mcc = self.global_store.month().total_char_count().to_string();
 
-                let twc = self.global_store.word_count().to_string();
-                let tcc = self.global_store.char_count().to_string();
+                let twc = self.global_store.total_word_count().to_string();
+                let tcc = self.global_store.total_char_count().to_string();
 
                 let maw = format!("{:.2}", self.global_store.month().average_words());
                 let taw = format!("{:.2}", self.global_store.average_words());
@@ -1150,7 +1150,7 @@ impl Default for App {
 
         let mut df = Self {
             window_title: String::default(),
-            edited_active_day: false,
+            edited_active_day: true,
             content: text_editor::Content::default(),
             search_content: text_editor::Content::default(),
             search_text: String::default(),
@@ -1174,6 +1174,7 @@ impl Default for App {
         };
 
         df.global_store.load_all();
+        df.global_store.update_word_count();
 
         let _ = df.update(Message::JumpToToday);
 
