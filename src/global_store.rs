@@ -124,6 +124,13 @@ impl GlobalStore {
         self.add_empty_months();
     }
 
+    /// writes the store to disk
+    pub fn save_all(&self) {
+        for month in &self.entries {
+            month.save_month();
+        }
+    }
+
     /// since adding months can be discontinuous in time, the missing ones should be added to ensure time continuity
     fn add_empty_months(&mut self) {
         self.sort_month_stores();

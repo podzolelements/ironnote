@@ -49,7 +49,6 @@ mod word_count;
 struct App {
     window_title: String,
     content: text_editor::Content,
-    edited_active_day: bool,
     search_content: text_editor::Content,
     search_text: String,
     calender: Calender,
@@ -126,14 +125,11 @@ impl App {
         self.content = text_editor::Content::with_text(&self.global_store.day().get_day_text());
     }
 
-    /// if the day has been edited, push the text into the store
+    /// write the current text into the store
     fn write_active_entry_to_store(&mut self) {
-        if self.edited_active_day {
-            self.global_store
-                .day_mut()
-                .set_day_text(self.content.text());
-            self.edited_active_day = false;
-        }
+        self.global_store
+            .day_mut()
+            .set_day_text(self.content.text());
 
         self.calender
             .set_edited_days(self.global_store.month().edited_days());
@@ -141,15 +137,10 @@ impl App {
         self.global_store.update_word_count();
     }
 
-    /// saves the current month to disk
-    fn write_month_to_disk(&self) {
-        self.global_store.month().save_month();
-    }
-
-    /// writes entry to store and saves month to disk
-    fn write_all(&mut self) {
+    /// writes current entry to store and saves the store to disk
+    fn save_all(&mut self) {
         self.write_active_entry_to_store();
-        self.write_month_to_disk();
+        self.global_store.save_all();
     }
 
     /// reloads the window's title based on the current active date
@@ -164,9 +155,10 @@ impl App {
         self.window_title = new_title;
     }
 
-    /// changes the date of the current entry
+    /// writes the current entry into the store and changes the date of the current entry
     fn reload_date(&mut self, new_datetime: DateTime<Local>) {
-        self.write_all();
+        self.write_active_entry_to_store();
+
         self.global_store.set_current_store_date(new_datetime);
 
         self.update_window_title();
@@ -547,11 +539,6 @@ impl App {
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::BackOneDay => {
-                if self.edited_active_day {
-                    self.write_active_entry_to_store();
-                    self.edited_active_day = false;
-                }
-
                 let previous_day = self
                     .global_store
                     .date_time()
@@ -571,11 +558,6 @@ impl App {
                 snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::START)
             }
             Message::ForwardOneDay => {
-                if self.edited_active_day {
-                    self.write_active_entry_to_store();
-                    self.edited_active_day = false;
-                }
-
                 let next_day = self
                     .global_store
                     .date_time()
@@ -621,7 +603,6 @@ impl App {
                         self.cursor_line_idx = cursor_line;
                     }
                     Action::Edit(edit) => {
-                        self.edited_active_day = true;
                         self.last_edit_time = Local::now();
 
                         let history_event = edit_action_to_history_event(
@@ -713,14 +694,9 @@ impl App {
 
                 Task::none()
             }
-            Message::Calender(calmes) => {
-                match calmes {
+            Message::Calender(calender_message) => {
+                match calender_message {
                     CalenderMessage::DayButton(new_day, month) => {
-                        if self.edited_active_day {
-                            self.write_active_entry_to_store();
-                            self.edited_active_day = false;
-                        }
-
                         let new_datetime = match month {
                             calender::Month::Last => {
                                 let days_in_last_month =
@@ -825,10 +801,9 @@ impl App {
                 if let Some(action) = self.keybinds.dispatch(event) {
                     match action {
                         KeyboardAction::Save => {
-                            self.write_all();
+                            self.save_all();
                         }
                         KeyboardAction::BackspaceWord => {
-                            self.edited_active_day = true;
                             self.last_edit_time = Local::now();
 
                             let stopping_chars = [
@@ -858,7 +833,6 @@ impl App {
                             }
                         }
                         KeyboardAction::BackspaceSentence => {
-                            self.edited_active_day = true;
                             self.last_edit_time = Local::now();
 
                             let stopping_chars = ['.', '!', '?', '\"', ';', ':'];
@@ -886,7 +860,6 @@ impl App {
                         }
                         KeyboardAction::Delete => {
                             // not sure why the text_editor action handler doesn't do this on its own
-                            self.edited_active_day = true;
                             self.last_edit_time = Local::now();
 
                             let cursor_line_idx = self.cursor_line_idx;
@@ -911,7 +884,6 @@ impl App {
                             }
                         }
                         KeyboardAction::DeleteWord => {
-                            self.edited_active_day = true;
                             self.last_edit_time = Local::now();
 
                             let stopping_chars = [
@@ -938,7 +910,6 @@ impl App {
                             }
                         }
                         KeyboardAction::DeleteSentence => {
-                            self.edited_active_day = true;
                             self.last_edit_time = Local::now();
 
                             let stopping_chars = ['.', '!', '?', '\"', ';', ':'];
@@ -962,7 +933,6 @@ impl App {
                             }
                         }
                         KeyboardAction::Undo => {
-                            self.edited_active_day = true;
                             self.last_edit_time = Local::now();
 
                             if let Some((content, history_stack)) =
@@ -976,7 +946,6 @@ impl App {
                             }
                         }
                         KeyboardAction::Redo => {
-                            self.edited_active_day = true;
                             self.last_edit_time = Local::now();
 
                             if let Some((content, history_stack)) =
@@ -1043,7 +1012,6 @@ impl App {
                     self.cursor_char_idx,
                 );
                 self.log_history_stack.push_undo_action(history_event);
-                self.edited_active_day = true;
 
                 self.content.perform(Action::Edit(equivalent_edit));
 
@@ -1150,7 +1118,6 @@ impl Default for App {
 
         let mut df = Self {
             window_title: String::default(),
-            edited_active_day: true,
             content: text_editor::Content::default(),
             search_content: text_editor::Content::default(),
             search_text: String::default(),
@@ -1175,6 +1142,7 @@ impl Default for App {
 
         df.global_store.load_all();
         df.global_store.update_word_count();
+        df.content = Content::with_text(&df.global_store.day().get_day_text());
 
         let _ = df.update(Message::JumpToToday);
 
