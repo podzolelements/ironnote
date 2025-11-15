@@ -18,7 +18,7 @@ use iced::{
     Alignment::Center,
     Event, Font,
     Length::{self, FillPortion},
-    Point, Subscription, Task,
+    Point, Size, Subscription, Task,
     event::listen_with,
     keyboard::{self},
     widget::{
@@ -28,6 +28,7 @@ use iced::{
         text_editor::{self, Action, Content},
     },
 };
+use iced_core::window;
 use keybinds::Keybinds;
 
 mod calender;
@@ -68,6 +69,9 @@ struct App {
     show_context_menu: bool,
     mouse_position: Point,
     captured_mouse_position: Point,
+    window_size: Size,
+    window_mouse_position: Point,
+    captured_window_mouse_position: Point,
 }
 
 #[derive(Debug, PartialEq)]
@@ -108,6 +112,7 @@ pub enum Message {
     Calender(CalenderMessage),
     TableSearch(SearchTableMessage),
     KeyEvent(keyboard::Event),
+    WindowEvent(window::Event),
     TabSwitched(Tab),
     AcceptSpellcheck(usize),
     AddToDictionary(String),
@@ -115,6 +120,7 @@ pub enum Message {
     ClearSearch,
     ToggleSearchCase,
     MouseMoved(Point),
+    WindowMouseMoved(Point),
     RightClickEditArea,
     ExitContextMenu,
 }
@@ -509,11 +515,21 @@ impl App {
             }
         }
 
+        let context_menu_position =
+            if (self.window_size.width - self.captured_window_mouse_position.x) < 140.0 {
+                Point::new(
+                    self.captured_mouse_position.x - 125.0,
+                    self.captured_mouse_position.y,
+                )
+            } else {
+                self.captured_mouse_position
+            };
+
         let composite_editor = context_menu(
             mouse_log_edit_area,
             suggestion_menu,
             self.show_context_menu,
-            self.captured_mouse_position,
+            context_menu_position,
             Message::ExitContextMenu,
         );
 
@@ -533,7 +549,9 @@ impl App {
 
         let bottom_ui = row![logbox];
 
-        let layout = column![top_ui, bottom_ui];
+        let layout_ui = column![top_ui, bottom_ui];
+
+        let layout = column![mouse_area(layout_ui).on_move(Message::WindowMouseMoved)];
 
         layout
     }
@@ -1058,6 +1076,8 @@ impl App {
             }
             Message::RightClickEditArea => {
                 self.captured_mouse_position = self.mouse_position;
+                self.captured_window_mouse_position = self.window_mouse_position;
+
                 self.show_context_menu = true;
 
                 Task::none()
@@ -1067,13 +1087,35 @@ impl App {
 
                 Task::none()
             }
+            Message::WindowEvent(event) => {
+                match event {
+                    window::Event::Opened {
+                        position: _position,
+                        size: inital_size,
+                    } => {
+                        self.window_size = inital_size;
+                    }
+                    window::Event::Resized(new_size) => {
+                        self.window_size = new_size;
+                    }
+                    _ => {}
+                }
+
+                Task::none()
+            }
+            Message::WindowMouseMoved(new_point) => {
+                self.window_mouse_position = new_point;
+
+                Task::none()
+            }
         }
     }
 
     fn subscription(&self) -> Subscription<Message> {
         let subscriptions = vec![
             listen_with(|event, _, _| match event {
-                Event::Keyboard(event) => Some(Message::KeyEvent(event)),
+                Event::Keyboard(key_event) => Some(Message::KeyEvent(key_event)),
+                Event::Window(window_event) => Some(Message::WindowEvent(window_event)),
                 _ => None,
             }),
             // ensure view() gets called at a minimum of 10 FPS
@@ -1146,6 +1188,9 @@ impl Default for App {
             show_context_menu: false,
             mouse_position: Point::default(),
             captured_mouse_position: Point::default(),
+            window_size: Size::default(),
+            window_mouse_position: Point::default(),
+            captured_window_mouse_position: Point::default(),
         };
 
         df.global_store.load_all();
