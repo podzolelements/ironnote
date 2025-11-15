@@ -14,6 +14,7 @@ use crate::{
 };
 use calender::Calender;
 use chrono::{DateTime, Datelike, Days, Duration, Local, Months, NaiveDate};
+use copypasta::{ClipboardContext, ClipboardProvider};
 use iced::{
     Alignment::Center,
     Event, Font,
@@ -26,6 +27,7 @@ use iced::{
         scrollable::{Direction, Id, RelativeOffset, Scrollbar, snap_to},
         text::Wrapping,
         text_editor::{self, Action, Content},
+        vertical_space,
     },
 };
 use iced_core::window;
@@ -72,12 +74,22 @@ struct App {
     window_size: Size,
     window_mouse_position: Point,
     captured_window_mouse_position: Point,
+    clipboard: ClipboardContext,
 }
 
 #[derive(Debug, PartialEq)]
 enum Editor {
     Log,
     Search,
+}
+
+#[derive(Debug, Clone)]
+/// these actions are not bound to their shortcuts via the keybinds structure, since the text_editor takes care of
+/// handling them. these are called when the action needs to be performed manually without the shortcuts
+pub enum UnboundKey {
+    Cut,
+    Copy,
+    Paste,
 }
 
 #[derive(Debug, Clone)]
@@ -93,6 +105,7 @@ pub enum KeyboardAction {
     Debug,
     JumpToContentStart,
     JumpToContentEnd,
+    Unbound(UnboundKey),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -475,13 +488,16 @@ impl App {
             }
         }
 
+        const MENU_SIZE: u16 = 13;
+        const MENU_WIDTH: u16 = 125;
+
         let mut spellcheck_context_menu_buttons = column![];
 
         for (button_text, button_message) in spellcheck_context_menu_contents.iter() {
             spellcheck_context_menu_buttons = spellcheck_context_menu_buttons.push(
-                widget::button(widget::Text::new(button_text.clone()).size(12))
+                widget::button(widget::Text::new(button_text.clone()).size(MENU_SIZE))
                     .on_press(button_message.clone())
-                    .width(125),
+                    .width(MENU_WIDTH),
             );
         }
 
@@ -490,12 +506,12 @@ impl App {
         let suggestions_scroll = if suggestion_count < 6 {
             spellcheck_context_menu_buttons
         } else {
-            column![widget::scrollable(spellcheck_context_menu_buttons).height(125)]
+            column![widget::scrollable(spellcheck_context_menu_buttons).height(MENU_WIDTH)]
         };
 
         let mut suggestion_menu = if suggestion_count > 0 {
             column![
-                widget::Text::new("Did you mean:").size(12),
+                widget::Text::new("Did you mean:").size(MENU_SIZE),
                 suggestions_scroll
             ]
         } else {
@@ -509,13 +525,32 @@ impl App {
                 suggestion_menu = suggestion_menu.push(
                     widget::button(
                         widget::Text::new("Add \"".to_string() + word + "\" to dictionary")
-                            .size(13),
+                            .size(MENU_SIZE),
                     )
                     .on_press(Message::AddToDictionary(word.clone()))
-                    .width(125),
+                    .width(MENU_WIDTH),
                 )
             }
         }
+
+        let cut_message = self
+            .content
+            .selection()
+            .map(|_selection| Message::ManualKeyEvent(KeyboardAction::Unbound(UnboundKey::Cut)));
+        let copy_message = Message::ManualKeyEvent(KeyboardAction::Unbound(UnboundKey::Copy));
+        let paste_message = Message::ManualKeyEvent(KeyboardAction::Unbound(UnboundKey::Paste));
+
+        let edit_menu = column![
+            widget::button(widget::text("Cut").size(MENU_SIZE))
+                .on_press_maybe(cut_message)
+                .width(MENU_WIDTH),
+            widget::button(widget::text("Copy").size(MENU_SIZE))
+                .on_press(copy_message)
+                .width(MENU_WIDTH),
+            widget::button(widget::text("Paste").size(MENU_SIZE))
+                .on_press(paste_message)
+                .width(MENU_WIDTH)
+        ];
 
         let undo_message = if self.log_history_stack.undo_stack_height() > 0 {
             Some(Message::ManualKeyEvent(KeyboardAction::Undo))
@@ -529,25 +564,33 @@ impl App {
         };
 
         let history_menu = column![
-            widget::button(widget::text("Undo").size(13))
+            widget::button(widget::text("Undo").size(MENU_SIZE))
                 .on_press_maybe(undo_message)
-                .width(125),
-            widget::button(widget::text("Redo").size(13))
+                .width(MENU_WIDTH),
+            widget::button(widget::text("Redo").size(MENU_SIZE))
                 .on_press_maybe(redo_message)
-                .width(125),
+                .width(MENU_WIDTH),
         ];
 
-        let total_context_menu = column![suggestion_menu, history_menu];
+        let total_context_menu = column![
+            suggestion_menu,
+            vertical_space().height(3),
+            edit_menu,
+            vertical_space().height(3),
+            history_menu
+        ];
 
-        let context_menu_position =
-            if (self.window_size.width - self.captured_window_mouse_position.x) < 140.0 {
-                Point::new(
-                    self.captured_mouse_position.x - 125.0,
-                    self.captured_mouse_position.y,
-                )
-            } else {
-                self.captured_mouse_position
-            };
+        let distance_to_window_edge =
+            self.window_size.width - self.captured_window_mouse_position.x;
+
+        let context_menu_position = if distance_to_window_edge < (MENU_WIDTH + 15) as f32 {
+            Point::new(
+                self.captured_mouse_position.x - (MENU_WIDTH as f32),
+                self.captured_mouse_position.y,
+            )
+        } else {
+            self.captured_mouse_position
+        };
 
         let composite_editor = context_menu(
             mouse_log_edit_area,
@@ -1030,6 +1073,63 @@ impl App {
                             return snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::END);
                         }
                     }
+                    KeyboardAction::Unbound(unbounded_action) => {
+                        match unbounded_action {
+                            UnboundKey::Cut => {
+                                if let Some(selection) = self.content.selection() {
+                                    let clipboard_repsonse = self.clipboard.set_contents(selection);
+
+                                    if clipboard_repsonse.is_err() {
+                                        LOGBOX
+                                            .write()
+                                            .expect("couldn't get logbox write")
+                                            .log("Unable to write to clipboard");
+                                    } else {
+                                        return self.update(Message::Edit(Action::Edit(
+                                            text_editor::Edit::Backspace,
+                                        )));
+                                    }
+                                }
+                            }
+                            UnboundKey::Copy => {
+                                let copied_text = if let Some(selection) = self.content.selection()
+                                {
+                                    selection
+                                } else {
+                                    // if there is no selection, copy the entire line the cursor is in
+                                    let (line, _char) = self.content.cursor_position();
+
+                                    self.content
+                                        .line(line)
+                                        .expect("couldn't extract line")
+                                        .to_string()
+                                };
+
+                                let clipboard_repsonse = self.clipboard.set_contents(copied_text);
+
+                                if clipboard_repsonse.is_err() {
+                                    LOGBOX
+                                        .write()
+                                        .expect("couldn't get logbox write")
+                                        .log("Unable to write to clipboard");
+                                }
+                            }
+                            UnboundKey::Paste => {
+                                let clipboard_contents = self.clipboard.get_contents();
+
+                                if let Ok(clipboard_text) = clipboard_contents {
+                                    return self.update(Message::Edit(Action::Edit(
+                                        text_editor::Edit::Paste(clipboard_text.into()),
+                                    )));
+                                } else {
+                                    LOGBOX
+                                        .write()
+                                        .expect("couldn't get logbox write")
+                                        .log("Unable to read from clipboard");
+                                }
+                            }
+                        }
+                    }
                 }
 
                 Task::none()
@@ -1194,6 +1294,8 @@ impl Default for App {
             .bind("Ctrl+Down", KeyboardAction::JumpToContentEnd)
             .expect("couldn't bind Ctrl+Down");
 
+        let clipboard = ClipboardContext::new().expect("couldn't get clipboard");
+
         let mut df = Self {
             window_title: String::default(),
             content: text_editor::Content::default(),
@@ -1219,6 +1321,7 @@ impl Default for App {
             window_size: Size::default(),
             window_mouse_position: Point::default(),
             captured_window_mouse_position: Point::default(),
+            clipboard,
         };
 
         df.global_store.load_all();
