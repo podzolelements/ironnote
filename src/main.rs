@@ -80,7 +80,8 @@ enum Editor {
     Search,
 }
 
-enum KeyboardAction {
+#[derive(Debug, Clone)]
+pub enum KeyboardAction {
     Save,
     BackspaceWord,
     BackspaceSentence,
@@ -112,6 +113,7 @@ pub enum Message {
     Calender(CalenderMessage),
     TableSearch(SearchTableMessage),
     KeyEvent(keyboard::Event),
+    ManualKeyEvent(KeyboardAction),
     WindowEvent(window::Event),
     TabSwitched(Tab),
     AcceptSpellcheck(usize),
@@ -515,6 +517,28 @@ impl App {
             }
         }
 
+        let undo_message = if self.log_history_stack.undo_stack_height() > 0 {
+            Some(Message::ManualKeyEvent(KeyboardAction::Undo))
+        } else {
+            None
+        };
+        let redo_message = if self.log_history_stack.redo_stack_height() > 0 {
+            Some(Message::ManualKeyEvent(KeyboardAction::Redo))
+        } else {
+            None
+        };
+
+        let history_menu = column![
+            widget::button(widget::text("Undo").size(13))
+                .on_press_maybe(undo_message)
+                .width(125),
+            widget::button(widget::text("Redo").size(13))
+                .on_press_maybe(redo_message)
+                .width(125),
+        ];
+
+        let total_context_menu = column![suggestion_menu, history_menu];
+
         let context_menu_position =
             if (self.window_size.width - self.captured_window_mouse_position.x) < 140.0 {
                 Point::new(
@@ -527,7 +551,7 @@ impl App {
 
         let composite_editor = context_menu(
             mouse_log_edit_area,
-            suggestion_menu,
+            total_context_menu,
             self.show_context_menu,
             context_menu_position,
             Message::ExitContextMenu,
@@ -819,187 +843,191 @@ impl App {
             }
             Message::KeyEvent(event) => {
                 if let Some(action) = self.keybinds.dispatch(event) {
-                    match action {
-                        KeyboardAction::Save => {
-                            self.save_all();
+                    let key_action = action.clone();
+
+                    self.update(Message::ManualKeyEvent(key_action))
+                } else {
+                    Task::none()
+                }
+            }
+            Message::ManualKeyEvent(event) => {
+                self.show_context_menu = false;
+
+                match event {
+                    KeyboardAction::Save => {
+                        self.save_all();
+                    }
+                    KeyboardAction::BackspaceWord => {
+                        self.last_edit_time = Local::now();
+
+                        let stopping_chars = [
+                            ' ', '.', '!', '?', ',', '-', '_', '\"', ';', ':', '(', ')', '{', '}',
+                            '[', ']',
+                        ];
+
+                        let cursor_line_idx = self.cursor_line_idx;
+                        let cursor_char_idx = self.cursor_char_idx;
+
+                        if let Some((content, history_stack)) =
+                            self.active_content_and_history_stack()
+                        {
+                            // revert the standard backspace that can't be caught
+                            history_stack.revert(content);
+
+                            history_stack.push_undo_action(perform_ctrl_backspace(
+                                content,
+                                &stopping_chars,
+                                cursor_line_idx,
+                                cursor_char_idx,
+                            ));
                         }
-                        KeyboardAction::BackspaceWord => {
-                            self.last_edit_time = Local::now();
 
-                            let stopping_chars = [
-                                ' ', '.', '!', '?', ',', '-', '_', '\"', ';', ':', '(', ')', '{',
-                                '}', '[', ']',
-                            ];
-
-                            let cursor_line_idx = self.cursor_line_idx;
-                            let cursor_char_idx = self.cursor_char_idx;
-
-                            if let Some((content, history_stack)) =
-                                self.active_content_and_history_stack()
-                            {
-                                // revert the standard backspace that can't be caught
-                                history_stack.revert(content);
-
-                                history_stack.push_undo_action(perform_ctrl_backspace(
-                                    content,
-                                    &stopping_chars,
-                                    cursor_line_idx,
-                                    cursor_char_idx,
-                                ));
-                            }
-
-                            if self.current_editor == Some(Editor::Search) {
-                                self.recompute_search();
-                            }
+                        if self.current_editor == Some(Editor::Search) {
+                            self.recompute_search();
                         }
-                        KeyboardAction::BackspaceSentence => {
-                            self.last_edit_time = Local::now();
+                    }
+                    KeyboardAction::BackspaceSentence => {
+                        self.last_edit_time = Local::now();
 
-                            let stopping_chars = ['.', '!', '?', '\"', ';', ':'];
+                        let stopping_chars = ['.', '!', '?', '\"', ';', ':'];
 
-                            let cursor_line_idx = self.cursor_line_idx;
-                            let cursor_char_idx = self.cursor_char_idx;
+                        let cursor_line_idx = self.cursor_line_idx;
+                        let cursor_char_idx = self.cursor_char_idx;
 
-                            if let Some((content, history_stack)) =
-                                self.active_content_and_history_stack()
-                            {
-                                // revert the standard backspace that can't be caught
-                                history_stack.revert(content);
+                        if let Some((content, history_stack)) =
+                            self.active_content_and_history_stack()
+                        {
+                            // revert the standard backspace that can't be caught
+                            history_stack.revert(content);
 
-                                history_stack.push_undo_action(perform_ctrl_backspace(
-                                    content,
-                                    &stopping_chars,
-                                    cursor_line_idx,
-                                    cursor_char_idx,
-                                ));
-                            }
-
-                            if self.current_editor == Some(Editor::Search) {
-                                self.recompute_search();
-                            }
+                            history_stack.push_undo_action(perform_ctrl_backspace(
+                                content,
+                                &stopping_chars,
+                                cursor_line_idx,
+                                cursor_char_idx,
+                            ));
                         }
-                        KeyboardAction::Delete => {
-                            // not sure why the text_editor action handler doesn't do this on its own
-                            self.last_edit_time = Local::now();
 
-                            let cursor_line_idx = self.cursor_line_idx;
-                            let cursor_char_idx = self.cursor_char_idx;
-
-                            if let Some((content, history_stack)) =
-                                self.active_content_and_history_stack()
-                            {
-                                let history_event = edit_action_to_history_event(
-                                    content,
-                                    text_editor::Edit::Delete,
-                                    cursor_line_idx,
-                                    cursor_char_idx,
-                                );
-                                history_stack.push_undo_action(history_event);
-
-                                content.perform(Action::Edit(text_editor::Edit::Delete));
-                            }
-
-                            if self.current_editor == Some(Editor::Search) {
-                                self.recompute_search();
-                            }
+                        if self.current_editor == Some(Editor::Search) {
+                            self.recompute_search();
                         }
-                        KeyboardAction::DeleteWord => {
-                            self.last_edit_time = Local::now();
+                    }
+                    KeyboardAction::Delete => {
+                        // not sure why the text_editor action handler doesn't do this on its own
+                        self.last_edit_time = Local::now();
 
-                            let stopping_chars = [
-                                ' ', '.', '!', '?', ',', '-', '_', '\"', ';', ':', '(', ')', '{',
-                                '}', '[', ']',
-                            ];
+                        let cursor_line_idx = self.cursor_line_idx;
+                        let cursor_char_idx = self.cursor_char_idx;
 
-                            let cursor_line_idx = self.cursor_line_idx;
-                            let cursor_char_idx = self.cursor_char_idx;
+                        if let Some((content, history_stack)) =
+                            self.active_content_and_history_stack()
+                        {
+                            let history_event = edit_action_to_history_event(
+                                content,
+                                text_editor::Edit::Delete,
+                                cursor_line_idx,
+                                cursor_char_idx,
+                            );
+                            history_stack.push_undo_action(history_event);
 
-                            if let Some((content, history_stack)) =
-                                self.active_content_and_history_stack()
-                            {
-                                history_stack.push_undo_action(perform_ctrl_delete(
-                                    content,
-                                    &stopping_chars,
-                                    cursor_line_idx,
-                                    cursor_char_idx,
-                                ));
-                            }
-
-                            if self.current_editor == Some(Editor::Search) {
-                                self.recompute_search();
-                            }
+                            content.perform(Action::Edit(text_editor::Edit::Delete));
                         }
-                        KeyboardAction::DeleteSentence => {
-                            self.last_edit_time = Local::now();
 
-                            let stopping_chars = ['.', '!', '?', '\"', ';', ':'];
-
-                            let cursor_line_idx = self.cursor_line_idx;
-                            let cursor_char_idx = self.cursor_char_idx;
-
-                            if let Some((content, history_stack)) =
-                                self.active_content_and_history_stack()
-                            {
-                                history_stack.push_undo_action(perform_ctrl_delete(
-                                    content,
-                                    &stopping_chars,
-                                    cursor_line_idx,
-                                    cursor_char_idx,
-                                ));
-                            }
-
-                            if self.current_editor == Some(Editor::Search) {
-                                self.recompute_search();
-                            }
+                        if self.current_editor == Some(Editor::Search) {
+                            self.recompute_search();
                         }
-                        KeyboardAction::Undo => {
-                            self.last_edit_time = Local::now();
+                    }
+                    KeyboardAction::DeleteWord => {
+                        self.last_edit_time = Local::now();
 
-                            if let Some((content, history_stack)) =
-                                self.active_content_and_history_stack()
-                            {
-                                history_stack.perform_undo(content);
-                            }
+                        let stopping_chars = [
+                            ' ', '.', '!', '?', ',', '-', '_', '\"', ';', ':', '(', ')', '{', '}',
+                            '[', ']',
+                        ];
 
-                            if self.current_editor == Some(Editor::Search) {
-                                self.recompute_search();
-                            }
+                        let cursor_line_idx = self.cursor_line_idx;
+                        let cursor_char_idx = self.cursor_char_idx;
+
+                        if let Some((content, history_stack)) =
+                            self.active_content_and_history_stack()
+                        {
+                            history_stack.push_undo_action(perform_ctrl_delete(
+                                content,
+                                &stopping_chars,
+                                cursor_line_idx,
+                                cursor_char_idx,
+                            ));
                         }
-                        KeyboardAction::Redo => {
-                            self.last_edit_time = Local::now();
 
-                            if let Some((content, history_stack)) =
-                                self.active_content_and_history_stack()
-                            {
-                                history_stack.perform_redo(content);
-                            }
-
-                            if self.current_editor == Some(Editor::Search) {
-                                self.recompute_search();
-                            }
+                        if self.current_editor == Some(Editor::Search) {
+                            self.recompute_search();
                         }
-                        KeyboardAction::Debug => {
-                            println!("debug!");
-                        }
-                        KeyboardAction::JumpToContentStart => {
-                            if let Some((active_content, _)) =
-                                self.active_content_and_history_stack()
-                            {
-                                active_content
-                                    .perform(Action::Move(text_editor::Motion::DocumentStart));
+                    }
+                    KeyboardAction::DeleteSentence => {
+                        self.last_edit_time = Local::now();
 
-                                return snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::START);
-                            }
-                        }
-                        KeyboardAction::JumpToContentEnd => {
-                            if let Some((active_content, _)) =
-                                self.active_content_and_history_stack()
-                            {
-                                active_content
-                                    .perform(Action::Move(text_editor::Motion::DocumentEnd));
+                        let stopping_chars = ['.', '!', '?', '\"', ';', ':'];
 
-                                return snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::END);
-                            }
+                        let cursor_line_idx = self.cursor_line_idx;
+                        let cursor_char_idx = self.cursor_char_idx;
+
+                        if let Some((content, history_stack)) =
+                            self.active_content_and_history_stack()
+                        {
+                            history_stack.push_undo_action(perform_ctrl_delete(
+                                content,
+                                &stopping_chars,
+                                cursor_line_idx,
+                                cursor_char_idx,
+                            ));
+                        }
+
+                        if self.current_editor == Some(Editor::Search) {
+                            self.recompute_search();
+                        }
+                    }
+                    KeyboardAction::Undo => {
+                        self.last_edit_time = Local::now();
+
+                        if let Some((content, history_stack)) =
+                            self.active_content_and_history_stack()
+                        {
+                            history_stack.perform_undo(content);
+                        }
+
+                        if self.current_editor == Some(Editor::Search) {
+                            self.recompute_search();
+                        }
+                    }
+                    KeyboardAction::Redo => {
+                        self.last_edit_time = Local::now();
+
+                        if let Some((content, history_stack)) =
+                            self.active_content_and_history_stack()
+                        {
+                            history_stack.perform_redo(content);
+                        }
+
+                        if self.current_editor == Some(Editor::Search) {
+                            self.recompute_search();
+                        }
+                    }
+                    KeyboardAction::Debug => {
+                        println!("debug!");
+                    }
+                    KeyboardAction::JumpToContentStart => {
+                        if let Some((active_content, _)) = self.active_content_and_history_stack() {
+                            active_content
+                                .perform(Action::Move(text_editor::Motion::DocumentStart));
+
+                            return snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::START);
+                        }
+                    }
+                    KeyboardAction::JumpToContentEnd => {
+                        if let Some((active_content, _)) = self.active_content_and_history_stack() {
+                            active_content.perform(Action::Move(text_editor::Motion::DocumentEnd));
+
+                            return snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::END);
                         }
                     }
                 }

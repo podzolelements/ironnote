@@ -173,6 +173,16 @@ impl HistoryStack {
 
         inverse_sequence
     }
+
+    /// returns how many elements are in the undo stack
+    pub fn undo_stack_height(&self) -> usize {
+        self.undo_history.len()
+    }
+
+    /// returns how many elements are in the redo stack
+    pub fn redo_stack_height(&self) -> usize {
+        self.redo_history.len()
+    }
 }
 
 /// converts an Edit action into a HistoryEvent based on the current state of the content
