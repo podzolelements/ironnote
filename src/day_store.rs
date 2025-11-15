@@ -1,4 +1,7 @@
-use crate::word_count::{WordCount, WordCounts};
+use crate::{
+    dictionary::WORD_REGEX,
+    word_count::{WordCount, WordCounts},
+};
 
 #[derive(Debug, Default, Clone)]
 pub struct DayStore {
@@ -46,10 +49,9 @@ impl WordCount for DayStore {
     fn reload_current_counts(&mut self) {
         self.word_counts.clear_current();
 
-        let words: Vec<String> = self
-            .entry_text
-            .split_whitespace()
-            .map(|word| word.to_string())
+        let words: Vec<String> = WORD_REGEX
+            .find_iter(&self.entry_text)
+            .map(|word| word.as_str().to_lowercase())
             .collect();
 
         for word in words {
