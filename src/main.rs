@@ -90,7 +90,7 @@ enum KeyboardAction {
     JumpToContentEnd,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Tab {
     Search,
     Stats,
@@ -127,9 +127,11 @@ impl App {
 
     /// write the current text into the store
     fn write_active_entry_to_store(&mut self) {
-        self.global_store
-            .day_mut()
-            .set_day_text(self.content.text());
+        let mut current_text = self.content.text();
+        // remove the trailing newline that is created by the content
+        current_text.pop();
+
+        self.global_store.day_mut().set_day_text(current_text);
 
         self.calender
             .set_edited_days(self.global_store.month().edited_days());
@@ -994,7 +996,13 @@ impl App {
                 snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::START)
             }
             Message::TabSwitched(tab) => {
+                self.write_active_entry_to_store();
+
                 self.current_tab = tab;
+
+                if self.current_tab == Tab::Stats {
+                    self.global_store.update_word_count();
+                }
 
                 Task::none()
             }

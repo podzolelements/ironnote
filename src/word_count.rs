@@ -89,7 +89,7 @@ impl WordCounts {
 
     /// gets the total number of words in the 'upstream' table
     pub fn total_word_count(&self) -> usize {
-        self.upstream.iter().map(|(_word, count)| count).sum()
+        self.upstream.values().sum()
     }
 
     /// returns the total character count stored in the structure

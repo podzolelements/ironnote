@@ -10,13 +10,13 @@ use std::{
 pub static DICTIONARY: LazyLock<RwLock<Dictionary>> =
     LazyLock::new(|| RwLock::new(composite_dictionary()));
 
+/// regex that seperates out words. allows ' and - to show up in the middle of words
+pub static WORD_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\b[\w'-]+\b").expect("couldn't create regex"));
+
 /// pulls the words out from a string, returning the substring and position. the position is defined by its starting
 /// and ending indexes in the original string
 pub fn extract_words(text: &str) -> Vec<(&str, usize, usize)> {
-    // reuse regex on all subsequent calls
-    static WORD_REGEX: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"\b[\w'-]+\b").expect("couldn't create regex"));
-
     // since regex can't do lookahead/lookbehind, anything matching IGNORE_REGEX gets removed from the word list.
     // removes letter/number combinations, snake and camel case
     static IGNORE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
