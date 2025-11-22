@@ -8,6 +8,8 @@ use crate::{
     highlighter::{HighlightSettings, SpellHighlighter},
     history_stack::{HistoryStack, edit_action_to_history_event},
     logbox::LOGBOX,
+    menu_bar::{MenuBar, menu_bar},
+    menu_bar_builder::{EditMessage, FileMessage, MenuMessage, build_menu_bar},
     misc_tools::point_on_edge_of_text,
     search_table::{SearchTable, SearchTableMessage},
     word_count::{TimedWordCount, WordCount},
@@ -44,6 +46,8 @@ mod global_store;
 mod highlighter;
 mod history_stack;
 mod logbox;
+mod menu_bar;
+mod menu_bar_builder;
 mod misc_tools;
 mod month_store;
 mod search_table;
@@ -75,6 +79,7 @@ struct App {
     window_mouse_position: Point,
     captured_window_mouse_position: Point,
     clipboard: ClipboardContext,
+    menu_bar: MenuBar<Message>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -115,8 +120,10 @@ pub enum Tab {
     Todo,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub enum Message {
+    #[default]
+    EmptyMessage,
     BackOneDay,
     ForwardOneDay,
     JumpToToday,
@@ -138,6 +145,7 @@ pub enum Message {
     WindowMouseMoved(Point),
     RightClickEditArea,
     ExitContextMenu,
+    MenuBar(MenuMessage),
 }
 
 impl App {
@@ -618,13 +626,18 @@ impl App {
 
         let layout_ui = column![top_ui, bottom_ui];
 
-        let layout = column![mouse_area(layout_ui).on_move(Message::WindowMouseMoved)];
+        let layout_menus = menu_bar(layout_ui.into(), &self.menu_bar);
+
+        let layout = column![mouse_area(layout_menus).on_move(Message::WindowMouseMoved)];
 
         layout
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
+            Message::EmptyMessage => {
+                panic!("uninitialized message");
+            }
             Message::BackOneDay => {
                 let previous_day = self
                     .global_store
@@ -1236,6 +1249,48 @@ impl App {
 
                 Task::none()
             }
+            Message::MenuBar(menu_message) => {
+                self.menu_bar.set_active_dropdown(None);
+
+                match menu_message {
+                    MenuMessage::ClickedAway => {
+                        self.menu_bar.set_active_dropdown(None);
+                    }
+                    MenuMessage::ClickedMenu(menu_index) => {
+                        self.menu_bar.set_active_dropdown(Some(menu_index));
+                    }
+                    MenuMessage::File(file_message) => match file_message {
+                        FileMessage::Save => {
+                            return self.update(Message::ManualKeyEvent(KeyboardAction::Save));
+                        }
+                    },
+                    MenuMessage::Edit(edit_message) => match edit_message {
+                        EditMessage::Undo => {
+                            return self.update(Message::ManualKeyEvent(KeyboardAction::Undo));
+                        }
+                        EditMessage::Redo => {
+                            return self.update(Message::ManualKeyEvent(KeyboardAction::Redo));
+                        }
+                        EditMessage::Cut => {
+                            return self.update(Message::ManualKeyEvent(KeyboardAction::Unbound(
+                                UnboundKey::Cut,
+                            )));
+                        }
+                        EditMessage::Copy => {
+                            return self.update(Message::ManualKeyEvent(KeyboardAction::Unbound(
+                                UnboundKey::Copy,
+                            )));
+                        }
+                        EditMessage::Paste => {
+                            return self.update(Message::ManualKeyEvent(KeyboardAction::Unbound(
+                                UnboundKey::Paste,
+                            )));
+                        }
+                    },
+                }
+
+                Task::none()
+            }
         }
     }
 
@@ -1322,6 +1377,7 @@ impl Default for App {
             window_mouse_position: Point::default(),
             captured_window_mouse_position: Point::default(),
             clipboard,
+            menu_bar: build_menu_bar(),
         };
 
         df.global_store.load_all();
