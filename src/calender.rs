@@ -1,13 +1,11 @@
 use chrono::{DateTime, Datelike, Local, NaiveDate};
 use iced::{
     Alignment::Center,
-    Font,
+    Element, Font,
     Length::FillPortion,
     font::Weight,
     widget::{Button, Column, Row, Text, rich_text, row, span},
 };
-
-use crate::Message;
 
 #[derive(Debug, Clone)]
 pub enum CalenderMessage {
@@ -25,6 +23,7 @@ pub enum Month {
     Next,
 }
 
+#[derive(Debug)]
 pub struct Calender {
     day_list: [u32; 42],
     month_mapping: [Month; 42],
@@ -35,11 +34,11 @@ pub struct Calender {
 }
 
 impl Calender {
-    pub fn view<'a>(&self) -> Column<'a, Message> {
+    pub fn view<'a>(&self) -> Element<'a, CalenderMessage> {
         let mut cal = Column::new();
 
         let month_back_btn = Button::new("<")
-            .on_press(Message::Calender(CalenderMessage::BackMonth))
+            .on_press(CalenderMessage::BackMonth)
             .width(30)
             .height(30);
         let month_text = Text::new(self.month_text.clone())
@@ -48,14 +47,14 @@ impl Calender {
             .width(75)
             .height(34);
         let month_forward_btn = Button::new(">")
-            .on_press(Message::Calender(CalenderMessage::ForwardMonth))
+            .on_press(CalenderMessage::ForwardMonth)
             .width(30)
             .height(30);
 
         let month_nav = row![month_back_btn, month_text, month_forward_btn];
 
         let year_back_btn = Button::new("<")
-            .on_press(Message::Calender(CalenderMessage::BackYear))
+            .on_press(CalenderMessage::BackYear)
             .width(30)
             .height(30);
         let year_text = Text::new(self.year_text.clone())
@@ -64,7 +63,7 @@ impl Calender {
             .width(40)
             .height(34);
         let year_forward_btn = Button::new(">")
-            .on_press(Message::Calender(CalenderMessage::ForwardYear))
+            .on_press(CalenderMessage::ForwardYear)
             .width(30)
             .height(30);
 
@@ -107,10 +106,10 @@ impl Calender {
                 .center();
 
                 let day_button = Button::new(button_content)
-                    .on_press(Message::Calender(CalenderMessage::DayButton(
+                    .on_press(CalenderMessage::DayButton(
                         self.day_list[pos],
                         self.month_mapping[pos],
-                    )))
+                    ))
                     .width(36)
                     .height(24);
                 row = row.push(day_button);
@@ -118,7 +117,7 @@ impl Calender {
             cal = cal.push(row);
         }
 
-        cal
+        cal.into()
     }
 
     fn start_day_offset(active_datetime: DateTime<Local>) -> u32 {

@@ -1,15 +1,13 @@
 use chrono::{DateTime, Local};
 use iced::{
-    Font, Length,
+    Element, Font, Length,
     font::Weight,
     widget::{
-        self, Column, Scrollable, rich_text,
+        self, Column, rich_text,
         scrollable::{Direction, Scrollbar},
         span,
     },
 };
-
-use crate::Message;
 
 #[derive(Debug, Clone)]
 pub enum SearchTableMessage {
@@ -30,7 +28,7 @@ pub struct SearchTable {
 }
 
 impl SearchTable {
-    pub fn view(&self) -> Scrollable<'_, Message> {
+    pub fn view(&self) -> Element<'_, SearchTableMessage> {
         let mut table = Column::new();
 
         for entry in self.entries.iter() {
@@ -46,9 +44,7 @@ impl SearchTable {
 
             table = table.push(
                 widget::button(rich_text)
-                    .on_press(Message::TableSearch(SearchTableMessage::EntryClicked(
-                        entry.date,
-                    )))
+                    .on_press(SearchTableMessage::EntryClicked(entry.date))
                     .width(500),
             );
         }
@@ -60,6 +56,7 @@ impl SearchTable {
                 vertical: Scrollbar::new(),
                 horizontal: Scrollbar::new(),
             })
+            .into()
     }
 
     pub fn insert_element(

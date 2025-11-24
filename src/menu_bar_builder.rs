@@ -27,7 +27,7 @@ pub enum MenuMessage {
 }
 
 /// constructs the top menu bar used by the application
-pub fn build_menu_bar() -> MenuBar<Message> {
+pub fn build_menu_bar() -> MenuBar<crate::Message> {
     let mut menu_bar = MenuBar::new(Message::MenuBar(MenuMessage::ClickedAway));
 
     let mut file_dropdown =

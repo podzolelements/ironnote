@@ -360,8 +360,7 @@ impl App {
 
         let daily_nav_bar = row![back_button, today_button, forward_button].width(7 * 36);
 
-        let cal = Calender::view(&self.calender);
-        let temp_calender_bar = row![cal];
+        let calender = Calender::view(&self.calender).map(Message::Calender);
 
         let search_tab_btn = widget::button(widget::Text::new("Search").size(12))
             .on_press(Message::TabSwitched(Tab::Search));
@@ -392,7 +391,7 @@ impl App {
 
                 let search_line = row![searchbar, clear_search_button, match_case_button];
 
-                let table = SearchTable::view(&self.search_table);
+                let table = SearchTable::view(&self.search_table).map(Message::TableSearch);
 
                 let search_results = column![table];
                 column![search_line, search_results]
@@ -445,7 +444,7 @@ impl App {
 
         let tab_view = column![tab_bar, tab_area];
 
-        let left_ui = column![daily_nav_bar, temp_calender_bar, tab_view];
+        let left_ui = column![daily_nav_bar, calender, tab_view];
 
         let right_top_bar = row![
             widget::button("test button 0")
