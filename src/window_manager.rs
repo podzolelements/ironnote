@@ -4,6 +4,7 @@ use iced::{Element, Size, Task, window};
 /// all of the types windows that can be created
 pub enum WindowType {
     Main,
+    FileImport,
 }
 
 impl WindowType {
@@ -12,6 +13,12 @@ impl WindowType {
         match self {
             WindowType::Main => window::Settings {
                 size: Size::new(1024.0, 768.0),
+                ..Default::default()
+            },
+            WindowType::FileImport => window::Settings {
+                size: Size::new(1024.0 / 2.0, 768.0 / 2.0),
+                resizable: false,
+                position: window::Position::Centered,
                 ..Default::default()
             },
         }

@@ -7,6 +7,7 @@ use strum::{Display, EnumIter, IntoEnumIterator};
 #[derive(Debug, Clone, EnumIter, Display)]
 pub enum FileMessage {
     Save,
+    Import,
 }
 
 #[derive(Debug, Clone, EnumIter, Display)]
