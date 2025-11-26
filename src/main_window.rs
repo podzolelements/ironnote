@@ -11,11 +11,11 @@ use crate::keyboard_manager::{KeyboardAction, UnboundKey};
 use crate::logbox::LOGBOX;
 use crate::menu_bar::{MenuBar, menu_bar};
 use crate::menu_bar_builder::{EditMessage, FileMessage, MenuMessage, build_menu_bar};
-use crate::misc_tools;
 use crate::misc_tools::point_on_edge_of_text;
 use crate::search_table::{SearchTable, SearchTableMessage};
-use crate::window_manager::Windowable;
+use crate::window_manager::{WindowType, Windowable};
 use crate::word_count::{TimedWordCount, WordCount};
+use crate::{UpsteamAction, misc_tools};
 use chrono::{DateTime, Datelike, Days, Duration, Local, Months, NaiveDate};
 use iced::widget::scrollable::{RelativeOffset, snap_to};
 use iced::widget::text_editor::Action;
@@ -52,6 +52,7 @@ pub enum Tab {
 
 #[derive(Debug)]
 pub struct Main {
+    pub(crate) upstream_action: Option<UpsteamAction>,
     title: String,
     content: text_editor::Content,
     search_content: text_editor::Content,
@@ -103,6 +104,7 @@ pub enum MainMessage {
     RightClickEditArea,
     ExitContextMenu,
     MenuBar(MenuMessage),
+    OpenFileImportWindow,
 }
 
 const LOG_EDIT_AREA_ID: &str = "log_edit_area";
@@ -992,6 +994,9 @@ impl Windowable<MainMessage> for Main {
                         FileMessage::Save => {
                             return self.update(MainMessage::KeyEvent(KeyboardAction::Save));
                         }
+                        FileMessage::Import => {
+                            return self.update(MainMessage::OpenFileImportWindow);
+                        }
                     },
                     MenuMessage::Edit(edit_message) => match edit_message {
                         EditMessage::Undo => {
@@ -1017,6 +1022,11 @@ impl Windowable<MainMessage> for Main {
                         }
                     },
                 }
+
+                Task::none()
+            }
+            MainMessage::OpenFileImportWindow => {
+                self.upstream_action = Some(UpsteamAction::CreateWindow(WindowType::FileImport));
 
                 Task::none()
             }
@@ -1051,6 +1061,7 @@ impl Default for Main {
             window_mouse_position: Point::default(),
             captured_window_mouse_position: Point::default(),
             menu_bar: build_menu_bar(),
+            upstream_action: None,
         };
 
         df.global_store.load_all();

@@ -1,4 +1,5 @@
 use crate::{
+    file_import_window::{FileImport, FileImportMessage},
     keyboard_manager::{KeyboardAction, bind_keybinds},
     main_window::{Main, MainMessage},
     window_manager::{WindowType, Windowable},
@@ -15,6 +16,7 @@ mod content_tools;
 mod context_menu;
 mod day_store;
 mod dictionary;
+mod file_import_window;
 mod filetools;
 mod global_store;
 mod highlighter;
@@ -34,6 +36,7 @@ struct App {
     keybinds: Keybinds<KeyboardAction>,
     windows: BTreeMap<window::Id, WindowType>,
     main_window: Main,
+    file_import_window: FileImport,
 }
 
 #[derive(Debug, Clone)]
@@ -46,6 +49,14 @@ pub enum Message {
     RenderAll,
 
     MainWindow(MainMessage),
+    FileImportWindow(FileImportMessage),
+}
+
+#[derive(Debug)]
+/// allows for windows to pass up requests to be done by the main application, since they don't have access to the main
+// application Messages
+pub enum UpsteamAction {
+    CreateWindow(WindowType),
 }
 
 impl App {
@@ -64,6 +75,7 @@ impl App {
         if let Some(window_type) = self.windows.get(&id) {
             match window_type {
                 WindowType::Main => self.main_window.title(),
+                WindowType::FileImport => self.file_import_window.title(),
             }
         } else {
             "orphaned window".to_string()
@@ -74,6 +86,10 @@ impl App {
         if let Some(window_type) = self.windows.get(&id) {
             match window_type {
                 WindowType::Main => self.main_window.view().map(Message::MainWindow),
+                WindowType::FileImport => self
+                    .file_import_window
+                    .view()
+                    .map(Message::FileImportWindow),
             }
         } else {
             column![].into()
@@ -122,6 +138,7 @@ impl App {
                                 keyboard_action,
                             )));
                         }
+                        WindowType::FileImport => {}
                     }
                 }
 
@@ -134,15 +151,51 @@ impl App {
                             return self
                                 .update(Message::MainWindow(MainMessage::WindowEvent(event)));
                         }
+                        WindowType::FileImport => {}
                     }
                 }
 
                 Task::none()
             }
-            Message::MainWindow(main_message) => self
-                .main_window
-                .update(main_message)
-                .map(Message::MainWindow),
+            Message::MainWindow(main_message) => {
+                let mut tasks = vec![];
+
+                tasks.push(
+                    self.main_window
+                        .update(main_message)
+                        .map(Message::MainWindow),
+                );
+
+                if let Some(action) = &self.main_window.upstream_action {
+                    match action {
+                        UpsteamAction::CreateWindow(window_type) => {
+                            let new_window_type = window_type.clone();
+
+                            let mut window_already_exists = false;
+
+                            for (window_id, window_type) in &self.windows {
+                                if new_window_type == *window_type {
+                                    tasks.push(window::gain_focus(*window_id));
+                                    window_already_exists = true;
+                                    break;
+                                }
+                            }
+
+                            if !window_already_exists {
+                                let (_new_id, task) =
+                                    iced::window::open(new_window_type.settings());
+                                tasks.push(task.map(move |id| {
+                                    Message::WindowOpened(id, new_window_type.clone())
+                                }));
+                            }
+                        }
+                    }
+
+                    self.main_window.upstream_action = None;
+                }
+
+                Task::batch(tasks)
+            }
         }
     }
 
@@ -169,6 +222,7 @@ impl Default for App {
             keybinds: bind_keybinds(),
             windows: BTreeMap::new(),
             main_window: Main::default(),
+            file_import_window: FileImport::default(),
         }
     }
 }
