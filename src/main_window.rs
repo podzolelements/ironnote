@@ -1,4 +1,5 @@
 use crate::calender::{self, Calender, CalenderMessage};
+use crate::clipboard::{read_clipboard, write_clipboard};
 use crate::config::UserSettings;
 use crate::content_tools::{correct_arrow_movement, perform_ctrl_backspace, perform_ctrl_delete};
 use crate::context_menu::context_menu;
@@ -314,7 +315,12 @@ impl Windowable<MainMessage> for Main {
             .content
             .selection()
             .map(|_selection| MainMessage::KeyEvent(KeyboardAction::Unbound(UnboundKey::Cut)));
-        let copy_message = MainMessage::KeyEvent(KeyboardAction::Unbound(UnboundKey::Copy));
+
+        let copy_message = self
+            .content
+            .selection()
+            .map(|_selection| MainMessage::KeyEvent(KeyboardAction::Unbound(UnboundKey::Copy)));
+
         let paste_message = MainMessage::KeyEvent(KeyboardAction::Unbound(UnboundKey::Paste));
 
         let edit_menu = column![
@@ -322,7 +328,7 @@ impl Windowable<MainMessage> for Main {
                 .on_press_maybe(cut_message)
                 .width(MENU_WIDTH),
             widget::button(widget::text("Copy").size(MENU_SIZE))
-                .on_press(copy_message)
+                .on_press_maybe(copy_message)
                 .width(MENU_WIDTH),
             widget::button(widget::text("Paste").size(MENU_SIZE))
                 .on_press(paste_message)
@@ -846,63 +852,29 @@ impl Windowable<MainMessage> for Main {
                             return snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::END);
                         }
                     }
-                    KeyboardAction::Unbound(unbounded_action) => {
-                        match unbounded_action {
-                            UnboundKey::Cut => {
-                                // if let Some(selection) = self.content.selection() {
-                                //     let clipboard_repsonse = self.clipboard.set_contents(selection);
+                    KeyboardAction::Unbound(unbounded_action) => match unbounded_action {
+                        UnboundKey::Cut => {
+                            if let Some(selection) = self.content.selection() {
+                                write_clipboard(selection);
 
-                                //     if clipboard_repsonse.is_err() {
-                                //         LOGBOX
-                                //             .write()
-                                //             .expect("couldn't get logbox write")
-                                //             .log("Unable to write to clipboard");
-                                //     } else {
-                                //         return self.update(Message::Edit(Action::Edit(
-                                //             text_editor::Edit::Backspace,
-                                //         )));
-                                //     }
-                                // }
-                            }
-                            UnboundKey::Copy => {
-                                // let copied_text = if let Some(selection) = self.content.selection()
-                                // {
-                                //     selection
-                                // } else {
-                                //     // if there is no selection, copy the entire line the cursor is in
-                                //     let (line, _char) = self.content.cursor_position();
-
-                                //     self.content
-                                //         .line(line)
-                                //         .expect("couldn't extract line")
-                                //         .to_string()
-                                // };
-
-                                // let clipboard_repsonse = self.clipboard.set_contents(copied_text);
-
-                                // if clipboard_repsonse.is_err() {
-                                //     LOGBOX
-                                //         .write()
-                                //         .expect("couldn't get logbox write")
-                                //         .log("Unable to write to clipboard");
-                                // }
-                            }
-                            UnboundKey::Paste => {
-                                // let clipboard_contents = self.clipboard.get_contents();
-
-                                // if let Ok(clipboard_text) = clipboard_contents {
-                                //     return self.update(Message::Edit(Action::Edit(
-                                //         text_editor::Edit::Paste(clipboard_text.into()),
-                                //     )));
-                                // } else {
-                                //     LOGBOX
-                                //         .write()
-                                //         .expect("couldn't get logbox write")
-                                //         .log("Unable to read from clipboard");
-                                // }
+                                return self.update(MainMessage::Edit(Action::Edit(
+                                    text_editor::Edit::Backspace,
+                                )));
                             }
                         }
-                    }
+                        UnboundKey::Copy => {
+                            if let Some(selection) = self.content.selection() {
+                                write_clipboard(selection);
+                            };
+                        }
+                        UnboundKey::Paste => {
+                            let clipboard_text = read_clipboard();
+
+                            return self.update(MainMessage::Edit(Action::Edit(
+                                text_editor::Edit::Paste(clipboard_text.into()),
+                            )));
+                        }
+                    },
                 }
 
                 Task::none()
