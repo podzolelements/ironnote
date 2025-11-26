@@ -13,6 +13,7 @@ use keybinds::Keybinds;
 use std::collections::BTreeMap;
 
 mod calender;
+mod clipboard;
 mod config;
 mod content_tools;
 mod context_menu;
@@ -34,7 +35,6 @@ mod word_count;
 
 struct App {
     keybinds: Keybinds<KeyboardAction>,
-    // clipboard: ClipboardContext,
     windows: BTreeMap<window::Id, WindowType>,
     main_window: Main,
 }
@@ -230,11 +230,8 @@ impl Default for App {
             .bind("Ctrl+Down", KeyboardAction::JumpToContentEnd)
             .expect("couldn't bind Ctrl+Down");
 
-        // let clipboard = ClipboardContext::new().expect("couldn't get clipboard");
-
         Self {
             keybinds,
-            // clipboard,
             windows: BTreeMap::new(),
             main_window: Main::default(),
         }
