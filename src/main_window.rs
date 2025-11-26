@@ -7,16 +7,18 @@ use crate::dictionary::{self, DICTIONARY};
 use crate::global_store::GlobalStore;
 use crate::highlighter::{self, HighlightSettings, SpellHighlighter};
 use crate::history_stack::{HistoryStack, edit_action_to_history_event};
+use crate::keyboard_manager::{KeyboardAction, UnboundKey};
 use crate::logbox::LOGBOX;
 use crate::menu_bar::{MenuBar, menu_bar};
 use crate::menu_bar_builder::{EditMessage, FileMessage, MenuMessage, build_menu_bar};
+use crate::misc_tools;
 use crate::misc_tools::point_on_edge_of_text;
 use crate::search_table::{SearchTable, SearchTableMessage};
 use crate::window_manager::Windowable;
 use crate::word_count::{TimedWordCount, WordCount};
-use crate::{KeyboardAction, UnboundKey, misc_tools};
 use chrono::{DateTime, Datelike, Days, Duration, Local, Months, NaiveDate};
 use iced::widget::scrollable::{RelativeOffset, snap_to};
+use iced::widget::text_editor::Action;
 use iced::window;
 use iced::{
     Alignment::Center,
@@ -31,7 +33,7 @@ use iced::{
         vertical_space,
     },
 };
-use iced_core::text::editor::Action;
+// use iced::text::editor::Action;
 
 #[derive(Debug, Default, PartialEq)]
 enum Editor {
