@@ -196,6 +196,10 @@ impl App {
 
                 Task::batch(tasks)
             }
+            Message::FileImportWindow(file_import_message) => self
+                .file_import_window
+                .update(file_import_message)
+                .map(Message::FileImportWindow),
         }
     }
 
