@@ -1,5 +1,7 @@
 use iced::{Element, Size, Task, window};
 
+use crate::SharedAppState;
+
 #[derive(Debug, Clone, PartialEq)]
 /// all of the types windows that can be created
 pub enum WindowType {
@@ -31,8 +33,8 @@ pub trait Windowable<Message> {
     fn title(&self) -> String;
 
     /// the contents on the window
-    fn view<'a>(&'a self) -> Element<'a, Message>;
+    fn view<'a>(&'a self, state: &'a SharedAppState) -> Element<'a, Message>;
 
     /// update the internal state based on the message received
-    fn update(&mut self, message: Message) -> Task<Message>;
+    fn update(&mut self, state: &mut SharedAppState, message: Message) -> Task<Message>;
 }

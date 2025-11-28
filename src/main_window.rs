@@ -4,7 +4,6 @@ use crate::config::UserSettings;
 use crate::content_tools::{correct_arrow_movement, perform_ctrl_backspace, perform_ctrl_delete};
 use crate::context_menu::context_menu;
 use crate::dictionary::{self, DICTIONARY};
-use crate::global_store::GlobalStore;
 use crate::highlighter::{self, HighlightSettings, SpellHighlighter};
 use crate::history_stack::{HistoryStack, edit_action_to_history_event};
 use crate::keyboard_manager::{KeyboardAction, UnboundKey};
@@ -15,7 +14,7 @@ use crate::misc_tools::point_on_edge_of_text;
 use crate::search_table::{SearchTable, SearchTableMessage};
 use crate::window_manager::{WindowType, Windowable};
 use crate::word_count::{TimedWordCount, WordCount};
-use crate::{UpsteamAction, misc_tools};
+use crate::{SharedAppState, UpsteamAction, misc_tools};
 use chrono::{DateTime, Datelike, Days, Duration, Local, Months, NaiveDate};
 use iced::widget::scrollable::{RelativeOffset, snap_to};
 use iced::widget::text_editor::Action;
@@ -33,7 +32,6 @@ use iced::{
         vertical_space,
     },
 };
-// use iced::text::editor::Action;
 
 #[derive(Debug, Default, PartialEq)]
 enum Editor {
@@ -54,12 +52,10 @@ pub enum Tab {
 pub struct Main {
     pub(crate) upstream_action: Option<UpsteamAction>,
     title: String,
-    content: text_editor::Content,
     search_content: text_editor::Content,
     search_text: String,
     calender: Calender,
     search_table: SearchTable,
-    global_store: GlobalStore,
     log_history_stack: HistoryStack,
     search_history_stack: HistoryStack,
     current_tab: Tab,
@@ -114,8 +110,8 @@ impl Windowable<MainMessage> for Main {
         self.title.clone()
     }
 
-    fn view<'a>(&'a self) -> Element<'a, MainMessage> {
-        let (cursor_line_idx, cursor_char_idx) = self.content.cursor_position();
+    fn view<'a>(&'a self, state: &'a SharedAppState) -> Element<'a, MainMessage> {
+        let (cursor_line_idx, cursor_char_idx) = state.content.cursor_position();
         let cursor_spellcheck_timed_out =
             Local::now().signed_duration_since(self.last_edit_time) > Duration::milliseconds(500);
 
@@ -172,22 +168,22 @@ impl Windowable<MainMessage> for Main {
                 column![search_line, search_results]
             }
             Tab::Stats => {
-                let dwc = self.global_store.day().total_word_count().to_string();
-                let dcc = self.global_store.day().total_char_count().to_string();
+                let dwc = state.global_store.day().total_word_count().to_string();
+                let dcc = state.global_store.day().total_char_count().to_string();
 
-                let mwc = self.global_store.month().total_word_count().to_string();
-                let mcc = self.global_store.month().total_char_count().to_string();
+                let mwc = state.global_store.month().total_word_count().to_string();
+                let mcc = state.global_store.month().total_char_count().to_string();
 
-                let twc = self.global_store.total_word_count().to_string();
-                let tcc = self.global_store.total_char_count().to_string();
+                let twc = state.global_store.total_word_count().to_string();
+                let tcc = state.global_store.total_char_count().to_string();
 
-                let maw = format!("{:.2}", self.global_store.month().average_words());
-                let taw = format!("{:.2}", self.global_store.average_words());
-                let mac = format!("{:.2}", self.global_store.month().average_chars());
-                let tac = format!("{:.2}", self.global_store.average_chars());
+                let maw = format!("{:.2}", state.global_store.month().average_words());
+                let taw = format!("{:.2}", state.global_store.average_words());
+                let mac = format!("{:.2}", state.global_store.month().average_chars());
+                let tac = format!("{:.2}", state.global_store.average_chars());
 
-                let longest_streak = format!("{}", self.global_store.longest_streak());
-                let current_streak = format!("{}", self.global_store.current_streak());
+                let longest_streak = format!("{}", state.global_store.longest_streak());
+                let current_streak = format!("{}", state.global_store.current_streak());
 
                 column![
                     widget::Text::new("Current Day"),
@@ -233,7 +229,7 @@ impl Windowable<MainMessage> for Main {
                 .height(100),
         ];
 
-        let log_text_input = widget::text_editor(&self.content)
+        let log_text_input = widget::text_editor(&state.content)
             .placeholder("Type today's log...")
             .on_action(MainMessage::Edit)
             .size(13)
@@ -315,12 +311,12 @@ impl Windowable<MainMessage> for Main {
             }
         }
 
-        let cut_message = self
+        let cut_message = state
             .content
             .selection()
             .map(|_selection| MainMessage::KeyEvent(KeyboardAction::Unbound(UnboundKey::Cut)));
 
-        let copy_message = self
+        let copy_message = state
             .content
             .selection()
             .map(|_selection| MainMessage::KeyEvent(KeyboardAction::Unbound(UnboundKey::Copy)));
@@ -412,66 +408,68 @@ impl Windowable<MainMessage> for Main {
         layout.into()
     }
 
-    fn update(&mut self, message: MainMessage) -> Task<MainMessage> {
+    fn update(&mut self, state: &mut SharedAppState, message: MainMessage) -> Task<MainMessage> {
         match message {
             MainMessage::EmptyMessage => {
                 panic!("uninit message");
             }
             MainMessage::BackOneDay => {
-                let previous_day = self
+                let previous_day = state
                     .global_store
                     .date_time()
                     .checked_sub_days(Days::new(1))
                     .expect("failed to go to previous day");
 
-                let new_datetime = if self.global_store.day().contains_entry() {
+                let new_datetime = if state.global_store.day().contains_entry() {
                     previous_day
                 } else {
-                    self.global_store
-                        .get_previous_edited_day(self.global_store.date_time())
+                    state
+                        .global_store
+                        .get_previous_edited_day(state.global_store.date_time())
                         .unwrap_or(previous_day)
                 };
 
-                self.reload_date(new_datetime);
+                self.reload_date(state, new_datetime);
 
                 snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::START)
             }
             MainMessage::ForwardOneDay => {
-                let next_day = self
+                let next_day = state
                     .global_store
                     .date_time()
                     .checked_add_days(Days::new(1))
                     .expect("failed to go to next day");
 
-                let new_datetime = if self.global_store.day().contains_entry() {
+                let new_datetime = if state.global_store.day().contains_entry() {
                     next_day
                 } else {
-                    self.global_store
-                        .get_next_edited_day(self.global_store.date_time())
+                    state
+                        .global_store
+                        .get_next_edited_day(state.global_store.date_time())
                         .unwrap_or(next_day)
                 };
 
-                self.reload_date(new_datetime);
+                self.reload_date(state, new_datetime);
 
                 snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::START)
             }
             MainMessage::JumpToToday => {
                 let new_datetime = Local::now();
-                self.reload_date(new_datetime);
+                self.reload_date(state, new_datetime);
 
                 snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::START)
             }
             MainMessage::Edit(action) => {
                 self.current_editor = Some(Editor::Log);
 
-                if self.content.selection().is_none() {
-                    (self.cursor_line_idx, self.cursor_char_idx) = self.content.cursor_position();
+                if state.content.selection().is_none() {
+                    (self.cursor_line_idx, self.cursor_char_idx) = state.content.cursor_position();
                 }
 
                 match &action {
                     Action::SelectWord => {
-                        let content_text = self.content.text();
-                        let (cursor_line, cursor_char) = self.content.cursor_position();
+                        let content_text = state.content.text();
+                        let (cursor_line, cursor_char) = state.content.cursor_position();
 
                         let line = content_text
                             .lines()
@@ -485,7 +483,7 @@ impl Windowable<MainMessage> for Main {
                         self.last_edit_time = Local::now();
 
                         let history_event = edit_action_to_history_event(
-                            &self.content,
+                            &state.content,
                             edit.clone(),
                             self.cursor_line_idx,
                             self.cursor_char_idx,
@@ -495,18 +493,18 @@ impl Windowable<MainMessage> for Main {
                     _ => {}
                 }
 
-                let old_cursor_position = self.content.cursor_position();
+                let old_cursor_position = state.content.cursor_position();
 
-                self.content.perform(action.clone());
+                state.content.perform(action.clone());
 
                 if let Action::Move(motion) = action {
-                    correct_arrow_movement(&mut self.content, old_cursor_position, motion);
+                    correct_arrow_movement(&mut state.content, old_cursor_position, motion);
                 }
 
-                self.update_spellcheck();
+                self.update_spellcheck(state);
 
-                let text = self.content.text();
-                let (cursor_y, cursor_x) = self.content.cursor_position();
+                let text = state.content.text();
+                let (cursor_y, cursor_x) = state.content.cursor_position();
                 let cursor_location = point_on_edge_of_text(&text, cursor_x, cursor_y, 3, 400);
 
                 match cursor_location {
@@ -519,11 +517,11 @@ impl Windowable<MainMessage> for Main {
                 if self.current_editor != Some(Editor::Search) {
                     self.current_editor = Some(Editor::Search);
 
-                    self.write_active_entry_to_store();
+                    self.write_active_entry_to_store(state);
                 }
 
-                if self.content.selection().is_none() {
-                    (self.cursor_line_idx, self.cursor_char_idx) = self.content.cursor_position();
+                if state.content.selection().is_none() {
+                    (self.cursor_line_idx, self.cursor_char_idx) = state.content.cursor_position();
                 }
 
                 if let text_editor::Action::Edit(edit) = &action {
@@ -564,7 +562,7 @@ impl Windowable<MainMessage> for Main {
                     correct_arrow_movement(&mut self.search_content, old_cursor_position, motion);
                 }
 
-                self.recompute_search();
+                self.recompute_search(state);
 
                 Task::none()
             }
@@ -579,12 +577,12 @@ impl Windowable<MainMessage> for Main {
                         let new_datetime = match month {
                             calender::Month::Last => {
                                 let days_in_last_month =
-                                    if self.global_store.date_time().month() == 1 {
+                                    if state.global_store.date_time().month() == 1 {
                                         31
                                     } else {
                                         let nd = NaiveDate::from_ymd_opt(
-                                            self.global_store.date_time().year(),
-                                            self.global_store.date_time().month() - 1,
+                                            state.global_store.date_time().year(),
+                                            state.global_store.date_time().month() - 1,
                                             1,
                                         )
                                         .expect("bad date");
@@ -593,16 +591,17 @@ impl Windowable<MainMessage> for Main {
                                     };
 
                                 let days_to_go_back = (days_in_last_month - new_day)
-                                    + self.global_store.date_time().day();
+                                    + state.global_store.date_time().day();
 
-                                self.global_store
+                                state
+                                    .global_store
                                     .date_time()
                                     .checked_sub_days(Days::new(days_to_go_back as u64))
                                     .expect("couldn't go into the past")
                             }
                             calender::Month::Current => {
-                                let delta_day =
-                                    (new_day as i32) - (self.global_store.date_time().day() as i32);
+                                let delta_day = (new_day as i32)
+                                    - (state.global_store.date_time().day() as i32);
 
                                 let mag_delta_day = delta_day.unsigned_abs() as u64;
 
@@ -610,12 +609,14 @@ impl Windowable<MainMessage> for Main {
                                     return Task::none();
                                 }
                                 if delta_day < 0 {
-                                    self.global_store
+                                    state
+                                        .global_store
                                         .date_time()
                                         .checked_sub_days(Days::new(mag_delta_day))
                                         .expect("couldn't jump into the past")
                                 } else {
-                                    self.global_store
+                                    state
+                                        .global_store
                                         .date_time()
                                         .checked_add_days(Days::new(mag_delta_day))
                                         .expect("couldn't jump into the future")
@@ -623,54 +624,55 @@ impl Windowable<MainMessage> for Main {
                             }
                             calender::Month::Next => {
                                 let days_to_go_forward =
-                                    (self.global_store.date_time().num_days_in_month() as u64
-                                        - self.global_store.date_time().day() as u64)
+                                    (state.global_store.date_time().num_days_in_month() as u64
+                                        - state.global_store.date_time().day() as u64)
                                         + new_day as u64;
 
-                                self.global_store
+                                state
+                                    .global_store
                                     .date_time()
                                     .checked_add_days(Days::new(days_to_go_forward))
                                     .expect("couldn't go into the future")
                             }
                         };
 
-                        self.reload_date(new_datetime);
+                        self.reload_date(state, new_datetime);
                     }
                     CalenderMessage::BackMonth => {
-                        let new_datetime = self
+                        let new_datetime = state
                             .global_store
                             .date_time()
                             .checked_sub_months(Months::new(1))
                             .expect("couldn't go back a month");
 
-                        self.reload_date(new_datetime);
+                        self.reload_date(state, new_datetime);
                     }
                     CalenderMessage::ForwardMonth => {
-                        let new_datetime = self
+                        let new_datetime = state
                             .global_store
                             .date_time()
                             .checked_add_months(Months::new(1))
                             .expect("couldn't go forward a month");
 
-                        self.reload_date(new_datetime);
+                        self.reload_date(state, new_datetime);
                     }
                     CalenderMessage::BackYear => {
-                        let new_datetime = self
+                        let new_datetime = state
                             .global_store
                             .date_time()
                             .checked_sub_months(Months::new(12))
                             .expect("couldn't go back a year");
 
-                        self.reload_date(new_datetime);
+                        self.reload_date(state, new_datetime);
                     }
                     CalenderMessage::ForwardYear => {
-                        let new_datetime = self
+                        let new_datetime = state
                             .global_store
                             .date_time()
                             .checked_add_months(Months::new(12))
                             .expect("couldn't go forward a year");
 
-                        self.reload_date(new_datetime);
+                        self.reload_date(state, new_datetime);
                     }
                 }
 
@@ -681,7 +683,7 @@ impl Windowable<MainMessage> for Main {
 
                 match event {
                     KeyboardAction::Save => {
-                        self.save_all();
+                        self.save_all(state);
                     }
                     KeyboardAction::BackspaceWord => {
                         self.last_edit_time = Local::now();
@@ -695,7 +697,7 @@ impl Windowable<MainMessage> for Main {
                         let cursor_char_idx = self.cursor_char_idx;
 
                         if let Some((content, history_stack)) =
-                            self.active_content_and_history_stack()
+                            self.active_content_and_history_stack(state)
                         {
                             // revert the standard backspace that can't be caught
                             history_stack.revert(content);
@@ -709,7 +711,7 @@ impl Windowable<MainMessage> for Main {
                         }
 
                         if self.current_editor == Some(Editor::Search) {
-                            self.recompute_search();
+                            self.recompute_search(state);
                         }
                     }
                     KeyboardAction::BackspaceSentence => {
@@ -721,7 +723,7 @@ impl Windowable<MainMessage> for Main {
                         let cursor_char_idx = self.cursor_char_idx;
 
                         if let Some((content, history_stack)) =
-                            self.active_content_and_history_stack()
+                            self.active_content_and_history_stack(state)
                         {
                             // revert the standard backspace that can't be caught
                             history_stack.revert(content);
@@ -735,7 +737,7 @@ impl Windowable<MainMessage> for Main {
                         }
 
                         if self.current_editor == Some(Editor::Search) {
-                            self.recompute_search();
+                            self.recompute_search(state);
                         }
                     }
                     KeyboardAction::Delete => {
@@ -746,7 +748,7 @@ impl Windowable<MainMessage> for Main {
                         let cursor_char_idx = self.cursor_char_idx;
 
                         if let Some((content, history_stack)) =
-                            self.active_content_and_history_stack()
+                            self.active_content_and_history_stack(state)
                         {
                             let history_event = edit_action_to_history_event(
                                 content,
@@ -760,7 +762,7 @@ impl Windowable<MainMessage> for Main {
                         }
 
                         if self.current_editor == Some(Editor::Search) {
-                            self.recompute_search();
+                            self.recompute_search(state);
                         }
                     }
                     KeyboardAction::DeleteWord => {
@@ -775,7 +777,7 @@ impl Windowable<MainMessage> for Main {
                         let cursor_char_idx = self.cursor_char_idx;
 
                         if let Some((content, history_stack)) =
-                            self.active_content_and_history_stack()
+                            self.active_content_and_history_stack(state)
                         {
                             history_stack.push_undo_action(perform_ctrl_delete(
                                 content,
@@ -786,7 +788,7 @@ impl Windowable<MainMessage> for Main {
                         }
 
                         if self.current_editor == Some(Editor::Search) {
-                            self.recompute_search();
+                            self.recompute_search(state);
                         }
                     }
                     KeyboardAction::DeleteSentence => {
@@ -798,7 +800,7 @@ impl Windowable<MainMessage> for Main {
                         let cursor_char_idx = self.cursor_char_idx;
 
                         if let Some((content, history_stack)) =
-                            self.active_content_and_history_stack()
+                            self.active_content_and_history_stack(state)
                         {
                             history_stack.push_undo_action(perform_ctrl_delete(
                                 content,
@@ -809,40 +811,42 @@ impl Windowable<MainMessage> for Main {
                         }
 
                         if self.current_editor == Some(Editor::Search) {
-                            self.recompute_search();
+                            self.recompute_search(state);
                         }
                     }
                     KeyboardAction::Undo => {
                         self.last_edit_time = Local::now();
 
                         if let Some((content, history_stack)) =
-                            self.active_content_and_history_stack()
+                            self.active_content_and_history_stack(state)
                         {
                             history_stack.perform_undo(content);
                         }
 
                         if self.current_editor == Some(Editor::Search) {
-                            self.recompute_search();
+                            self.recompute_search(state);
                         }
                     }
                     KeyboardAction::Redo => {
                         self.last_edit_time = Local::now();
 
                         if let Some((content, history_stack)) =
-                            self.active_content_and_history_stack()
+                            self.active_content_and_history_stack(state)
                         {
                             history_stack.perform_redo(content);
                         }
 
                         if self.current_editor == Some(Editor::Search) {
-                            self.recompute_search();
+                            self.recompute_search(state);
                         }
                     }
                     KeyboardAction::Debug => {
                         println!("debug!");
                     }
                     KeyboardAction::JumpToContentStart => {
-                        if let Some((active_content, _)) = self.active_content_and_history_stack() {
+                        if let Some((active_content, _)) =
+                            self.active_content_and_history_stack(state)
+                        {
                             active_content
                                 .perform(Action::Move(text_editor::Motion::DocumentStart));
 
@@ -850,7 +854,9 @@ impl Windowable<MainMessage> for Main {
                         }
                     }
                     KeyboardAction::JumpToContentEnd => {
-                        if let Some((active_content, _)) = self.active_content_and_history_stack() {
+                        if let Some((active_content, _)) =
+                            self.active_content_and_history_stack(state)
+                        {
                             active_content.perform(Action::Move(text_editor::Motion::DocumentEnd));
 
                             return snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::END);
@@ -858,25 +864,29 @@ impl Windowable<MainMessage> for Main {
                     }
                     KeyboardAction::Unbound(unbounded_action) => match unbounded_action {
                         UnboundKey::Cut => {
-                            if let Some(selection) = self.content.selection() {
+                            if let Some(selection) = state.content.selection() {
                                 write_clipboard(selection);
 
-                                return self.update(MainMessage::Edit(Action::Edit(
-                                    text_editor::Edit::Backspace,
-                                )));
+                                return self.update(
+                                    state,
+                                    MainMessage::Edit(Action::Edit(text_editor::Edit::Backspace)),
+                                );
                             }
                         }
                         UnboundKey::Copy => {
-                            if let Some(selection) = self.content.selection() {
+                            if let Some(selection) = state.content.selection() {
                                 write_clipboard(selection);
                             };
                         }
                         UnboundKey::Paste => {
                             let clipboard_text = read_clipboard();
 
-                            return self.update(MainMessage::Edit(Action::Edit(
-                                text_editor::Edit::Paste(clipboard_text.into()),
-                            )));
+                            return self.update(
+                                state,
+                                MainMessage::Edit(Action::Edit(text_editor::Edit::Paste(
+                                    clipboard_text.into(),
+                                ))),
+                            );
                         }
                     },
                 }
@@ -886,42 +896,42 @@ impl Windowable<MainMessage> for Main {
             MainMessage::TableSearch(table_message) => {
                 let SearchTableMessage::EntryClicked(table_time) = table_message;
 
-                self.reload_date(table_time);
+                self.reload_date(state, table_time);
 
                 snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::START)
             }
             MainMessage::TabSwitched(tab) => {
-                self.write_active_entry_to_store();
+                self.write_active_entry_to_store(state);
 
                 self.current_tab = tab;
 
                 if self.current_tab == Tab::Stats {
-                    self.global_store.update_word_count();
+                    state.global_store.update_word_count();
                 }
 
                 Task::none()
             }
             MainMessage::AcceptSpellcheck(suggestion_idx) => {
-                let exit_message = self.update(MainMessage::ExitContextMenu);
+                let exit_message = self.update(state, MainMessage::ExitContextMenu);
 
                 let selected_suggestion = self.spell_suggestions[suggestion_idx].clone();
 
                 let equivalent_edit = text_editor::Edit::Paste(selected_suggestion.into());
 
                 let history_event = edit_action_to_history_event(
-                    &self.content,
+                    &state.content,
                     equivalent_edit.clone(),
                     self.cursor_line_idx,
                     self.cursor_char_idx,
                 );
                 self.log_history_stack.push_undo_action(history_event);
 
-                self.content.perform(Action::Edit(equivalent_edit));
+                state.content.perform(Action::Edit(equivalent_edit));
 
                 exit_message
             }
             MainMessage::AddToDictionary(word) => {
-                let exit_message = self.update(MainMessage::ExitContextMenu);
+                let exit_message = self.update(state, MainMessage::ExitContextMenu);
 
                 dictionary::add_word_to_personal_dictionary(&word);
 
@@ -930,16 +940,18 @@ impl Windowable<MainMessage> for Main {
             MainMessage::ClearSearch => {
                 self.search_content = Content::new();
 
-                self.update(MainMessage::EditSearch(Action::Move(
-                    text_editor::Motion::DocumentEnd,
-                )))
+                self.update(
+                    state,
+                    MainMessage::EditSearch(Action::Move(text_editor::Motion::DocumentEnd)),
+                )
             }
             MainMessage::ToggleSearchCase => {
                 self.settings.ignore_search_case = !self.settings.ignore_search_case;
 
-                self.update(MainMessage::EditSearch(Action::Move(
-                    text_editor::Motion::DocumentEnd,
-                )))
+                self.update(
+                    state,
+                    MainMessage::EditSearch(Action::Move(text_editor::Motion::DocumentEnd)),
+                )
             }
             MainMessage::MouseMoved(new_position) => {
                 self.mouse_position = new_position;
@@ -992,33 +1004,36 @@ impl Windowable<MainMessage> for Main {
                     }
                     MenuMessage::File(file_message) => match file_message {
                         FileMessage::Save => {
-                            return self.update(MainMessage::KeyEvent(KeyboardAction::Save));
+                            return self.update(state, MainMessage::KeyEvent(KeyboardAction::Save));
                         }
                         FileMessage::Import => {
-                            return self.update(MainMessage::OpenFileImportWindow);
+                            return self.update(state, MainMessage::OpenFileImportWindow);
                         }
                     },
                     MenuMessage::Edit(edit_message) => match edit_message {
                         EditMessage::Undo => {
-                            return self.update(MainMessage::KeyEvent(KeyboardAction::Undo));
+                            return self.update(state, MainMessage::KeyEvent(KeyboardAction::Undo));
                         }
                         EditMessage::Redo => {
-                            return self.update(MainMessage::KeyEvent(KeyboardAction::Redo));
+                            return self.update(state, MainMessage::KeyEvent(KeyboardAction::Redo));
                         }
                         EditMessage::Cut => {
-                            return self.update(MainMessage::KeyEvent(KeyboardAction::Unbound(
-                                UnboundKey::Cut,
-                            )));
+                            return self.update(
+                                state,
+                                MainMessage::KeyEvent(KeyboardAction::Unbound(UnboundKey::Cut)),
+                            );
                         }
                         EditMessage::Copy => {
-                            return self.update(MainMessage::KeyEvent(KeyboardAction::Unbound(
-                                UnboundKey::Copy,
-                            )));
+                            return self.update(
+                                state,
+                                MainMessage::KeyEvent(KeyboardAction::Unbound(UnboundKey::Copy)),
+                            );
                         }
                         EditMessage::Paste => {
-                            return self.update(MainMessage::KeyEvent(KeyboardAction::Unbound(
-                                UnboundKey::Paste,
-                            )));
+                            return self.update(
+                                state,
+                                MainMessage::KeyEvent(KeyboardAction::Unbound(UnboundKey::Paste)),
+                            );
                         }
                     },
                 }
@@ -1036,14 +1051,12 @@ impl Windowable<MainMessage> for Main {
 
 impl Default for Main {
     fn default() -> Self {
-        let mut df = Self {
+        Self {
             title: String::default(),
-            content: text_editor::Content::default(),
             search_content: text_editor::Content::default(),
             search_text: String::default(),
             calender: Calender::default(),
             search_table: SearchTable::default(),
-            global_store: GlobalStore::default(),
             log_history_stack: HistoryStack::default(),
             search_history_stack: HistoryStack::default(),
             current_tab: Tab::Search,
@@ -1062,47 +1075,39 @@ impl Default for Main {
             captured_window_mouse_position: Point::default(),
             menu_bar: build_menu_bar(),
             upstream_action: None,
-        };
-
-        df.global_store.load_all();
-        df.global_store.update_word_count();
-        df.content = Content::with_text(&df.global_store.day().get_day_text());
-
-        let _ = df.update(MainMessage::JumpToToday);
-
-        df
+        }
     }
 }
 
 impl Main {
     /// retrieves the text from the store and overwrites the content with it
-    fn load_active_entry(&mut self) {
-        self.content = text_editor::Content::with_text(&self.global_store.day().get_day_text());
+    fn load_active_entry(&mut self, state: &mut SharedAppState) {
+        state.content = text_editor::Content::with_text(&state.global_store.day().get_day_text());
     }
 
     /// write the current text into the store
-    fn write_active_entry_to_store(&mut self) {
-        let mut current_text = self.content.text();
+    fn write_active_entry_to_store(&mut self, state: &mut SharedAppState) {
+        let mut current_text = state.content.text();
         // remove the trailing newline that is created by the content
         current_text.pop();
 
-        self.global_store.day_mut().set_day_text(current_text);
+        state.global_store.day_mut().set_day_text(current_text);
 
         self.calender
-            .set_edited_days(self.global_store.month().edited_days());
+            .set_edited_days(state.global_store.month().edited_days());
 
-        self.global_store.update_word_count();
+        state.global_store.update_word_count();
     }
 
     /// writes current entry to store and saves the store to disk
-    fn save_all(&mut self) {
-        self.write_active_entry_to_store();
-        self.global_store.save_all();
+    fn save_all(&mut self, state: &mut SharedAppState) {
+        self.write_active_entry_to_store(state);
+        state.global_store.save_all();
     }
 
     /// reloads the window's title based on the current active date
-    fn update_window_title(&mut self) {
-        let formated_date = self
+    fn update_window_title(&mut self, state: &mut SharedAppState) {
+        let formated_date = state
             .global_store
             .date_time()
             .format("%A, %B %d, %Y")
@@ -1113,31 +1118,31 @@ impl Main {
     }
 
     /// writes the current entry into the store and changes the date of the current entry
-    fn reload_date(&mut self, new_datetime: DateTime<Local>) {
-        self.write_active_entry_to_store();
+    fn reload_date(&mut self, state: &mut SharedAppState, new_datetime: DateTime<Local>) {
+        self.write_active_entry_to_store(state);
 
-        self.global_store.set_current_store_date(new_datetime);
+        state.global_store.set_current_store_date(new_datetime);
 
-        self.update_window_title();
+        self.update_window_title(state);
         self.calender
-            .update_calender_dates(self.global_store.date_time());
-        self.load_active_entry();
+            .update_calender_dates(state.global_store.date_time());
+        self.load_active_entry(state);
 
         self.calender
-            .set_edited_days(self.global_store.month().edited_days());
+            .set_edited_days(state.global_store.month().edited_days());
 
         self.last_edit_time = Local::now();
 
         self.log_history_stack.clear();
     }
 
-    fn update_spellcheck(&mut self) {
+    fn update_spellcheck(&mut self, state: &mut SharedAppState) {
         // TODO: allow direct right clicking on misspelled words without selection requirements
         // TODO: compute suggestions on another thread for better performance?
 
         // computing spellcheck suggestions is extremely expensive, so we only do so when the selection size has
         // changed
-        let recompute_spell_suggestions = if let Some(selection) = self.content.selection() {
+        let recompute_spell_suggestions = if let Some(selection) = state.content.selection() {
             self.selected_misspelled_word.replace(selection.clone()) != Some(selection)
         } else {
             self.spell_suggestions.clear();
@@ -1145,7 +1150,7 @@ impl Main {
             false
         };
 
-        if let Some(selection) = self.content.selection()
+        if let Some(selection) = state.content.selection()
             && !selection.contains(char::is_whitespace)
             && recompute_spell_suggestions
         {
@@ -1156,12 +1161,12 @@ impl Main {
                 dictionary.suggest(&selection, &mut spell_suggestions);
                 self.selected_misspelled_word = Some(selection.clone());
 
-                self.global_store.update_word_count();
+                state.global_store.update_word_count();
 
                 let mut sorted_suggestions: Vec<_> = spell_suggestions
                     .iter()
                     .map(|word| {
-                        let word_count = self.global_store.get_word_count(&word.to_lowercase());
+                        let word_count = state.global_store.get_word_count(&word.to_lowercase());
 
                         (word_count, word)
                     })
@@ -1180,7 +1185,7 @@ impl Main {
         }
     }
 
-    fn recompute_search(&mut self) {
+    fn recompute_search(&mut self, state: &mut SharedAppState) {
         self.search_table.clear();
         self.search_text.clear();
 
@@ -1195,7 +1200,7 @@ impl Main {
             return;
         }
 
-        for month_store in self.global_store.month_stores().rev() {
+        for month_store in state.global_store.month_stores().rev() {
             for day_store in month_store.days().rev() {
                 let original_content_text = day_store.get_day_text();
 
@@ -1247,10 +1252,13 @@ impl Main {
         }
     }
 
-    fn active_content_and_history_stack(&mut self) -> Option<(&mut Content, &mut HistoryStack)> {
+    fn active_content_and_history_stack<'a>(
+        &'a mut self,
+        state: &'a mut SharedAppState,
+    ) -> Option<(&'a mut Content, &'a mut HistoryStack)> {
         if let Some(editor) = &self.current_editor {
             match editor {
-                Editor::Log => Some((&mut self.content, &mut self.log_history_stack)),
+                Editor::Log => Some((&mut state.content, &mut self.log_history_stack)),
                 Editor::Search => Some((&mut self.search_content, &mut self.search_history_stack)),
             }
         } else {
