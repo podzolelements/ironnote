@@ -1,11 +1,16 @@
 use crate::{
     file_import_window::{FileImport, FileImportMessage},
+    global_store::GlobalStore,
     keyboard_manager::{KeyboardAction, bind_keybinds},
     main_window::{Main, MainMessage},
     window_manager::{WindowType, Windowable},
+    word_count::WordCount,
 };
-use iced::window;
 use iced::{Element, Event, Subscription, Task, event::listen_with, keyboard, widget::column};
+use iced::{
+    widget::text_editor::{self, Content},
+    window,
+};
 use keybinds::Keybinds;
 use std::collections::BTreeMap;
 
@@ -32,7 +37,30 @@ mod search_table;
 mod window_manager;
 mod word_count;
 
+#[derive(Debug)]
+/// stores the application state that needs to be shared between different windows
+struct SharedAppState {
+    content: text_editor::Content,
+    global_store: GlobalStore,
+}
+
+impl Default for SharedAppState {
+    fn default() -> Self {
+        let mut global_store = GlobalStore::default();
+        global_store.load_all();
+        global_store.update_word_count();
+
+        let content = Content::with_text(&global_store.day().get_day_text());
+
+        Self {
+            content,
+            global_store,
+        }
+    }
+}
+
 struct App {
+    shared_state: SharedAppState,
     keybinds: Keybinds<KeyboardAction>,
     windows: BTreeMap<window::Id, WindowType>,
     main_window: Main,
@@ -65,10 +93,14 @@ impl App {
 
         let (_new_id, task) = iced::window::open(window_type.settings());
 
-        (
-            Self::default(),
-            task.map(move |id| Message::WindowOpened(id, window_type.clone())),
-        )
+        let mut app = Self::default();
+
+        let generate_window = task.map(move |id| Message::WindowOpened(id, window_type.clone()));
+        let jump_today = app.update(Message::MainWindow(MainMessage::JumpToToday));
+
+        let tasks = vec![generate_window, jump_today];
+
+        (app, Task::batch(tasks))
     }
 
     fn title(&self, id: window::Id) -> String {
@@ -85,10 +117,13 @@ impl App {
     pub fn view(&'_ self, id: window::Id) -> Element<'_, Message> {
         if let Some(window_type) = self.windows.get(&id) {
             match window_type {
-                WindowType::Main => self.main_window.view().map(Message::MainWindow),
+                WindowType::Main => self
+                    .main_window
+                    .view(&self.shared_state)
+                    .map(Message::MainWindow),
                 WindowType::FileImport => self
                     .file_import_window
-                    .view()
+                    .view(&self.shared_state)
                     .map(Message::FileImportWindow),
             }
         } else {
@@ -162,7 +197,7 @@ impl App {
 
                 tasks.push(
                     self.main_window
-                        .update(main_message)
+                        .update(&mut self.shared_state, main_message)
                         .map(Message::MainWindow),
                 );
 
@@ -198,7 +233,7 @@ impl App {
             }
             Message::FileImportWindow(file_import_message) => self
                 .file_import_window
-                .update(file_import_message)
+                .update(&mut self.shared_state, file_import_message)
                 .map(Message::FileImportWindow),
         }
     }
@@ -223,6 +258,7 @@ impl App {
 impl Default for App {
     fn default() -> Self {
         Self {
+            shared_state: SharedAppState::default(),
             keybinds: bind_keybinds(),
             windows: BTreeMap::new(),
             main_window: Main::default(),

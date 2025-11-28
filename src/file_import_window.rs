@@ -1,4 +1,4 @@
-use crate::window_manager::Windowable;
+use crate::{SharedAppState, window_manager::Windowable};
 use iced::{
     Task,
     widget::{
@@ -34,7 +34,7 @@ impl Windowable<FileImportMessage> for FileImport {
         self.title.clone()
     }
 
-    fn view<'a>(&'a self) -> iced::Element<'a, FileImportMessage> {
+    fn view<'a>(&'a self, _state: &SharedAppState) -> iced::Element<'a, FileImportMessage> {
         let filepath_text =
             widget::text_editor(&self.filepath_content).on_action(FileImportMessage::FilepathEdit);
 
@@ -74,7 +74,11 @@ impl Windowable<FileImportMessage> for FileImport {
         .into()
     }
 
-    fn update(&mut self, message: FileImportMessage) -> iced::Task<FileImportMessage> {
+    fn update(
+        &mut self,
+        _state: &mut SharedAppState,
+        message: FileImportMessage,
+    ) -> iced::Task<FileImportMessage> {
         match message {
             FileImportMessage::FilepathEdit(action) => {
                 self.filepath_content.perform(action);
