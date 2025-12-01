@@ -4,7 +4,7 @@ use crate::{
     logbox::LOGBOX,
     word_count::{TimedWordCount, WordCount, WordCounts},
 };
-use chrono::{DateTime, Datelike, Days, Local, NaiveDate};
+use chrono::{DateTime, Datelike, Days, Local};
 use serde_json::Value;
 use std::fs;
 
@@ -16,25 +16,13 @@ pub struct MonthStore {
     word_counts: WordCounts,
 }
 
-impl Default for MonthStore {
-    fn default() -> Self {
-        let days = vec![DayStore::default(); 31];
-        Self {
-            days,
-            month: Default::default(),
-            days_in_month: Default::default(),
-            word_counts: WordCounts::default(),
-        }
-    }
-}
-
 impl MonthStore {
-    /// creates a new month store from the given naive_date
-    pub fn new(naive_date: NaiveDate) -> Self {
-        let days_in_month = naive_date.num_days_in_month();
+    /// creates a new month store from the given datetime
+    pub fn new(datetime: DateTime<Local>) -> Self {
+        let days_in_month = datetime.num_days_in_month();
 
-        let days = vec![DayStore::default(); days_in_month as usize];
-        let month = naive_date.format("%Y-%m").to_string();
+        let days = Self::generate_day_stores(datetime);
+        let month = datetime.format("%Y-%m").to_string();
 
         Self {
             days,
@@ -73,6 +61,27 @@ impl MonthStore {
         self.days.iter()
     }
 
+    /// creates the collection of properly initialized day stores for the month based on the given date
+    fn generate_day_stores(date: DateTime<Local>) -> Vec<DayStore> {
+        let mut day_stores = vec![];
+
+        let mut iterative_date = date.with_day(1).expect("couldn't go to start of month");
+
+        for _i in 0..date.num_days_in_month() {
+            let new_date_3339 = iterative_date.to_rfc3339();
+            let new_date = &new_date_3339[0..10];
+
+            let new_day_store = DayStore::new(new_date);
+            day_stores.push(new_day_store);
+
+            iterative_date = iterative_date
+                .checked_add_days(Days::new(1))
+                .expect("couldn't add day");
+        }
+
+        day_stores
+    }
+
     pub fn load_month(&mut self, date: DateTime<Local>) {
         let date_rfc3339 = date.to_rfc3339();
         self.month = (date_rfc3339[0..7]).to_string();
@@ -89,20 +98,7 @@ impl MonthStore {
             }
             Ok(file_exists) => {
                 if !file_exists {
-                    let mut iterative_date =
-                        date.with_day(1).expect("couldn't go to start of month");
-
-                    for _ in 0..self.days_in_month {
-                        let new_date_3339 = iterative_date.to_rfc3339();
-                        let new_date = &new_date_3339[0..10];
-
-                        let new_day_store = DayStore::new(new_date);
-                        self.days.push(new_day_store);
-
-                        iterative_date = iterative_date
-                            .checked_add_days(Days::new(1))
-                            .expect("couldn't add day");
-                    }
+                    self.days = Self::generate_day_stores(date);
 
                     return;
                 }
@@ -111,16 +107,20 @@ impl MonthStore {
 
         let month_json = fs::read_to_string(&save_path).expect("couldn't read json into string");
 
-        let data: serde_json::Map<String, Value> =
-            serde_json::from_str(&month_json).expect("couldn't deserialize");
+        let json_data: serde_json::Map<String, Value> =
+            if let Ok(data) = serde_json::from_str(&month_json) {
+                data
+            } else {
+                serde_json::Map::new()
+            };
 
         let mut iterative_date = date.with_day(1).expect("couldn't go to start of month");
 
-        for _ in 0..self.days_in_month {
+        for _i in 0..(self.days_in_month) {
             let new_date_3339 = iterative_date.to_rfc3339();
             let new_date = &new_date_3339[0..10];
 
-            let entry_text = if let Some(entry_value) = data.get(new_date) {
+            let entry_text = if let Some(entry_value) = json_data.get(new_date) {
                 let entry: String =
                     serde_json::from_value(entry_value.clone()).expect("invalid entry format");
                 entry
@@ -148,8 +148,12 @@ impl MonthStore {
             "{}".to_string()
         };
 
-        let mut data: serde_json::Map<String, Value> =
-            serde_json::from_str(&month_json).expect("couldn't deserialize");
+        let mut json_data: serde_json::Map<String, Value> =
+            if let Ok(data) = serde_json::from_str(&month_json) {
+                data
+            } else {
+                serde_json::Map::new()
+            };
 
         for i in 0..(self.days_in_month as usize) {
             let new_entry = self.days[i].clone();
@@ -159,16 +163,17 @@ impl MonthStore {
             }
 
             if !new_entry.contains_entry() {
-                data.remove_entry(&new_entry.date());
+                json_data.remove_entry(&new_entry.date());
             } else {
-                data.insert(
+                json_data.insert(
                     new_entry.date().clone(),
                     serde_json::to_value(new_entry.get_day_text()).unwrap(),
                 );
             }
         }
 
-        let new_json = serde_json::to_string_pretty(&data).expect("couldn't serialize on save");
+        let new_json =
+            serde_json::to_string_pretty(&json_data).expect("couldn't serialize on save");
 
         if new_json != "{}" {
             fs::write(&save_path, new_json).expect("couldn't save new json");

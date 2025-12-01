@@ -38,7 +38,7 @@ impl GlobalStore {
         if !self.entries.iter().any(|month_store| {
             month_store.get_yyyy_mm() == self.date_time.format("%Y-%m").to_string()
         }) {
-            self.push_month_store(MonthStore::new(self.date_time.date_naive()));
+            self.push_month_store(MonthStore::new(self.date_time));
         }
     }
 
@@ -87,10 +87,8 @@ impl GlobalStore {
         self.date_time
     }
 
-    /// loads all entries from disk, clearing any existing data
+    /// loads all entries from disk, overwriting any existing data in the store
     pub fn load_all(&mut self) {
-        self.entries.clear();
-
         static FILENAME_REGEX: LazyLock<Regex> =
             LazyLock::new(|| Regex::new(r"\d\d\d\d-\d\d\.json").expect("couldn't create regex"));
 
@@ -114,7 +112,7 @@ impl GlobalStore {
                 let file_date = filename[0..7].to_string() + "-01";
                 let date_time = misc_tools::string_to_datetime(&file_date);
 
-                let mut month_store = MonthStore::default();
+                let mut month_store = MonthStore::new(date_time);
                 month_store.load_month(date_time);
 
                 self.add_month_to_store(month_store);
@@ -164,12 +162,15 @@ impl GlobalStore {
         }
 
         for month_date in missing_months {
-            self.add_month_to_store(MonthStore::new(month_date));
+            let month_datetime = string_to_datetime(&month_date.to_string());
+            self.add_month_to_store(MonthStore::new(month_datetime));
         }
 
         self.sort_month_stores();
     }
 
+    /// adds a month into the store. if the new month is dated the same as an existing entry, the existing one is
+    /// overwritten by the new one
     fn add_month_to_store(&mut self, new_month_store: MonthStore) {
         self.entries.retain(|month_store| {
             month_store.get_yyyy_mm() != new_month_store.get_yyyy_mm().clone()
