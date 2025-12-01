@@ -14,7 +14,7 @@ use crate::misc_tools::point_on_edge_of_text;
 use crate::search_table::{SearchTable, SearchTableMessage};
 use crate::window_manager::{WindowType, Windowable};
 use crate::word_count::{TimedWordCount, WordCount};
-use crate::{SharedAppState, UpsteamAction, misc_tools};
+use crate::{SharedAppState, UpstreamAction, misc_tools};
 use chrono::{DateTime, Datelike, Days, Duration, Local, Months, NaiveDate};
 use iced::widget::scrollable::{RelativeOffset, snap_to};
 use iced::widget::text_editor::Action;
@@ -50,7 +50,6 @@ pub enum Tab {
 
 #[derive(Debug)]
 pub struct Main {
-    pub(crate) upstream_action: Option<UpsteamAction>,
     title: String,
     search_content: text_editor::Content,
     search_text: String,
@@ -1041,7 +1040,7 @@ impl Windowable<MainMessage> for Main {
                 Task::none()
             }
             MainMessage::OpenFileImportWindow => {
-                self.upstream_action = Some(UpsteamAction::CreateWindow(WindowType::FileImport));
+                state.upstream_action = Some(UpstreamAction::CreateWindow(WindowType::FileImport));
 
                 Task::none()
             }
@@ -1074,7 +1073,6 @@ impl Default for Main {
             window_mouse_position: Point::default(),
             captured_window_mouse_position: Point::default(),
             menu_bar: build_menu_bar(),
-            upstream_action: None,
         }
     }
 }

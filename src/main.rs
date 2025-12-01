@@ -40,6 +40,7 @@ mod word_count;
 #[derive(Debug)]
 /// stores the application state that needs to be shared between different windows
 struct SharedAppState {
+    upstream_action: Option<UpstreamAction>,
     content: text_editor::Content,
     global_store: GlobalStore,
 }
@@ -53,6 +54,7 @@ impl Default for SharedAppState {
         let content = Content::with_text(&global_store.day().get_day_text());
 
         Self {
+            upstream_action: None,
             content,
             global_store,
         }
@@ -82,9 +84,10 @@ pub enum Message {
 
 #[derive(Debug)]
 /// allows for windows to pass up requests to be done by the main application, since they don't have access to the main
-// application Messages
-pub enum UpsteamAction {
+/// application Messages
+pub enum UpstreamAction {
     CreateWindow(WindowType),
+    CloseWindow(WindowType),
 }
 
 impl App {
@@ -132,110 +135,108 @@ impl App {
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
+        let mut tasks = vec![Task::none()];
+
         match message {
             Message::WindowOpened(new_window_id, new_window_type) => {
                 self.windows.insert(new_window_id, new_window_type);
-
-                Task::none()
             }
             Message::WindowClosed(id) => {
                 if let Some(window_closed) = self.windows.get(&id)
                     && *window_closed == WindowType::Main
                 {
-                    return iced::exit();
+                    tasks.push(iced::exit());
                 }
 
                 self.windows.remove(&id);
-
-                Task::none()
             }
             Message::RenderAll => {
                 for window_id in self.windows.keys() {
                     self.view(*window_id);
                 }
-
-                Task::none()
             }
             Message::CapturedKeyEvent((event, id)) => {
                 if let Some(action) = self.keybinds.dispatch(event) {
                     let key_action = action.clone();
 
-                    return self.update(Message::KeyEvent((key_action, id)));
+                    tasks.push(self.update(Message::KeyEvent((key_action, id))));
                 }
-
-                Task::none()
             }
             Message::KeyEvent((keyboard_action, window_id)) => {
                 if let Some(window_type) = self.windows.get(&window_id) {
                     match window_type {
                         WindowType::Main => {
-                            return self.update(Message::MainWindow(MainMessage::KeyEvent(
+                            tasks.push(self.update(Message::MainWindow(MainMessage::KeyEvent(
                                 keyboard_action,
-                            )));
+                            ))));
                         }
                         WindowType::FileImport => {}
                     }
                 }
-
-                Task::none()
             }
             Message::WindowEvent((event, window_id)) => {
                 if let Some(window_type) = self.windows.get(&window_id) {
                     match window_type {
                         WindowType::Main => {
-                            return self
-                                .update(Message::MainWindow(MainMessage::WindowEvent(event)));
+                            tasks.push(
+                                self.update(Message::MainWindow(MainMessage::WindowEvent(event))),
+                            );
                         }
                         WindowType::FileImport => {}
                     }
                 }
-
-                Task::none()
             }
             Message::MainWindow(main_message) => {
-                let mut tasks = vec![];
-
                 tasks.push(
                     self.main_window
                         .update(&mut self.shared_state, main_message)
                         .map(Message::MainWindow),
                 );
+            }
+            Message::FileImportWindow(file_import_message) => {
+                let file_task = self
+                    .file_import_window
+                    .update(&mut self.shared_state, file_import_message)
+                    .map(Message::FileImportWindow);
 
-                if let Some(action) = &self.main_window.upstream_action {
-                    match action {
-                        UpsteamAction::CreateWindow(window_type) => {
-                            let new_window_type = window_type.clone();
+                tasks.push(file_task);
+            }
+        }
 
-                            let mut window_already_exists = false;
+        match &self.shared_state.upstream_action {
+            None => {}
+            Some(UpstreamAction::CreateWindow(window_type)) => {
+                let new_window_type = window_type.clone();
 
-                            for (window_id, window_type) in &self.windows {
-                                if new_window_type == *window_type {
-                                    tasks.push(window::gain_focus(*window_id));
-                                    window_already_exists = true;
-                                    break;
-                                }
-                            }
+                let mut window_already_exists = false;
 
-                            if !window_already_exists {
-                                let (_new_id, task) =
-                                    iced::window::open(new_window_type.settings());
-                                tasks.push(task.map(move |id| {
-                                    Message::WindowOpened(id, new_window_type.clone())
-                                }));
-                            }
-                        }
+                for (window_id, window_type) in &self.windows {
+                    if new_window_type == *window_type {
+                        tasks.push(window::gain_focus(*window_id));
+                        window_already_exists = true;
+                        break;
                     }
-
-                    self.main_window.upstream_action = None;
                 }
 
-                Task::batch(tasks)
+                if !window_already_exists {
+                    let (_new_id, task) = iced::window::open(new_window_type.settings());
+                    tasks.push(
+                        task.map(move |id| Message::WindowOpened(id, new_window_type.clone())),
+                    );
+                }
             }
-            Message::FileImportWindow(file_import_message) => self
-                .file_import_window
-                .update(&mut self.shared_state, file_import_message)
-                .map(Message::FileImportWindow),
+            Some(UpstreamAction::CloseWindow(closing_window_type)) => {
+                for (window_id, window_type) in &self.windows {
+                    if *window_type == *closing_window_type {
+                        tasks.push(window::close(window_id.clone()));
+                    }
+                }
+            }
         }
+
+        self.shared_state.upstream_action = None;
+
+        Task::batch(tasks)
     }
 
     fn subscription(&self) -> Subscription<Message> {
