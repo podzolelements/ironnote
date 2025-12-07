@@ -228,7 +228,7 @@ impl App {
             Some(UpstreamAction::CloseWindow(closing_window_type)) => {
                 for (window_id, window_type) in &self.windows {
                     if *window_type == *closing_window_type {
-                        tasks.push(window::close(window_id.clone()));
+                        tasks.push(window::close(*window_id));
                     }
                 }
             }
