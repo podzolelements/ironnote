@@ -16,7 +16,7 @@ use crate::window_manager::{WindowType, Windowable};
 use crate::word_count::{TimedWordCount, WordCount};
 use crate::{SharedAppState, UpstreamAction, misc_tools};
 use chrono::{DateTime, Datelike, Days, Duration, Local, Months, NaiveDate};
-use iced::widget::scrollable::{RelativeOffset, snap_to};
+use iced::widget::scrollable::{AbsoluteOffset, RelativeOffset, Viewport, snap_to};
 use iced::widget::text_editor::Action;
 use iced::window;
 use iced::{
@@ -72,6 +72,7 @@ pub struct Main {
     window_mouse_position: Point,
     captured_window_mouse_position: Point,
     menu_bar: MenuBar<MainMessage>,
+    editor_scroll_offset: AbsoluteOffset,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -100,6 +101,7 @@ pub enum MainMessage {
     ExitContextMenu,
     MenuBar(MenuMessage),
     OpenFileImportWindow,
+    EditorScrolled(Viewport),
 }
 
 const LOG_EDIT_AREA_ID: &str = "log_edit_area";
@@ -246,16 +248,6 @@ impl Windowable<MainMessage> for Main {
                 highlighter::highlight_to_format,
             );
 
-        let log_edit_area = widget::scrollable(log_text_input)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .direction(Direction::Vertical(Scrollbar::new().spacing(0).margin(2)))
-            .id(Id::new(LOG_EDIT_AREA_ID));
-
-        let mouse_log_edit_area = mouse_area(log_edit_area)
-            .on_right_release(MainMessage::RightClickEditArea)
-            .on_move(MainMessage::MouseMoved);
-
         let mut spellcheck_context_menu_contents: Vec<(String, MainMessage)> = vec![];
 
         if self.selected_misspelled_word.is_some() {
@@ -362,27 +354,36 @@ impl Windowable<MainMessage> for Main {
             history_menu
         ];
 
+        let mut context_menu_position = self.captured_mouse_position;
+        context_menu_position.y += self.editor_scroll_offset.y;
+
         let distance_to_window_edge =
             self.window_size.width - self.captured_window_mouse_position.x;
 
-        let context_menu_position = if distance_to_window_edge < (MENU_WIDTH + 15) as f32 {
-            Point::new(
-                self.captured_mouse_position.x - (MENU_WIDTH as f32),
-                self.captured_mouse_position.y,
-            )
-        } else {
-            self.captured_mouse_position
-        };
+        if distance_to_window_edge < (MENU_WIDTH + 15) as f32 {
+            context_menu_position.x -= MENU_WIDTH as f32;
+        }
 
-        let composite_editor = context_menu(
-            mouse_log_edit_area,
+        let editor_with_menu = context_menu(
+            log_text_input,
             total_context_menu,
             self.show_context_menu,
             context_menu_position,
             MainMessage::ExitContextMenu,
         );
 
-        let right_ui = column![right_top_bar, composite_editor.into()];
+        let scrollable_editor = widget::scrollable(editor_with_menu)
+            .width(Length::Fill)
+            .on_scroll(MainMessage::EditorScrolled)
+            .height(Length::Fill)
+            .direction(Direction::Vertical(Scrollbar::new().spacing(0).margin(2)))
+            .id(Id::new(LOG_EDIT_AREA_ID));
+
+        let mouse_editor_area = mouse_area(scrollable_editor)
+            .on_right_release(MainMessage::RightClickEditArea)
+            .on_move(MainMessage::MouseMoved);
+
+        let right_ui = column![right_top_bar, mouse_editor_area];
 
         let top_ui = row![left_ui, right_ui];
 
@@ -1044,6 +1045,11 @@ impl Windowable<MainMessage> for Main {
 
                 Task::none()
             }
+            MainMessage::EditorScrolled(viewport) => {
+                self.editor_scroll_offset = viewport.absolute_offset();
+
+                Task::none()
+            }
         }
     }
 }
@@ -1073,6 +1079,7 @@ impl Default for Main {
             window_mouse_position: Point::default(),
             captured_window_mouse_position: Point::default(),
             menu_bar: build_menu_bar(),
+            editor_scroll_offset: AbsoluteOffset::default(),
         }
     }
 }

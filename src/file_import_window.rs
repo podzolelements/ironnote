@@ -72,7 +72,7 @@ impl Windowable<FileImportMessage> for FileImport {
 
         let cancel_button = button(Text::new("Cancel")).on_press(FileImportMessage::Cancel);
 
-        let import_message = self.import_strategy.map(|g| FileImportMessage::Import(g));
+        let import_message = self.import_strategy.map(FileImportMessage::Import);
         let import_button = button(Text::new("Import")).on_press_maybe(import_message);
 
         let bottom_buttons = row![cancel_button, import_button];
