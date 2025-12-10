@@ -12,12 +12,15 @@ use crate::menu_bar::{MenuBar, menu_bar};
 use crate::menu_bar_builder::{EditMessage, FileMessage, MenuMessage, build_menu_bar};
 use crate::misc_tools::point_on_edge_of_text;
 use crate::search_table::{SearchTable, SearchTableMessage};
+use crate::tasks::Tasks;
+use crate::template_tasks::{Frequency, TaskDataFormat, TaskType, TemplateTask};
 use crate::window_manager::{WindowType, Windowable};
 use crate::word_count::{TimedWordCount, WordCount};
 use crate::{SharedAppState, UpstreamAction, misc_tools};
 use chrono::{DateTime, Datelike, Days, Duration, Local, Months, NaiveDate};
 use iced::widget::scrollable::{AbsoluteOffset, RelativeOffset, Viewport, snap_to};
 use iced::widget::text_editor::Action;
+use iced::widget::{Space, Text, stack};
 use iced::window;
 use iced::{
     Alignment::Center,
@@ -43,9 +46,9 @@ enum Editor {
 #[derive(Debug, Default, Clone, PartialEq)]
 pub enum Tab {
     #[default]
+    Tasks,
     Search,
     Stats,
-    Todo,
 }
 
 #[derive(Debug)]
@@ -73,6 +76,7 @@ pub struct Main {
     captured_window_mouse_position: Point,
     menu_bar: MenuBar<MainMessage>,
     editor_scroll_offset: AbsoluteOffset,
+    all_tasks: Tasks,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -102,6 +106,7 @@ pub enum MainMessage {
     MenuBar(MenuMessage),
     OpenFileImportWindow,
     EditorScrolled(Viewport),
+    AddTask,
 }
 
 const LOG_EDIT_AREA_ID: &str = "log_edit_area";
@@ -134,14 +139,14 @@ impl Windowable<MainMessage> for Main {
         let cal = Calender::view(&self.calender).map(MainMessage::Calender);
         let temp_calender_bar = row![cal];
 
+        let tasks_tab_btn = widget::button(widget::Text::new("Tasks").size(12))
+            .on_press(MainMessage::TabSwitched(Tab::Tasks));
         let search_tab_btn = widget::button(widget::Text::new("Search").size(12))
             .on_press(MainMessage::TabSwitched(Tab::Search));
         let stats_tab_btn = widget::button(widget::Text::new("Stats").size(12))
             .on_press(MainMessage::TabSwitched(Tab::Stats));
-        let todo_tab_btn = widget::button(widget::Text::new("Todo").size(12))
-            .on_press(MainMessage::TabSwitched(Tab::Todo));
 
-        let tab_bar = row![search_tab_btn, stats_tab_btn, todo_tab_btn];
+        let tab_bar = row![tasks_tab_btn, search_tab_btn, stats_tab_btn];
 
         let tab_area = match self.current_tab {
             Tab::Search => {
@@ -208,8 +213,29 @@ impl Windowable<MainMessage> for Main {
                     ),
                 ]
             }
-            Tab::Todo => {
-                column![widget::Text::new("Todo area")]
+            Tab::Tasks => {
+                let tasks = column![
+                    self.all_tasks
+                        .build_tasks(state.global_store.date_time().date_naive()),
+                ];
+
+                let add_button_v_padding = Space::new(Length::Fill, Length::Fill);
+                let add_buttom_h_padding = Space::with_width(Length::Fill);
+
+                let add_button =
+                    widget::Button::new(Text::new("+").align_x(Center).align_y(Center))
+                        .on_press(MainMessage::AddTask)
+                        .width(40)
+                        .height(40);
+                let add_button_layer =
+                    column![add_button_v_padding, row![add_buttom_h_padding, add_button]];
+
+                column![stack![
+                    widget::scrollable(tasks)
+                        .width(Length::Fill)
+                        .height(Length::Fill),
+                    add_button_layer
+                ]]
             }
         }
         .width(250);
@@ -1050,6 +1076,31 @@ impl Windowable<MainMessage> for Main {
 
                 Task::none()
             }
+            MainMessage::AddTask => {
+                let mut search_text = self.search_content.text();
+                search_text.pop();
+
+                let active_date = state.global_store.date_time().date_naive();
+
+                let mut standard_task = TemplateTask::new(
+                    search_text,
+                    TaskType::Standard,
+                    active_date,
+                    Frequency::Daily,
+                );
+
+                if let Some(standard) = standard_task.get_entry_mut(active_date)
+                    && let TaskDataFormat::Standard(standard_data) = standard
+                {
+                    standard_data.set_completion(true);
+                }
+
+                standard_task.set_expansion(false);
+
+                self.all_tasks.template_tasks.add_template(standard_task);
+
+                Task::none()
+            }
         }
     }
 }
@@ -1064,7 +1115,7 @@ impl Default for Main {
             search_table: SearchTable::default(),
             log_history_stack: HistoryStack::default(),
             search_history_stack: HistoryStack::default(),
-            current_tab: Tab::Search,
+            current_tab: Tab::default(),
             current_editor: None,
             cursor_line_idx: 0,
             cursor_char_idx: 0,
@@ -1080,6 +1131,7 @@ impl Default for Main {
             captured_window_mouse_position: Point::default(),
             menu_bar: build_menu_bar(),
             editor_scroll_offset: AbsoluteOffset::default(),
+            all_tasks: Tasks::default(),
         }
     }
 }
@@ -1104,10 +1156,12 @@ impl Main {
         state.global_store.update_word_count();
     }
 
-    /// writes current entry to store and saves the store to disk
+    /// writes current entry to store, saves the store to disk, and saves task list to disk
     fn save_all(&mut self, state: &mut SharedAppState) {
         self.write_active_entry_to_store(state);
         state.global_store.save_all();
+
+        self.all_tasks.save_all();
     }
 
     /// reloads the window's title based on the current active date
@@ -1135,6 +1189,10 @@ impl Main {
 
         self.calender
             .set_edited_days(state.global_store.month().edited_days());
+
+        self.all_tasks
+            .template_tasks
+            .generate_template_entries(state.global_store.date_time().date_naive());
 
         self.last_edit_time = Local::now();
 

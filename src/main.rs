@@ -34,6 +34,8 @@ mod menu_bar_builder;
 mod misc_tools;
 mod month_store;
 mod search_table;
+mod tasks;
+mod template_tasks;
 mod window_manager;
 mod word_count;
 
