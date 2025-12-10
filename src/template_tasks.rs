@@ -14,6 +14,7 @@ pub struct StandardData {
     text_content: Content,
     completed: bool,
 }
+
 #[derive(Debug, Serialize, Deserialize)]
 /// StandardData task data as stored on disk
 pub struct StandardDataDisk {
@@ -21,12 +22,23 @@ pub struct StandardDataDisk {
     completed: bool,
 }
 
-impl StandardDataDisk {
-    /// converts a StandardDataDisk into the StandardData format
-    fn from_disk(&self) -> StandardData {
+impl From<&StandardDataDisk> for StandardData {
+    fn from(value: &StandardDataDisk) -> Self {
         StandardData {
-            text_content: Content::with_text(&self.text),
-            completed: self.completed,
+            text_content: Content::with_text(&value.text),
+            completed: value.completed,
+        }
+    }
+}
+
+impl From<&StandardData> for StandardDataDisk {
+    fn from(value: &StandardData) -> Self {
+        let mut text = value.text_content.text();
+        text.pop();
+
+        StandardDataDisk {
+            text,
+            completed: value.completed,
         }
     }
 }
@@ -35,17 +47,6 @@ impl StandardData {
     /// set if the task was completed or not
     pub fn set_completion(&mut self, completed: bool) {
         self.completed = completed;
-    }
-
-    /// converts StandardData into the equivelent disk format
-    fn to_disk(&self) -> StandardDataDisk {
-        let mut text = self.text_content.text();
-        text.pop();
-
-        StandardDataDisk {
-            text,
-            completed: self.completed,
-        }
     }
 }
 
@@ -115,19 +116,6 @@ pub enum TaskDataFormat {
     DualBinary(DualBinaryData),
 }
 
-impl TaskDataFormat {
-    fn to_disk(&self) -> TaskDataDiskFormat {
-        match self {
-            TaskDataFormat::Standard(standard_data) => {
-                TaskDataDiskFormat::Standard(standard_data.to_disk())
-            }
-            TaskDataFormat::DualBinary(dual_binary_data) => {
-                TaskDataDiskFormat::DualBinary(dual_binary_data.to_disk())
-            }
-        }
-    }
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 /// types of data formats stored on disk by the template tasks
 pub enum TaskDataDiskFormat {
@@ -135,14 +123,27 @@ pub enum TaskDataDiskFormat {
     DualBinary(DualBinaryDataDisk),
 }
 
-impl TaskDataDiskFormat {
-    fn from_disk(&self) -> TaskDataFormat {
-        match self {
+impl From<&TaskDataDiskFormat> for TaskDataFormat {
+    fn from(value: &TaskDataDiskFormat) -> Self {
+        match value {
             TaskDataDiskFormat::Standard(standard_data_disk) => {
-                TaskDataFormat::Standard(standard_data_disk.from_disk())
+                TaskDataFormat::Standard(standard_data_disk.into())
             }
             TaskDataDiskFormat::DualBinary(dual_binary_data_disk) => {
                 TaskDataFormat::DualBinary(dual_binary_data_disk.from_disk())
+            }
+        }
+    }
+}
+
+impl From<&TaskDataFormat> for TaskDataDiskFormat {
+    fn from(value: &TaskDataFormat) -> Self {
+        match value {
+            TaskDataFormat::Standard(standard_data) => {
+                TaskDataDiskFormat::Standard(standard_data.into())
+            }
+            TaskDataFormat::DualBinary(dual_binary_data) => {
+                TaskDataDiskFormat::DualBinary(dual_binary_data.to_disk())
             }
         }
     }
@@ -229,22 +230,44 @@ pub struct TemplateTaskDisk {
     expanded: bool,
 }
 
-impl TemplateTaskDisk {
-    fn from_disk(&self) -> TemplateTask {
+impl From<&TemplateTaskDisk> for TemplateTask {
+    fn from(value: &TemplateTaskDisk) -> Self {
         let mut entries = HashMap::new();
 
-        for (date, disk_data) in &self.entries {
-            entries.insert(*date, disk_data.from_disk());
+        for (date, disk_data) in &value.entries {
+            entries.insert(*date, disk_data.into());
         }
 
         TemplateTask {
-            name: self.name.clone(),
-            task_type: self.task_type,
-            creation_date: self.creation_date,
-            ended_date: self.ended_date,
-            frequency: self.frequency.clone(),
+            name: value.name.clone(),
+            task_type: value.task_type,
+            creation_date: value.creation_date,
+            ended_date: value.ended_date,
+            frequency: value.frequency.clone(),
             entries,
-            expanded: self.expanded,
+            expanded: value.expanded,
+        }
+    }
+}
+
+impl From<&TemplateTask> for TemplateTaskDisk {
+    fn from(value: &TemplateTask) -> Self {
+        let mut entries = vec![];
+
+        for (date, data) in &value.entries {
+            entries.push((*date, data.into()));
+        }
+
+        entries.sort_by_key(|(date, _disk)| *date);
+
+        TemplateTaskDisk {
+            name: value.name.clone(),
+            task_type: value.task_type,
+            creation_date: value.creation_date,
+            ended_date: value.ended_date,
+            frequency: value.frequency.clone(),
+            entries,
+            expanded: value.expanded,
         }
     }
 }
@@ -312,26 +335,6 @@ impl TemplateTask {
     /// sets if the entry is expanded (true) or collapsed (false) when rendered
     pub fn set_expansion(&mut self, expanded: bool) {
         self.expanded = expanded;
-    }
-
-    fn to_disk(&self) -> TemplateTaskDisk {
-        let mut entries = vec![];
-
-        for (date, data) in &self.entries {
-            entries.push((*date, data.to_disk()));
-        }
-
-        entries.sort_by_key(|(date, _disk)| *date);
-
-        TemplateTaskDisk {
-            name: self.name.clone(),
-            task_type: self.task_type,
-            creation_date: self.creation_date,
-            ended_date: self.ended_date,
-            frequency: self.frequency.clone(),
-            entries,
-            expanded: self.expanded,
-        }
     }
 
     /// builds the template to an element for the given date. if the entry doesn't exist, a zero width space is returned
@@ -423,7 +426,7 @@ impl TemplateTasks {
     /// writes all templates to disk
     pub fn save_templates(&self) {
         for template in &self.all_templates {
-            let template_disk = template.to_disk();
+            let template_disk: TemplateTaskDisk = template.into();
 
             let task_filename = "task_".to_string()
                 + &template_disk.name.clone()
@@ -455,7 +458,7 @@ impl TemplateTasks {
                 && let Ok(template_disk) =
                     serde_json::from_str::<TemplateTaskDisk>(&template_string)
             {
-                self.add_template(template_disk.from_disk());
+                self.add_template((&template_disk).into());
             }
         }
     }
