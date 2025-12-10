@@ -58,12 +58,29 @@ pub fn personal_dictionary_path(filename: &str) -> PathBuf {
 
     let parent_dir = dictionary_path
         .parent()
-        .expect("savedata path has no parent directory");
+        .expect("dictionary data path has no parent directory");
 
     if !dictionary_path.exists() {
-        fs::create_dir_all(parent_dir).expect("couldn't create savedata parent directory(s)");
+        fs::create_dir_all(parent_dir).expect("couldn't create dictionary parent directory(s)");
         fs::write(&dictionary_path, "").expect("couldn't create new custom dic");
     }
 
     dictionary_path
+}
+
+/// returns the template task storage directory
+pub fn template_tasks_path() -> PathBuf {
+    let home = dirs::home_dir().expect("couldn't open home directory");
+
+    let mut tasks_path = PathBuf::new();
+    tasks_path.push(home);
+    tasks_path.push(".ironnote");
+    tasks_path.push("tasks");
+    tasks_path.push("templates");
+
+    if !tasks_path.exists() {
+        fs::create_dir_all(&tasks_path).expect("couldn't create tasks parent directory(s)");
+    }
+
+    tasks_path
 }
