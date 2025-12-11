@@ -13,7 +13,7 @@ use crate::menu_bar_builder::{EditMessage, FileMessage, MenuMessage, build_menu_
 use crate::misc_tools::point_on_edge_of_text;
 use crate::search_table::{SearchTable, SearchTableMessage};
 use crate::tasks::Tasks;
-use crate::template_tasks::{Frequency, TaskDataFormat, TaskType, TemplateTask};
+use crate::template_tasks::{Frequency, TaskType, TemplateTask, TemplateTaskMessage};
 use crate::window_manager::{WindowType, Windowable};
 use crate::word_count::{TimedWordCount, WordCount};
 use crate::{SharedAppState, UpstreamAction, misc_tools};
@@ -107,6 +107,7 @@ pub enum MainMessage {
     OpenFileImportWindow,
     EditorScrolled(Viewport),
     AddTask,
+    TaskAction(TemplateTaskMessage),
 }
 
 const LOG_EDIT_AREA_ID: &str = "log_edit_area";
@@ -216,7 +217,8 @@ impl Windowable<MainMessage> for Main {
             Tab::Tasks => {
                 let tasks = column![
                     self.all_tasks
-                        .build_tasks(state.global_store.date_time().date_naive()),
+                        .build_tasks(state.global_store.date_time().date_naive())
+                        .map(MainMessage::TaskAction),
                 ];
 
                 let add_button_v_padding = Space::new(Length::Fill, Length::Fill);
@@ -1089,15 +1091,14 @@ impl Windowable<MainMessage> for Main {
                     Frequency::Daily,
                 );
 
-                if let Some(standard) = standard_task.get_entry_mut(active_date)
-                    && let TaskDataFormat::Standard(standard_data) = standard
-                {
-                    standard_data.set_completion(true);
-                }
-
                 standard_task.set_expansion(false);
 
                 self.all_tasks.template_tasks.add_template(standard_task);
+
+                Task::none()
+            }
+            MainMessage::TaskAction(template_message) => {
+                self.all_tasks.template_tasks.update(template_message);
 
                 Task::none()
             }
