@@ -3,6 +3,7 @@ use crate::{
     global_store::GlobalStore,
     keyboard_manager::{KeyboardAction, bind_keybinds},
     main_window::{Main, MainMessage},
+    task_creator_window::{TaskCreator, TaskCreatorMessage},
     window_manager::{WindowType, Windowable},
     word_count::WordCount,
 };
@@ -34,6 +35,7 @@ mod menu_bar_builder;
 mod misc_tools;
 mod month_store;
 mod search_table;
+mod task_creator_window;
 mod tasks;
 mod template_tasks;
 mod window_manager;
@@ -69,6 +71,7 @@ struct App {
     windows: BTreeMap<window::Id, WindowType>,
     main_window: Main,
     file_import_window: FileImport,
+    task_creator_window: TaskCreator,
 }
 
 #[derive(Debug, Clone)]
@@ -82,6 +85,7 @@ pub enum Message {
 
     MainWindow(MainMessage),
     FileImportWindow(FileImportMessage),
+    TaskCreatorWindow(TaskCreatorMessage),
 }
 
 #[derive(Debug)]
@@ -113,6 +117,7 @@ impl App {
             match window_type {
                 WindowType::Main => self.main_window.title(),
                 WindowType::FileImport => self.file_import_window.title(),
+                WindowType::TaskCreator => self.task_creator_window.title(),
             }
         } else {
             "orphaned window".to_string()
@@ -130,6 +135,10 @@ impl App {
                     .file_import_window
                     .view(&self.shared_state)
                     .map(Message::FileImportWindow),
+                WindowType::TaskCreator => self
+                    .task_creator_window
+                    .view(&self.shared_state)
+                    .map(Message::TaskCreatorWindow),
             }
         } else {
             column![].into()
@@ -173,6 +182,7 @@ impl App {
                             ))));
                         }
                         WindowType::FileImport => {}
+                        WindowType::TaskCreator => {}
                     }
                 }
             }
@@ -185,6 +195,7 @@ impl App {
                             );
                         }
                         WindowType::FileImport => {}
+                        WindowType::TaskCreator => {}
                     }
                 }
             }
@@ -202,6 +213,14 @@ impl App {
                     .map(Message::FileImportWindow);
 
                 tasks.push(file_task);
+            }
+            Message::TaskCreatorWindow(task_message) => {
+                let task_task = self
+                    .task_creator_window
+                    .update(&mut self.shared_state, task_message)
+                    .map(Message::TaskCreatorWindow);
+
+                tasks.push(task_task);
             }
         }
 
@@ -266,6 +285,7 @@ impl Default for App {
             windows: BTreeMap::new(),
             main_window: Main::default(),
             file_import_window: FileImport::default(),
+            task_creator_window: TaskCreator::default(),
         }
     }
 }
