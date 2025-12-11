@@ -1,4 +1,4 @@
-use crate::template_tasks::TemplateTasks;
+use crate::template_tasks::{TemplateTaskMessage, TemplateTasks};
 use chrono::NaiveDate;
 use iced::{Element, widget::column};
 
@@ -20,10 +20,7 @@ impl Default for Tasks {
 
 impl Tasks {
     /// constructs all tasks scheduled for the given date
-    pub fn build_tasks<'a, Message: 'a + Clone>(
-        &'a self,
-        active_date: NaiveDate,
-    ) -> Element<'a, Message> {
+    pub fn build_tasks<'a>(&'a self, active_date: NaiveDate) -> Element<'a, TemplateTaskMessage> {
         let mut tasks = column![];
 
         let templates = self.template_tasks.get_active_templates(active_date);
