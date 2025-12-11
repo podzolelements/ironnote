@@ -4,6 +4,7 @@ use crate::{
     keyboard_manager::{KeyboardAction, bind_keybinds},
     main_window::{Main, MainMessage},
     task_creator_window::{TaskCreator, TaskCreatorMessage},
+    tasks::Tasks,
     window_manager::{WindowType, Windowable},
     word_count::WordCount,
 };
@@ -47,6 +48,7 @@ struct SharedAppState {
     upstream_action: Option<UpstreamAction>,
     content: text_editor::Content,
     global_store: GlobalStore,
+    all_tasks: Tasks,
 }
 
 impl Default for SharedAppState {
@@ -57,10 +59,13 @@ impl Default for SharedAppState {
 
         let content = Content::with_text(&global_store.day().get_day_text());
 
+        let all_tasks = Tasks::load_all();
+
         Self {
             upstream_action: None,
             content,
             global_store,
+            all_tasks,
         }
     }
 }

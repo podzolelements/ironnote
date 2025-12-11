@@ -12,7 +12,6 @@ use crate::menu_bar::{MenuBar, menu_bar};
 use crate::menu_bar_builder::{EditMessage, FileMessage, MenuMessage, build_menu_bar};
 use crate::misc_tools::point_on_edge_of_text;
 use crate::search_table::{SearchTable, SearchTableMessage};
-use crate::tasks::Tasks;
 use crate::template_tasks::TemplateTaskMessage;
 use crate::window_manager::{WindowType, Windowable};
 use crate::word_count::{TimedWordCount, WordCount};
@@ -76,7 +75,6 @@ pub struct Main {
     captured_window_mouse_position: Point,
     menu_bar: MenuBar<MainMessage>,
     editor_scroll_offset: AbsoluteOffset,
-    all_tasks: Tasks,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -216,7 +214,8 @@ impl Windowable<MainMessage> for Main {
             }
             Tab::Tasks => {
                 let tasks = column![
-                    self.all_tasks
+                    state
+                        .all_tasks
                         .build_tasks(state.global_store.date_time().date_naive())
                         .map(MainMessage::TaskAction),
                 ];
@@ -1084,7 +1083,7 @@ impl Windowable<MainMessage> for Main {
                 Task::none()
             }
             MainMessage::TaskAction(template_message) => {
-                self.all_tasks.template_tasks.update(template_message);
+                state.all_tasks.template_tasks.update(template_message);
 
                 Task::none()
             }
@@ -1118,7 +1117,6 @@ impl Default for Main {
             captured_window_mouse_position: Point::default(),
             menu_bar: build_menu_bar(),
             editor_scroll_offset: AbsoluteOffset::default(),
-            all_tasks: Tasks::default(),
         }
     }
 }
@@ -1148,7 +1146,7 @@ impl Main {
         self.write_active_entry_to_store(state);
         state.global_store.save_all();
 
-        self.all_tasks.save_all();
+        state.all_tasks.save_all();
     }
 
     /// reloads the window's title based on the current active date
@@ -1177,7 +1175,8 @@ impl Main {
         self.calender
             .set_edited_days(state.global_store.month().edited_days());
 
-        self.all_tasks
+        state
+            .all_tasks
             .template_tasks
             .generate_template_entries(state.global_store.date_time().date_naive());
 

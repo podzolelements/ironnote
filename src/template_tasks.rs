@@ -206,6 +206,13 @@ pub enum Frequency {
     Monthly([bool; 31]),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FrequencyType {
+    Daily,
+    Weekly,
+    Monthly,
+}
+
 impl Frequency {
     /// returns if the frequency would be scheduled to be active on the given date
     pub fn is_active(&self, active_date: NaiveDate) -> bool {
@@ -389,6 +396,14 @@ impl TemplateTask {
         }
 
         new_task
+    }
+
+    pub fn get_type(&self) -> TaskType {
+        self.task_type
+    }
+
+    pub fn get_name(&self) -> String {
+        self.name.clone()
     }
 
     /// returns if the template is scheduled for an entry on the given date
@@ -580,18 +595,23 @@ impl TemplateTask {
 #[derive(Debug, Default)]
 /// collection of all the loaded templates
 pub struct TemplateTasks {
-    all_templates: Vec<TemplateTask>,
+    template_store: Vec<TemplateTask>,
 }
 
 impl TemplateTasks {
     /// inserts a new template into the structure
     pub fn add_template(&mut self, new_template: TemplateTask) {
-        self.all_templates.push(new_template);
+        self.template_store.push(new_template);
+    }
+
+    /// returns all templates in the template store
+    pub fn get_all_templates(&self) -> &Vec<TemplateTask> {
+        &self.template_store
     }
 
     /// returns a Vec of all the templates that are scheduled to be active on the given date
     pub fn get_active_templates(&self, active_date: NaiveDate) -> Vec<&TemplateTask> {
-        self.all_templates
+        self.template_store
             .iter()
             .filter(|task| task.is_active(active_date))
             .collect()
@@ -599,7 +619,7 @@ impl TemplateTasks {
 
     /// returns a Vec of mutable templates that are scheduled to be active on the given date
     pub fn get_active_templates_mut(&mut self, active_date: NaiveDate) -> Vec<&mut TemplateTask> {
-        self.all_templates
+        self.template_store
             .iter_mut()
             .filter(|task| task.is_active(active_date))
             .collect()
@@ -618,7 +638,7 @@ impl TemplateTasks {
 
     /// writes all templates to disk
     pub fn save_templates(&self) {
-        for template in &self.all_templates {
+        for template in &self.template_store {
             let template_disk: TemplateTaskDisk = template.into();
 
             let task_filename = "task_".to_string()
@@ -660,7 +680,7 @@ impl TemplateTasks {
     /// passing along the update to it. the template should always exist, since it was the one that created the message
     /// in the first place
     pub fn update(&mut self, template_message: TemplateTaskMessage) {
-        if let Some(template) = self.all_templates.iter_mut().find(|potential_task| {
+        if let Some(template) = self.template_store.iter_mut().find(|potential_task| {
             potential_task.name == template_message.name
                 && potential_task.task_type == template_message.task_type
         }) {
