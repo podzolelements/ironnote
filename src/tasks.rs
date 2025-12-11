@@ -36,4 +36,12 @@ impl Tasks {
     pub fn save_all(&self) {
         self.template_tasks.save_templates();
     }
+
+    /// returns a Tasks containing all tasks stored on disk
+    pub fn load_all() -> Self {
+        let mut template_tasks = TemplateTasks::default();
+        template_tasks.load_templates();
+
+        Self { template_tasks }
+    }
 }
