@@ -13,10 +13,7 @@ use crate::menu_bar_builder::{EditMessage, FileMessage, MenuMessage, build_menu_
 use crate::misc_tools::point_on_edge_of_text;
 use crate::search_table::{SearchTable, SearchTableMessage};
 use crate::tasks::Tasks;
-use crate::template_tasks::{
-    Frequency, MultiBinaryCommonData, TaskCommonDataFormat, TaskType, TemplateTask,
-    TemplateTaskMessage,
-};
+use crate::template_tasks::TemplateTaskMessage;
 use crate::window_manager::{WindowType, Windowable};
 use crate::word_count::{TimedWordCount, WordCount};
 use crate::{SharedAppState, UpstreamAction, misc_tools};
@@ -1082,30 +1079,7 @@ impl Windowable<MainMessage> for Main {
                 Task::none()
             }
             MainMessage::AddTask => {
-                let mut search_text = self.search_content.text();
-                search_text.pop();
-
-                let active_date = state.global_store.date_time().date_naive();
-
-                let multi_common_data = MultiBinaryCommonData::new(vec![
-                    "Task 1".to_string(),
-                    "Task 2".to_string(),
-                    "Task 3".to_string(),
-                ]);
-
-                let mut multi_binary_task = TemplateTask::new(
-                    search_text,
-                    TaskType::MultiBinary,
-                    TaskCommonDataFormat::MultiBinary(multi_common_data),
-                    active_date,
-                    Frequency::Daily,
-                );
-
-                multi_binary_task.set_expansion(true);
-
-                self.all_tasks
-                    .template_tasks
-                    .add_template(multi_binary_task);
+                state.upstream_action = Some(UpstreamAction::CreateWindow(WindowType::TaskCreator));
 
                 Task::none()
             }

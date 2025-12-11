@@ -191,7 +191,7 @@ impl From<&TaskDataFormat> for TaskDataDiskFormat {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Display, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Display, Serialize, Deserialize)]
 /// these are the types of templates that can be created
 pub enum TaskType {
     Standard,
@@ -444,7 +444,7 @@ impl TemplateTask {
     /// returned. note the builder does not contain the input generics as normally used by iced view() calls. this
     /// allows us to control which messages get generated without the need to pass them in from upstream, which is
     /// useful in this case since we already know what messages should correspond to the task Elements. as long as the
-    /// called contains a message with a TemplateTaskMessage parameter, the Element can be map()ed to the upstream
+    /// caller contains a message with a TemplateTaskMessage parameter, the Element can be map()ed to the upstream
     /// message, and everything works as expected
     pub fn build_template<'a>(&'a self, entry_date: NaiveDate) -> Element<'a, TemplateTaskMessage> {
         let name = Text::new(self.name.clone());
