@@ -11,7 +11,7 @@ use iced::{
     Task,
     advanced::widget::Text,
     widget::{
-        self, Space, button, checkbox, column, hover, radio, row,
+        self, Space, button, checkbox, column, hover, radio, row, scrollable,
         text_editor::{Action, Content},
     },
 };
@@ -23,6 +23,9 @@ pub enum TaskCreatorMessage {
     EditedName(Action),
     CheckedWeekday(usize, bool),
     CheckedMonth(usize, bool),
+    IncreasedMultiBinCount,
+    DecreasedMultiBinCount,
+    EditedMultiBinName((usize, Action)),
     Cancel,
     CreateTask,
 }
@@ -34,6 +37,7 @@ pub struct TaskCreator {
     selected_frequency: FrequencyType,
     freq_weekmap: [bool; 7],
     freq_monthmap: [bool; 31],
+    multi_binary_contents: Vec<Content>,
 }
 
 impl Default for TaskCreator {
@@ -44,6 +48,7 @@ impl Default for TaskCreator {
             selected_frequency: FrequencyType::Daily,
             freq_weekmap: [false; 7],
             freq_monthmap: [false; 31],
+            multi_binary_contents: vec![Content::new(), Content::new()],
         }
     }
 }
@@ -113,7 +118,7 @@ impl Windowable<TaskCreatorMessage> for TaskCreator {
         );
 
         let radio_multi_binary = radio(
-            "Task with any number of sub-tasks",
+            "Task with any number of components",
             TaskType::MultiBinary,
             (self.selected_task_type == TaskType::MultiBinary).then_some(TaskType::MultiBinary),
             TaskCreatorMessage::SelectedTask,
@@ -128,10 +133,34 @@ impl Windowable<TaskCreatorMessage> for TaskCreator {
         let type_config = {
             let task_specifc = match self.selected_task_type {
                 TaskType::Standard => {
-                    column![]
+                    row![]
                 }
                 TaskType::MultiBinary => {
-                    column![Text::new("multi binary task")]
+                    let mut subtasks = column![];
+
+                    for (task_index, content) in self.multi_binary_contents.iter().enumerate() {
+                        let index_text = Text::new(format!("Task {}:", task_index + 1));
+                        let name_editor = widget::text_editor(content).on_action(move |action| {
+                            TaskCreatorMessage::EditedMultiBinName((task_index, action))
+                        });
+
+                        let name_entry = row![index_text, name_editor];
+
+                        subtasks = subtasks.push(name_entry);
+                    }
+
+                    let subtasks_scrollable = scrollable(subtasks).height(100);
+
+                    let increase_button = button(Text::new("Add"))
+                        .on_press(TaskCreatorMessage::IncreasedMultiBinCount);
+                    let decrease_button = button(Text::new("Remove")).on_press_maybe(
+                        (self.multi_binary_contents.len() > 1)
+                            .then_some(TaskCreatorMessage::DecreasedMultiBinCount),
+                    );
+
+                    let inc_dec = column![decrease_button, increase_button];
+
+                    row![subtasks_scrollable, inc_dec]
                 }
             };
 
@@ -291,6 +320,17 @@ impl Windowable<TaskCreatorMessage> for TaskCreator {
             TaskCreatorMessage::CheckedMonth(month_index, checked) => {
                 self.freq_monthmap[month_index] = checked;
             }
+            TaskCreatorMessage::IncreasedMultiBinCount => {
+                self.multi_binary_contents.push(Content::new());
+            }
+            TaskCreatorMessage::DecreasedMultiBinCount => {
+                if self.multi_binary_contents.len() > 1 {
+                    self.multi_binary_contents.pop();
+                }
+            }
+            TaskCreatorMessage::EditedMultiBinName((index, action)) => {
+                self.multi_binary_contents[index].perform(action);
+            }
             TaskCreatorMessage::Cancel => {
                 state.upstream_action = Some(UpstreamAction::CloseWindow(WindowType::TaskCreator));
             }
@@ -303,13 +343,20 @@ impl Windowable<TaskCreatorMessage> for TaskCreator {
                 let (common_data, task_type) = match self.selected_task_type {
                     TaskType::Standard => (TaskCommonDataFormat::Standard, TaskType::Standard),
                     TaskType::MultiBinary => {
-                        let multi_common_data = MultiBinaryCommonData::new(vec![
-                            "Task 1".to_string(),
-                            "Task 2".to_string(),
-                            "Task 3".to_string(),
-                        ]);
+                        let subtask_names = self
+                            .multi_binary_contents
+                            .iter()
+                            .map(|content| {
+                                let mut name = content.text();
+                                name.pop();
+
+                                name
+                            })
+                            .collect();
+
+                        let common_data = MultiBinaryCommonData::new(subtask_names);
                         (
-                            TaskCommonDataFormat::MultiBinary(multi_common_data),
+                            TaskCommonDataFormat::MultiBinary(common_data),
                             TaskType::MultiBinary,
                         )
                     }

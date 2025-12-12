@@ -398,10 +398,12 @@ impl TemplateTask {
         new_task
     }
 
+    /// returns the type of the template
     pub fn get_type(&self) -> TaskType {
         self.task_type
     }
 
+    /// returns the name of the template
     pub fn get_name(&self) -> String {
         self.name.clone()
     }
