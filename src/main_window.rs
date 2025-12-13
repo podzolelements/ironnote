@@ -17,6 +17,7 @@ use crate::window_manager::{WindowType, Windowable};
 use crate::word_count::{TimedWordCount, WordCount};
 use crate::{SharedAppState, UpstreamAction, misc_tools};
 use chrono::{DateTime, Datelike, Days, Duration, Local, Months, NaiveDate};
+use iced::Length::Fill;
 use iced::widget::scrollable::{AbsoluteOffset, RelativeOffset, Viewport, snap_to};
 use iced::widget::text_editor::Action;
 use iced::widget::{Space, Text, stack};
@@ -424,7 +425,14 @@ impl Windowable<MainMessage> for Main {
         .font(Font::DEFAULT)
         .height(Length::Shrink);
 
-        let bottom_ui = row![logbox];
+        let cursor_position_box = widget::Text::new(format!(
+            "Ln {} Col {}",
+            cursor_line_idx + 1,
+            cursor_char_idx
+        ))
+        .size(14);
+
+        let bottom_ui = row![logbox, Space::with_width(Fill), cursor_position_box];
 
         let layout_ui = column![top_ui, bottom_ui];
 
