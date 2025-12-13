@@ -34,6 +34,7 @@ mod main_window;
 mod menu_bar;
 mod menu_bar_builder;
 mod misc_tools;
+mod month_day;
 mod month_store;
 mod search_table;
 mod task_creator_window;
