@@ -1,5 +1,6 @@
 use crate::{
     SharedAppState, UpstreamAction,
+    month_day::{DispMonth, MonthDay},
     template_tasks::{
         Frequency, FrequencyType, MultiBinaryCommonData, TaskCommonDataFormat, TaskType,
         TemplateTask,
@@ -11,10 +12,11 @@ use iced::{
     Task,
     advanced::widget::Text,
     widget::{
-        self, Space, button, checkbox, column, hover, radio, row, scrollable,
+        self, Space, button, checkbox, column, hover, pick_list, radio, row, scrollable,
         text_editor::{Action, Content},
     },
 };
+use strum::VariantArray;
 
 #[derive(Debug, Clone)]
 pub enum TaskCreatorMessage {
@@ -26,6 +28,8 @@ pub enum TaskCreatorMessage {
     IncreasedMultiBinCount,
     DecreasedMultiBinCount,
     EditedMultiBinName((usize, Action)),
+    SelectedMonth(DispMonth),
+    SelectedDay(u32),
     Cancel,
     CreateTask,
 }
@@ -37,6 +41,8 @@ pub struct TaskCreator {
     selected_frequency: FrequencyType,
     freq_weekmap: [bool; 7],
     freq_monthmap: [bool; 31],
+    freq_day: u32,
+    freq_month: DispMonth,
     multi_binary_contents: Vec<Content>,
 }
 
@@ -48,6 +54,8 @@ impl Default for TaskCreator {
             selected_frequency: FrequencyType::Daily,
             freq_weekmap: [false; 7],
             freq_monthmap: [false; 31],
+            freq_day: 1,
+            freq_month: DispMonth::January,
             multi_binary_contents: vec![Content::new(), Content::new()],
         }
     }
@@ -87,6 +95,7 @@ impl TaskCreator {
                     return false;
                 }
             }
+            FrequencyType::Dated => {}
         }
 
         for template in state.all_tasks.template_tasks.get_all_templates() {
@@ -272,11 +281,43 @@ impl Windowable<TaskCreatorMessage> for TaskCreator {
             column![radio_freq_monthly]
         };
 
+        let radio_freq_dated = radio(
+            "Fixed Date",
+            FrequencyType::Dated,
+            (self.selected_frequency == FrequencyType::Dated).then_some(FrequencyType::Dated),
+            TaskCreatorMessage::SelectedFrequency,
+        );
+        let freq_dated = if self.selected_frequency == FrequencyType::Dated {
+            let month_picklist = pick_list(
+                DispMonth::VARIANTS,
+                Some(self.freq_month),
+                TaskCreatorMessage::SelectedMonth,
+            );
+
+            let max_days = self.freq_month.day_count();
+
+            let days = (1..=max_days).collect::<Vec<u32>>();
+
+            let day_picklist =
+                pick_list(days, Some(self.freq_day), TaskCreatorMessage::SelectedDay);
+
+            let month_day_select = row![month_picklist, day_picklist];
+
+            column![
+                radio_freq_dated,
+                Text::new("A task that happens on a specific day of the year:"),
+                month_day_select,
+            ]
+        } else {
+            column![radio_freq_dated]
+        };
+
         let frequency_config = column![
             frequency_select_message,
             freq_daily,
             freq_weekly,
-            freq_monthly
+            freq_monthly,
+            freq_dated,
         ];
 
         let cancel_button = button(Text::new("Cancel")).on_press(TaskCreatorMessage::Cancel);
@@ -331,6 +372,17 @@ impl Windowable<TaskCreatorMessage> for TaskCreator {
             TaskCreatorMessage::EditedMultiBinName((index, action)) => {
                 self.multi_binary_contents[index].perform(action);
             }
+
+            TaskCreatorMessage::SelectedMonth(month) => {
+                self.freq_month = month;
+
+                if self.freq_day > self.freq_month.day_count() {
+                    self.freq_day = 1;
+                }
+            }
+            TaskCreatorMessage::SelectedDay(day) => {
+                self.freq_day = day;
+            }
             TaskCreatorMessage::Cancel => {
                 state.upstream_action = Some(UpstreamAction::CloseWindow(WindowType::TaskCreator));
             }
@@ -366,6 +418,9 @@ impl Windowable<TaskCreatorMessage> for TaskCreator {
                     FrequencyType::Daily => Frequency::Daily,
                     FrequencyType::Weekly => Frequency::Weekly(self.freq_weekmap),
                     FrequencyType::Monthly => Frequency::Monthly(self.freq_monthmap),
+                    FrequencyType::Dated => {
+                        Frequency::Dated(MonthDay::new(self.freq_month, self.freq_day))
+                    }
                 };
 
                 let template =

@@ -13,9 +13,11 @@ pub enum WindowType {
 impl WindowType {
     const WINDOW_WIDTH: f32 = 1024.0;
     const WINDOW_HEIGHT: f32 = 768.0;
-    const WINDOW_SIZE: Size<f32> = Size::new(Self::WINDOW_WIDTH, Self::WINDOW_HEIGHT);
     const SMALL_WINDOW_SIZE: Size<f32> =
         Size::new(Self::WINDOW_WIDTH / 2.0, Self::WINDOW_HEIGHT / 2.0);
+    const MEDIUM_WINDOW_SIZE: Size<f32> =
+        Size::new(Self::WINDOW_WIDTH / 1.5, Self::WINDOW_HEIGHT / 1.5);
+    const WINDOW_SIZE: Size<f32> = Size::new(Self::WINDOW_WIDTH, Self::WINDOW_HEIGHT);
 
     /// window settings based on the type of window
     pub fn settings(&self) -> window::Settings {
@@ -31,7 +33,7 @@ impl WindowType {
                 ..Default::default()
             },
             WindowType::TaskCreator => window::Settings {
-                size: Self::SMALL_WINDOW_SIZE,
+                size: Self::MEDIUM_WINDOW_SIZE,
                 resizable: false,
                 position: window::Position::Centered,
                 ..Default::default()

@@ -1,4 +1,4 @@
-use crate::filetools::template_tasks_path;
+use crate::{filetools::template_tasks_path, month_day::MonthDay};
 use chrono::{Datelike, NaiveDate, Weekday};
 use iced::{
     Element,
@@ -204,13 +204,16 @@ pub enum Frequency {
     Daily,
     Weekly([bool; 7]),
     Monthly([bool; 31]),
+    Dated(MonthDay),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// a Frequency without any information about the schedule
 pub enum FrequencyType {
     Daily,
     Weekly,
     Monthly,
+    Dated,
 }
 
 impl Frequency {
@@ -231,6 +234,13 @@ impl Frequency {
                 let day_of_month = active_date.day0() as usize;
 
                 if daymap[day_of_month] {
+                    return true;
+                }
+            }
+            Frequency::Dated(month_day) => {
+                if active_date.month() == month_day.month().number_from_month()
+                    && active_date.day() == month_day.day()
+                {
                     return true;
                 }
             }
