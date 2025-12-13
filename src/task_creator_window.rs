@@ -117,7 +117,11 @@ impl Windowable<TaskCreatorMessage> for TaskCreator {
     }
 
     fn view<'a>(&'a self, state: &SharedAppState) -> iced::Element<'a, TaskCreatorMessage> {
-        let intro_message = Text::new("Select a task type:");
+        let name_entry = widget::text_editor(&self.name_content)
+            .placeholder("Enter task name...")
+            .on_action(TaskCreatorMessage::EditedName);
+
+        let task_select_message = Text::new("Select a task type:");
 
         let radio_standard = radio(
             "Standard task",
@@ -133,11 +137,7 @@ impl Windowable<TaskCreatorMessage> for TaskCreator {
             TaskCreatorMessage::SelectedTask,
         );
 
-        let type_selection = column![intro_message, radio_standard, radio_multi_binary];
-
-        let name_entry = widget::text_editor(&self.name_content)
-            .placeholder("Enter task name...")
-            .on_action(TaskCreatorMessage::EditedName);
+        let type_selection = column![task_select_message, radio_standard, radio_multi_binary];
 
         let type_config = {
             let task_specifc = match self.selected_task_type {
@@ -331,8 +331,8 @@ impl Windowable<TaskCreatorMessage> for TaskCreator {
         let action_buttons = row![cancel_button, create_button];
 
         column![
-            type_selection,
             name_entry,
+            type_selection,
             type_config,
             frequency_config,
             action_buttons
