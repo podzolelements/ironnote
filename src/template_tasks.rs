@@ -297,6 +297,9 @@ impl Frequency {
 /// types of messages that all TemplateTasks are able to create
 pub enum CommonMessage {
     ExpandToggled,
+    ExpandOptions,
+    EndTask,
+    DeleteTemplate,
 }
 
 #[derive(Debug, Clone)]
@@ -351,6 +354,7 @@ pub struct TemplateTask {
     common_entry_format: TaskCommonDataFormat,
     entries: HashMap<NaiveDate, TaskDataFormat>,
     expanded: bool,
+    options_expanded: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -383,6 +387,7 @@ impl From<&TemplateTaskDisk> for TemplateTask {
             common_entry_format: value.common_entry_format.clone(),
             entries,
             expanded: value.expanded,
+            options_expanded: false,
         }
     }
 }
@@ -428,6 +433,7 @@ impl TemplateTask {
             common_entry_format,
             entries: HashMap::new(),
             expanded: false,
+            options_expanded: false,
         };
 
         if new_task.is_active(creation_date) {
@@ -481,7 +487,7 @@ impl TemplateTask {
         self.entries.insert(entry_date, empty_entry);
     }
 
-    /// returns the entry for template on the given date, returning None if entry is nonexistent
+    /// returns the entry for the template on the given date, returning None if entry is nonexistent
     pub fn get_entry(&self, entry_date: NaiveDate) -> Option<&TaskDataFormat> {
         self.entries.get(&entry_date)
     }
@@ -514,8 +520,15 @@ impl TemplateTask {
             message: TemplateMessage::Common(CommonMessage::ExpandToggled),
         });
 
+        let options_button = button("...").on_press(TemplateTaskMessage {
+            date: entry_date,
+            name: self.name.clone(),
+            task_type: self.task_type,
+            message: TemplateMessage::Common(CommonMessage::ExpandOptions),
+        });
+
         if let Some(entry) = self.entries.get(&entry_date) {
-            match entry {
+            let task_element = match entry {
                 TaskDataFormat::Standard(standard_data) => {
                     let checkbox = checkbox("", standard_data.completed).on_toggle(move |ticked| {
                         TemplateTaskMessage::snapshot(
@@ -525,8 +538,12 @@ impl TemplateTask {
                         )
                     });
 
-                    let minimized_task =
-                        Self::minimized_task(checkbox.into(), name.into(), expand_button.into());
+                    let minimized_task = Self::minimized_task(
+                        checkbox.into(),
+                        name.into(),
+                        expand_button.into(),
+                        options_button.into(),
+                    );
 
                     let text =
                         widget::text_editor(&standard_data.text_content).on_action(move |action| {
@@ -559,6 +576,7 @@ impl TemplateTask {
                         completed_checkbox.into(),
                         name.into(),
                         expand_button.into(),
+                        options_button.into(),
                     );
 
                     let mut subtask_checkboxes = column![];
@@ -607,6 +625,26 @@ impl TemplateTask {
                         column![minimized_task, subtask_checkboxes, text].into()
                     }
                 }
+            };
+
+            if self.options_expanded {
+                let end_task_button = button("End Task").on_press(TemplateTaskMessage::snapshot(
+                    self,
+                    entry_date,
+                    TemplateMessage::Common(CommonMessage::EndTask),
+                ));
+
+                let delete_button = button("Delete Task").on_press(TemplateTaskMessage::snapshot(
+                    self,
+                    entry_date,
+                    TemplateMessage::Common(CommonMessage::DeleteTemplate),
+                ));
+
+                let options_menu = column![end_task_button, delete_button];
+
+                column![task_element, options_menu].into()
+            } else {
+                task_element
             }
         } else {
             Space::new(0, 0).into()
@@ -618,13 +656,16 @@ impl TemplateTask {
         checkbox: Element<'a, T>,
         name: Element<'a, T>,
         expand_button: Element<'a, T>,
+        options_button: Element<'a, T>,
     ) -> Element<'a, T> {
         row![
             checkbox,
             Space::with_width(5),
             name,
             Space::with_width(Fill),
-            expand_button
+            expand_button,
+            Space::with_width(5),
+            options_button,
         ]
         .into()
     }
@@ -636,6 +677,19 @@ impl TemplateTask {
                 (TemplateMessage::Common(common_message), _, _) => match common_message {
                     CommonMessage::ExpandToggled => {
                         self.expanded = !self.expanded;
+                    }
+                    CommonMessage::ExpandOptions => {
+                        self.expanded = false;
+
+                        self.options_expanded = !self.options_expanded;
+                    }
+                    CommonMessage::EndTask => {
+                        self.options_expanded = false;
+
+                        self.ended_date = Some(task_message.date);
+                    }
+                    CommonMessage::DeleteTemplate => {
+                        unreachable!("template not deleted")
                     }
                 },
                 (
@@ -717,43 +771,44 @@ impl TemplateTasks {
         }
     }
 
+    /// deletes a template from the template store with both the given name and task type
+    pub fn delete_template(&mut self, name: &str, task_type: TaskType) {
+        self.template_store
+            .retain(|template| !(template.task_type == task_type && template.name == name));
+    }
+
     /// writes all templates to disk
     pub fn save_templates(&self) {
-        for template in &self.template_store {
-            let template_disk: TemplateTaskDisk = template.into();
+        let disk_templates = self
+            .template_store
+            .iter()
+            .map(|template| template.into())
+            .collect::<Vec<TemplateTaskDisk>>();
 
-            let task_filename = "task_".to_string()
-                + &template_disk.name.clone()
-                + &template_disk.task_type.to_string()
-                + ".json";
+        let mut template_path = template_tasks_path();
+        template_path.push("templates.json");
 
-            let mut task_path = template_tasks_path();
-            task_path.push(task_filename);
+        let template_json = serde_json::to_string_pretty(&disk_templates)
+            .expect("couldn't serialize disk templates");
 
-            let template_json = serde_json::to_string_pretty(&template_disk)
-                .expect("couldn't serialize template_disk");
-
-            fs::write(task_path, template_json).expect("couldn't save template json");
-        }
+        fs::write(template_path, template_json).expect("couldn't save template json");
     }
 
     /// loads all templates from disk
     pub fn load_templates(&mut self) {
-        let mut template_paths = Vec::new();
+        let mut template_path = template_tasks_path();
+        template_path.push("templates.json");
 
-        if let Ok(files) = fs::read_dir(template_tasks_path()) {
-            for file in files.flatten() {
-                template_paths.push(file.path());
-            }
-        }
+        if let Ok(template_string) = fs::read_to_string(template_path)
+            && let Ok(template_disk) =
+                serde_json::from_str::<Vec<TemplateTaskDisk>>(&template_string)
+        {
+            let templates = template_disk
+                .iter()
+                .map(|template| template.into())
+                .collect::<Vec<TemplateTask>>();
 
-        for path in template_paths {
-            if let Ok(template_string) = fs::read_to_string(path)
-                && let Ok(template_disk) =
-                    serde_json::from_str::<TemplateTaskDisk>(&template_string)
-            {
-                self.add_template((&template_disk).into());
-            }
+            self.template_store = templates;
         }
     }
 
@@ -765,7 +820,12 @@ impl TemplateTasks {
             potential_task.name == template_message.name
                 && potential_task.task_type == template_message.task_type
         }) {
-            template.update(template_message);
+            if let TemplateMessage::Common(CommonMessage::DeleteTemplate) = template_message.message
+            {
+                self.delete_template(&template_message.name, template_message.task_type);
+            } else {
+                template.update(template_message);
+            }
         }
     }
 }
