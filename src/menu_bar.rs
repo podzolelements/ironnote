@@ -74,14 +74,16 @@ pub struct MenuBar<Message> {
     dropdowns: Vec<Dropdown<Message>>,
     dropdown_visible: Option<usize>,
     on_click_away: Message,
+    height: u16,
 }
 
 impl<Message> MenuBar<Message> {
-    pub fn new(on_click_away: Message) -> Self {
+    pub fn new(height: u16, on_click_away: Message) -> Self {
         Self {
             dropdowns: Vec::default(),
             dropdown_visible: None,
             on_click_away,
+            height,
         }
     }
 
@@ -93,6 +95,11 @@ impl<Message> MenuBar<Message> {
     /// sets the dropdown specified to be visible if Some, and hides the dropdown when None
     pub fn set_active_dropdown(&mut self, dropdown_index: Option<usize>) {
         self.dropdown_visible = dropdown_index;
+    }
+
+    /// returns true if there currently is a dropdown on screen, false otherwise
+    pub fn is_dropdown_visible(&self) -> bool {
+        self.dropdown_visible.is_some()
     }
 
     /// creates the composite menu bar element
@@ -107,7 +114,7 @@ impl<Message> MenuBar<Message> {
                 widget::button(widget::text(dropdown.name.clone()).size(13).align_x(Center))
                     .on_press(dropdown.on_click_dropdown.clone())
                     .width(dropdown.name_width)
-                    .height(25),
+                    .height(self.height),
             );
         }
 
@@ -131,6 +138,7 @@ impl<Message> MenuBar<Message> {
 pub fn menu_bar<'a, Message>(
     underlay: Element<'a, Message>,
     menu_structure: &MenuBar<Message>,
+    menu_height: u16,
 ) -> Element<'a, Message>
 where
     Message: Clone + 'a,
@@ -155,18 +163,16 @@ where
         .map(|dropdown| dropdown.name_width)
         .sum();
 
-    let top_space = Space::new(Fill, 25);
+    let top_space = Space::new(Fill, menu_height);
     let left_space = Space::new(dropdown_x_alignment, Fill);
 
     let padded_dropdown_horizontal = row![left_space, dropdown];
-    let padded_dropdown = column![top_space, padded_dropdown_horizontal];
+    let padded_dropdown = column![top_space, opaque(padded_dropdown_horizontal)];
 
-    let full_dropdown = opaque(
-        mouse_area(padded_dropdown)
-            .on_press(menu_structure.on_click_away.clone())
-            .on_right_press(menu_structure.on_click_away.clone())
-            .on_middle_press(menu_structure.on_click_away.clone()),
-    );
+    let full_dropdown = mouse_area(padded_dropdown)
+        .on_press(menu_structure.on_click_away.clone())
+        .on_right_press(menu_structure.on_click_away.clone())
+        .on_middle_press(menu_structure.on_click_away.clone());
 
     stack!(window, full_dropdown).into()
 }

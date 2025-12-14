@@ -23,19 +23,71 @@ pub enum EditMessage {
 #[derive(Debug, Clone)]
 pub enum MenuMessage {
     ClickedAway,
-    ClickedMenu(usize),
+    ClickedMenu(Menus),
     File(FileMessage),
     Edit(EditMessage),
 }
 
+#[derive(Debug, Clone, EnumIter, Display)]
+/// the types of top bar menus
+pub enum Menus {
+    File,
+    Edit,
+}
+
+impl Menus {
+    /// returns the index of the menu going from left to right starting at 0
+    pub fn menu_index(&self) -> usize {
+        match self {
+            Menus::File => 0,
+            Menus::Edit => 1,
+        }
+    }
+
+    /// returns how much horizontal space the menu requires to properly render
+    pub fn width(&self) -> u16 {
+        match self {
+            Menus::File => 45,
+            Menus::Edit => 45,
+        }
+    }
+
+    /// returns the total horizontal space the menu bar takes up
+    pub fn total_bar_width() -> u32 {
+        Menus::iter().map(|menu| menu.width() as u32).sum()
+    }
+
+    /// returns the menu bar present at the given position, and None if the position is outside of the range the menu
+    /// bar takes up
+    pub fn menu_from_position(position: u32) -> Option<Menus> {
+        let mut accumulator = 0;
+
+        for menu in Menus::iter() {
+            accumulator += menu.width() as u32;
+
+            if position < accumulator {
+                return Some(menu);
+            }
+        }
+
+        None
+    }
+}
+
+/// vertical space the menu bar takes up
+pub const MENU_BAR_HEIGHT: u16 = 25;
+
 /// constructs the top menu bar used by the application
 pub fn build_menu_bar() -> MenuBar<crate::MainMessage> {
-    let mut menu_bar = MenuBar::new(MainMessage::MenuBar(MenuMessage::ClickedAway));
+    let mut menu_bar = MenuBar::new(
+        MENU_BAR_HEIGHT,
+        MainMessage::MenuBar(MenuMessage::ClickedAway),
+    );
 
     let mut file_dropdown = Dropdown::new(
-        "File",
-        45,
-        MainMessage::MenuBar(MenuMessage::ClickedMenu(0)),
+        &Menus::File.to_string(),
+        Menus::File.width(),
+        MainMessage::MenuBar(MenuMessage::ClickedMenu(Menus::File)),
     );
 
     for file_message in FileMessage::iter() {
@@ -46,9 +98,9 @@ pub fn build_menu_bar() -> MenuBar<crate::MainMessage> {
     }
 
     let mut edit_dropdown = Dropdown::new(
-        "Edit",
-        45,
-        MainMessage::MenuBar(MenuMessage::ClickedMenu(1)),
+        &Menus::Edit.to_string(),
+        Menus::Edit.width(),
+        MainMessage::MenuBar(MenuMessage::ClickedMenu(Menus::Edit)),
     );
 
     for edit_message in EditMessage::iter() {

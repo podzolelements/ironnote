@@ -9,7 +9,9 @@ use crate::history_stack::{HistoryStack, edit_action_to_history_event};
 use crate::keyboard_manager::{KeyboardAction, UnboundKey};
 use crate::logbox::LOGBOX;
 use crate::menu_bar::{MenuBar, menu_bar};
-use crate::menu_bar_builder::{EditMessage, FileMessage, MenuMessage, build_menu_bar};
+use crate::menu_bar_builder::{
+    EditMessage, FileMessage, MENU_BAR_HEIGHT, MenuMessage, Menus, build_menu_bar,
+};
 use crate::misc_tools::point_on_edge_of_text;
 use crate::search_table::{SearchTable, SearchTableMessage};
 use crate::template_tasks::TemplateTaskMessage;
@@ -437,7 +439,7 @@ impl Windowable<MainMessage> for Main {
 
         let layout_ui = column![top_ui, bottom_ui];
 
-        let layout_menus = menu_bar(layout_ui.into(), &self.menu_bar);
+        let layout_menus = menu_bar(layout_ui.into(), &self.menu_bar, MENU_BAR_HEIGHT);
 
         let layout = column![mouse_area(layout_menus).on_move(MainMessage::WindowMouseMoved)];
 
@@ -1026,6 +1028,16 @@ impl Windowable<MainMessage> for Main {
             MainMessage::WindowMouseMoved(new_point) => {
                 self.window_mouse_position = new_point;
 
+                if self.menu_bar.is_dropdown_visible()
+                    && self.window_mouse_position.y < MENU_BAR_HEIGHT as f32
+                    && self.window_mouse_position.x < Menus::total_bar_width() as f32
+                    && let Some(menu) =
+                        Menus::menu_from_position(self.window_mouse_position.x as u32)
+                {
+                    return self
+                        .update(state, MainMessage::MenuBar(MenuMessage::ClickedMenu(menu)));
+                }
+
                 Task::none()
             }
             MainMessage::MenuBar(menu_message) => {
@@ -1035,8 +1047,8 @@ impl Windowable<MainMessage> for Main {
                     MenuMessage::ClickedAway => {
                         self.menu_bar.set_active_dropdown(None);
                     }
-                    MenuMessage::ClickedMenu(menu_index) => {
-                        self.menu_bar.set_active_dropdown(Some(menu_index));
+                    MenuMessage::ClickedMenu(menu) => {
+                        self.menu_bar.set_active_dropdown(Some(menu.menu_index()));
                     }
                     MenuMessage::File(file_message) => match file_message {
                         FileMessage::Save => {
