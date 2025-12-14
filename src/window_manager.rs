@@ -7,6 +7,7 @@ use crate::SharedAppState;
 pub enum WindowType {
     Main,
     FileImport,
+    FileExport,
     TaskCreator,
 }
 
@@ -27,6 +28,12 @@ impl WindowType {
                 ..Default::default()
             },
             WindowType::FileImport => window::Settings {
+                size: Self::SMALL_WINDOW_SIZE,
+                resizable: false,
+                position: window::Position::Centered,
+                ..Default::default()
+            },
+            WindowType::FileExport => window::Settings {
                 size: Self::SMALL_WINDOW_SIZE,
                 resizable: false,
                 position: window::Position::Centered,
