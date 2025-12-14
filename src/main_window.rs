@@ -104,6 +104,7 @@ pub enum MainMessage {
     ExitContextMenu,
     MenuBar(MenuMessage),
     OpenFileImportWindow,
+    OpenFileExportWindow,
     EditorScrolled(Viewport),
     AddTask,
     TaskAction(TemplateTaskMessage),
@@ -426,7 +427,7 @@ impl Windowable<MainMessage> for Main {
         .height(Length::Shrink);
 
         let cursor_position_box = widget::Text::new(format!(
-            "Ln {} Col {}",
+            "Ln {}, Col {}",
             cursor_line_idx + 1,
             cursor_char_idx
         ))
@@ -1044,6 +1045,9 @@ impl Windowable<MainMessage> for Main {
                         FileMessage::Import => {
                             return self.update(state, MainMessage::OpenFileImportWindow);
                         }
+                        FileMessage::Export => {
+                            return self.update(state, MainMessage::OpenFileExportWindow);
+                        }
                     },
                     MenuMessage::Edit(edit_message) => match edit_message {
                         EditMessage::Undo => {
@@ -1077,6 +1081,11 @@ impl Windowable<MainMessage> for Main {
             }
             MainMessage::OpenFileImportWindow => {
                 state.upstream_action = Some(UpstreamAction::CreateWindow(WindowType::FileImport));
+
+                Task::none()
+            }
+            MainMessage::OpenFileExportWindow => {
+                state.upstream_action = Some(UpstreamAction::CreateWindow(WindowType::FileExport));
 
                 Task::none()
             }

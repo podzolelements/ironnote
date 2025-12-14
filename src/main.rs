@@ -1,4 +1,5 @@
 use crate::{
+    file_export_window::{FileExport, FileExportMessage},
     file_import_window::{FileImport, FileImportMessage},
     global_store::GlobalStore,
     keyboard_manager::{KeyboardAction, bind_keybinds},
@@ -23,6 +24,7 @@ mod content_tools;
 mod context_menu;
 mod day_store;
 mod dictionary;
+mod file_export_window;
 mod file_import_window;
 mod filetools;
 mod global_store;
@@ -77,6 +79,7 @@ struct App {
     windows: BTreeMap<window::Id, WindowType>,
     main_window: Main,
     file_import_window: FileImport,
+    file_export_window: FileExport,
     task_creator_window: TaskCreator,
 }
 
@@ -91,6 +94,7 @@ pub enum Message {
 
     MainWindow(MainMessage),
     FileImportWindow(FileImportMessage),
+    FileExportWindow(FileExportMessage),
     TaskCreatorWindow(TaskCreatorMessage),
 }
 
@@ -123,6 +127,7 @@ impl App {
             match window_type {
                 WindowType::Main => self.main_window.title(),
                 WindowType::FileImport => self.file_import_window.title(),
+                WindowType::FileExport => self.file_export_window.title(),
                 WindowType::TaskCreator => self.task_creator_window.title(),
             }
         } else {
@@ -141,6 +146,10 @@ impl App {
                     .file_import_window
                     .view(&self.shared_state)
                     .map(Message::FileImportWindow),
+                WindowType::FileExport => self
+                    .file_export_window
+                    .view(&self.shared_state)
+                    .map(Message::FileExportWindow),
                 WindowType::TaskCreator => self
                     .task_creator_window
                     .view(&self.shared_state)
@@ -188,6 +197,7 @@ impl App {
                             ))));
                         }
                         WindowType::FileImport => {}
+                        WindowType::FileExport => {}
                         WindowType::TaskCreator => {}
                     }
                 }
@@ -201,6 +211,7 @@ impl App {
                             );
                         }
                         WindowType::FileImport => {}
+                        WindowType::FileExport => {}
                         WindowType::TaskCreator => {}
                     }
                 }
@@ -217,6 +228,14 @@ impl App {
                     .file_import_window
                     .update(&mut self.shared_state, file_import_message)
                     .map(Message::FileImportWindow);
+
+                tasks.push(file_task);
+            }
+            Message::FileExportWindow(file_export_message) => {
+                let file_task = self
+                    .file_export_window
+                    .update(&mut self.shared_state, file_export_message)
+                    .map(Message::FileExportWindow);
 
                 tasks.push(file_task);
             }
@@ -291,6 +310,7 @@ impl Default for App {
             windows: BTreeMap::new(),
             main_window: Main::default(),
             file_import_window: FileImport::default(),
+            file_export_window: FileExport::default(),
             task_creator_window: TaskCreator::default(),
         }
     }
