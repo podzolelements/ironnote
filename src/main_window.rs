@@ -14,6 +14,7 @@ use crate::menu_bar_builder::{
 };
 use crate::misc_tools::point_on_edge_of_text;
 use crate::search_table::{SearchTable, SearchTableMessage};
+use crate::tabview::{TabviewItem, tab_view};
 use crate::template_tasks::TemplateTaskMessage;
 use crate::window_manager::{WindowType, Windowable};
 use crate::word_count::{TimedWordCount, WordCount};
@@ -22,7 +23,7 @@ use chrono::{DateTime, Datelike, Days, Duration, Local, Months, NaiveDate};
 use iced::Length::Fill;
 use iced::widget::scrollable::{AbsoluteOffset, RelativeOffset, Viewport, snap_to};
 use iced::widget::text_editor::Action;
-use iced::widget::{Space, Text, stack};
+use iced::widget::{Space, Text};
 use iced::window;
 use iced::{
     Alignment::Center,
@@ -37,6 +38,7 @@ use iced::{
         vertical_space,
     },
 };
+use strum::Display;
 
 #[derive(Debug, Default, PartialEq)]
 enum Editor {
@@ -45,12 +47,22 @@ enum Editor {
     Search,
 }
 
-#[derive(Debug, Default, Clone, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq, Display)]
 pub enum Tab {
     #[default]
     Tasks,
     Search,
     Stats,
+}
+
+impl Tab {
+    pub fn to_index(&self) -> usize {
+        match self {
+            Tab::Tasks => 0,
+            Tab::Search => 1,
+            Tab::Stats => 2,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -142,110 +154,113 @@ impl Windowable<MainMessage> for Main {
         let cal = Calender::view(&self.calender).map(MainMessage::Calender);
         let temp_calender_bar = row![cal];
 
-        let tasks_tab_btn = widget::button(widget::Text::new("Tasks").size(12))
-            .on_press(MainMessage::TabSwitched(Tab::Tasks));
-        let search_tab_btn = widget::button(widget::Text::new("Search").size(12))
-            .on_press(MainMessage::TabSwitched(Tab::Search));
-        let stats_tab_btn = widget::button(widget::Text::new("Stats").size(12))
-            .on_press(MainMessage::TabSwitched(Tab::Stats));
+        let tasks_tab_content = {
+            let tasks = column![
+                state
+                    .all_tasks
+                    .build_tasks(state.global_store.date_time().date_naive())
+                    .map(MainMessage::TaskAction),
+            ];
 
-        let tab_bar = row![tasks_tab_btn, search_tab_btn, stats_tab_btn];
+            let add_button_h_padding = Space::with_width(Length::Fill);
 
-        let tab_area = match self.current_tab {
-            Tab::Search => {
-                let searchbar = widget::text_editor(&self.search_content)
-                    .placeholder("Search entries...")
-                    .on_action(MainMessage::EditSearch)
-                    .size(13)
-                    .font(Font::DEFAULT)
-                    .wrapping(Wrapping::None);
+            let add_button = widget::Button::new(Text::new("+").align_x(Center).align_y(Center))
+                .on_press(MainMessage::AddTask)
+                .width(40)
+                .height(40);
+            let add_button_layer = row![add_button_h_padding, add_button];
 
-                let clear_search_button = widget::button(widget::Text::new("<=").size(9).center())
-                    .on_press(MainMessage::ClearSearch)
-                    .width(32)
-                    .height(26);
-                let match_case_button = widget::button(widget::Text::new("Aa").size(9).center())
-                    .on_press(MainMessage::ToggleSearchCase)
-                    .width(32)
-                    .height(26);
+            column![tasks, Space::with_height(Fill), add_button_layer]
+        };
 
-                let search_line = row![searchbar, clear_search_button, match_case_button];
+        let tasks_tab = TabviewItem {
+            tab_name: Tab::Tasks.to_string(),
+            tab_clicked: MainMessage::TabSwitched(Tab::Tasks),
+            content: tasks_tab_content.into(),
+        };
 
-                let table = SearchTable::view(&self.search_table).map(MainMessage::TableSearch);
+        let search_tab_content = {
+            let searchbar = widget::text_editor(&self.search_content)
+                .placeholder("Search entries...")
+                .on_action(MainMessage::EditSearch)
+                .size(13)
+                .font(Font::DEFAULT)
+                .wrapping(Wrapping::None);
 
-                let search_results = column![table];
-                column![search_line, search_results]
-            }
-            Tab::Stats => {
-                let dwc = state.global_store.day().total_word_count().to_string();
-                let dcc = state.global_store.day().total_char_count().to_string();
+            let clear_search_button = widget::button(widget::Text::new("<=").size(9).center())
+                .on_press(MainMessage::ClearSearch)
+                .width(32)
+                .height(26);
+            let match_case_button = widget::button(widget::Text::new("Aa").size(9).center())
+                .on_press(MainMessage::ToggleSearchCase)
+                .width(32)
+                .height(26);
 
-                let mwc = state.global_store.month().total_word_count().to_string();
-                let mcc = state.global_store.month().total_char_count().to_string();
+            let search_line = row![searchbar, clear_search_button, match_case_button];
 
-                let twc = state.global_store.total_word_count().to_string();
-                let tcc = state.global_store.total_char_count().to_string();
+            let table = SearchTable::view(&self.search_table).map(MainMessage::TableSearch);
 
-                let maw = format!("{:.2}", state.global_store.month().average_words());
-                let taw = format!("{:.2}", state.global_store.average_words());
-                let mac = format!("{:.2}", state.global_store.month().average_chars());
-                let tac = format!("{:.2}", state.global_store.average_chars());
+            let search_results = column![table];
+            column![search_line, search_results]
+        };
 
-                let longest_streak = format!("{}", state.global_store.longest_streak());
-                let current_streak = format!("{}", state.global_store.current_streak());
+        let search_tab = TabviewItem {
+            tab_name: Tab::Search.to_string(),
+            tab_clicked: MainMessage::TabSwitched(Tab::Search),
+            content: search_tab_content.into(),
+        };
 
-                column![
-                    widget::Text::new("Current Day"),
-                    widget::Text::new("     Words:      ".to_string() + &dwc),
-                    widget::Text::new("     Characters: ".to_string() + &dcc),
-                    widget::Text::new("This Month"),
-                    widget::Text::new("     Words:      ".to_string() + &mwc),
-                    widget::Text::new("     Characters: ".to_string() + &mcc),
-                    widget::Text::new("     Average Words: ".to_string() + &maw),
-                    widget::Text::new("     Average Chars: ".to_string() + &mac),
-                    widget::Text::new("Total"),
-                    widget::Text::new("     Words:      ".to_string() + &twc),
-                    widget::Text::new("     Characters: ".to_string() + &tcc),
-                    widget::Text::new("     Average Words: ".to_string() + &taw),
-                    widget::Text::new("     Average Chars: ".to_string() + &tac),
-                    widget::Text::new(
-                        "     Current Streak: ".to_string() + &current_streak + " days"
-                    ),
-                    widget::Text::new(
-                        "     Longest Streak: ".to_string() + &longest_streak + " days"
-                    ),
-                ]
-            }
-            Tab::Tasks => {
-                let tasks = column![
-                    state
-                        .all_tasks
-                        .build_tasks(state.global_store.date_time().date_naive())
-                        .map(MainMessage::TaskAction),
-                ];
+        let stats_tab_content = {
+            let dwc = state.global_store.day().total_word_count().to_string();
+            let dcc = state.global_store.day().total_char_count().to_string();
 
-                let add_button_v_padding = Space::new(Length::Fill, Length::Fill);
-                let add_buttom_h_padding = Space::with_width(Length::Fill);
+            let mwc = state.global_store.month().total_word_count().to_string();
+            let mcc = state.global_store.month().total_char_count().to_string();
 
-                let add_button =
-                    widget::Button::new(Text::new("+").align_x(Center).align_y(Center))
-                        .on_press(MainMessage::AddTask)
-                        .width(40)
-                        .height(40);
-                let add_button_layer =
-                    column![add_button_v_padding, row![add_buttom_h_padding, add_button]];
+            let twc = state.global_store.total_word_count().to_string();
+            let tcc = state.global_store.total_char_count().to_string();
 
-                column![stack![
-                    widget::scrollable(tasks)
-                        .width(Length::Fill)
-                        .height(Length::Fill),
-                    add_button_layer
-                ]]
-            }
-        }
-        .width(250);
+            let maw = format!("{:.2}", state.global_store.month().average_words());
+            let taw = format!("{:.2}", state.global_store.average_words());
+            let mac = format!("{:.2}", state.global_store.month().average_chars());
+            let tac = format!("{:.2}", state.global_store.average_chars());
 
-        let tab_view = column![tab_bar, tab_area];
+            let longest_streak = format!("{}", state.global_store.longest_streak());
+            let current_streak = format!("{}", state.global_store.current_streak());
+
+            column![
+                widget::Text::new("Current Day"),
+                widget::Text::new("     Words:      ".to_string() + &dwc),
+                widget::Text::new("     Characters: ".to_string() + &dcc),
+                widget::Text::new("This Month"),
+                widget::Text::new("     Words:      ".to_string() + &mwc),
+                widget::Text::new("     Characters: ".to_string() + &mcc),
+                widget::Text::new("     Average Words: ".to_string() + &maw),
+                widget::Text::new("     Average Chars: ".to_string() + &mac),
+                widget::Text::new("Total"),
+                widget::Text::new("     Words:      ".to_string() + &twc),
+                widget::Text::new("     Characters: ".to_string() + &tcc),
+                widget::Text::new("     Average Words: ".to_string() + &taw),
+                widget::Text::new("     Average Chars: ".to_string() + &tac),
+                widget::Text::new("     Current Streak: ".to_string() + &current_streak + " days"),
+                widget::Text::new("     Longest Streak: ".to_string() + &longest_streak + " days"),
+            ]
+        };
+
+        let stats_tab: TabviewItem<'_, MainMessage> = TabviewItem {
+            tab_name: Tab::Stats.to_string(),
+            tab_clicked: MainMessage::TabSwitched(Tab::Stats),
+            content: stats_tab_content.into(),
+        };
+
+        let tab_elements = vec![tasks_tab, search_tab, stats_tab];
+
+        let tab_view = tab_view(
+            tab_elements,
+            self.current_tab.to_index(),
+            Length::Fixed(250.0),
+            Length::Fill,
+        );
 
         let left_ui = column![daily_nav_bar, temp_calender_bar, tab_view];
 

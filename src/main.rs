@@ -39,6 +39,7 @@ mod misc_tools;
 mod month_day;
 mod month_store;
 mod search_table;
+mod tabview;
 mod task_creator_window;
 mod tasks;
 mod template_tasks;
