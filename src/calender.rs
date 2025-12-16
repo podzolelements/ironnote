@@ -4,6 +4,7 @@ use iced::{
     Element, Font,
     Length::FillPortion,
     font::Weight,
+    never,
     widget::{Button, Column, Row, Text, rich_text, row, span},
 };
 
@@ -103,6 +104,7 @@ impl Calender {
                     ..Font::DEFAULT
                 })]
                 .size(11)
+                .on_link_click(never)
                 .center();
 
                 let day_button = Button::new(button_content)

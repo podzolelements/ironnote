@@ -45,7 +45,7 @@ impl Menus {
     }
 
     /// returns how much horizontal space the menu requires to properly render
-    pub fn width(&self) -> u16 {
+    pub fn width(&self) -> u32 {
         match self {
             Menus::File => 45,
             Menus::Edit => 45,
@@ -75,7 +75,7 @@ impl Menus {
 }
 
 /// vertical space the menu bar takes up
-pub const MENU_BAR_HEIGHT: u16 = 25;
+pub const MENU_BAR_HEIGHT: u32 = 25;
 
 /// constructs the top menu bar used by the application
 pub fn build_menu_bar() -> MenuBar<crate::MainMessage> {

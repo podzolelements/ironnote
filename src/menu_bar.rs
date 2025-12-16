@@ -27,12 +27,12 @@ impl<Message> MenuItem<Message> {
 pub struct Dropdown<Message> {
     items: Vec<MenuItem<Message>>,
     name: String,
-    name_width: u16,
+    name_width: u32,
     on_click_dropdown: Message,
 }
 
 impl<Message> Dropdown<Message> {
-    pub fn new(name: &str, width: u16, on_click_dropdown: Message) -> Self {
+    pub fn new(name: &str, width: u32, on_click_dropdown: Message) -> Self {
         Self {
             items: Vec::default(),
             name: name.to_string(),
@@ -74,11 +74,11 @@ pub struct MenuBar<Message> {
     dropdowns: Vec<Dropdown<Message>>,
     dropdown_visible: Option<usize>,
     on_click_away: Message,
-    height: u16,
+    height: u32,
 }
 
 impl<Message> MenuBar<Message> {
-    pub fn new(height: u16, on_click_away: Message) -> Self {
+    pub fn new(height: u32, on_click_away: Message) -> Self {
         Self {
             dropdowns: Vec::default(),
             dropdown_visible: None,
@@ -138,7 +138,7 @@ impl<Message> MenuBar<Message> {
 pub fn menu_bar<'a, Message>(
     underlay: Element<'a, Message>,
     menu_structure: &MenuBar<Message>,
-    menu_height: u16,
+    menu_height: u32,
 ) -> Element<'a, Message>
 where
     Message: Clone + 'a,
@@ -156,15 +156,15 @@ where
 
     let dropdown = menu_structure.build_dropdown();
 
-    let dropdown_x_alignment: u16 = menu_structure
+    let dropdown_x_alignment = menu_structure
         .dropdowns
         .iter()
         .take(dropdown_index)
         .map(|dropdown| dropdown.name_width)
-        .sum();
+        .sum::<u32>();
 
-    let top_space = Space::new(Fill, menu_height);
-    let left_space = Space::new(dropdown_x_alignment, Fill);
+    let top_space = Space::new().width(Fill).height(menu_height);
+    let left_space = Space::new().width(dropdown_x_alignment).height(Fill);
 
     let padded_dropdown_horizontal = row![left_space, dropdown];
     let padded_dropdown = column![top_space, opaque(padded_dropdown_horizontal)];

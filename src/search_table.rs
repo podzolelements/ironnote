@@ -2,6 +2,7 @@ use chrono::{DateTime, Local};
 use iced::{
     Element, Font, Length,
     font::Weight,
+    never,
     widget::{
         self, Column, rich_text,
         scrollable::{Direction, Scrollbar},
@@ -40,7 +41,8 @@ impl SearchTable {
                 }),
                 span(entry.end_text.clone()),
             ]
-            .size(12);
+            .size(12)
+            .on_link_click(never);
 
             table = table.push(
                 widget::button(rich_text)

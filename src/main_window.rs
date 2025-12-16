@@ -21,9 +21,10 @@ use crate::word_count::{TimedWordCount, WordCount};
 use crate::{SharedAppState, UpstreamAction, misc_tools};
 use chrono::{DateTime, Datelike, Days, Duration, Local, Months, NaiveDate};
 use iced::Length::Fill;
-use iced::widget::scrollable::{AbsoluteOffset, RelativeOffset, Viewport, snap_to};
+use iced::widget::operation::snap_to;
+use iced::widget::scrollable::{AbsoluteOffset, RelativeOffset, Viewport};
 use iced::widget::text_editor::Action;
-use iced::widget::{Space, Text};
+use iced::widget::{Id, Space, Text};
 use iced::window;
 use iced::{
     Alignment::Center,
@@ -32,10 +33,9 @@ use iced::{
     Point, Size, Task,
     widget::{
         self, column, mouse_area, row,
-        scrollable::{Direction, Id, Scrollbar},
+        scrollable::{Direction, Scrollbar},
         text::Wrapping,
         text_editor::{self, Content},
-        vertical_space,
     },
 };
 use strum::Display;
@@ -132,7 +132,10 @@ impl Windowable<MainMessage> for Main {
     }
 
     fn view<'a>(&'a self, state: &'a SharedAppState) -> Element<'a, MainMessage> {
-        let (cursor_line_idx, cursor_char_idx) = state.content.cursor_position();
+        let (cursor_line_idx, cursor_char_idx) = (
+            state.content.cursor().position.line,
+            state.content.cursor().position.column,
+        );
         let cursor_spellcheck_timed_out =
             Local::now().signed_duration_since(self.last_edit_time) > Duration::milliseconds(500);
 
@@ -162,7 +165,7 @@ impl Windowable<MainMessage> for Main {
                     .map(MainMessage::TaskAction),
             ];
 
-            let add_button_h_padding = Space::with_width(Length::Fill);
+            let add_button_h_padding = Space::new().width(Length::Fill);
 
             let add_button = widget::Button::new(Text::new("+").align_x(Center).align_y(Center))
                 .on_press(MainMessage::AddTask)
@@ -170,7 +173,7 @@ impl Windowable<MainMessage> for Main {
                 .height(40);
             let add_button_layer = row![add_button_h_padding, add_button];
 
-            column![tasks, Space::with_height(Fill), add_button_layer]
+            column![tasks, Space::new().height(Fill), add_button_layer]
         };
 
         let tasks_tab = TabviewItem {
@@ -303,8 +306,8 @@ impl Windowable<MainMessage> for Main {
             }
         }
 
-        const MENU_SIZE: u16 = 13;
-        const MENU_WIDTH: u16 = 125;
+        const MENU_SIZE: u32 = 13;
+        const MENU_WIDTH: u32 = 125;
 
         let mut spellcheck_context_menu_buttons = column![];
 
@@ -394,9 +397,9 @@ impl Windowable<MainMessage> for Main {
 
         let total_context_menu = column![
             suggestion_menu,
-            vertical_space().height(3),
+            Space::new().height(3),
             edit_menu,
-            vertical_space().height(3),
+            Space::new().height(3),
             history_menu
         ];
 
@@ -450,7 +453,7 @@ impl Windowable<MainMessage> for Main {
         ))
         .size(14);
 
-        let bottom_ui = row![logbox, Space::with_width(Fill), cursor_position_box];
+        let bottom_ui = row![logbox, Space::new().width(Fill), cursor_position_box];
 
         let layout_ui = column![top_ui, bottom_ui];
 
@@ -516,13 +519,19 @@ impl Windowable<MainMessage> for Main {
                 self.current_editor = Some(Editor::Log);
 
                 if state.content.selection().is_none() {
-                    (self.cursor_line_idx, self.cursor_char_idx) = state.content.cursor_position();
+                    (self.cursor_line_idx, self.cursor_char_idx) = (
+                        state.content.cursor().position.line,
+                        state.content.cursor().position.column,
+                    );
                 }
 
                 match &action {
                     Action::SelectWord => {
                         let content_text = state.content.text();
-                        let (cursor_line, cursor_char) = state.content.cursor_position();
+                        let (cursor_line, cursor_char) = (
+                            state.content.cursor().position.line,
+                            state.content.cursor().position.column,
+                        );
 
                         let line = content_text
                             .lines()
@@ -546,7 +555,10 @@ impl Windowable<MainMessage> for Main {
                     _ => {}
                 }
 
-                let old_cursor_position = state.content.cursor_position();
+                let old_cursor_position = (
+                    state.content.cursor().position.line,
+                    state.content.cursor().position.column,
+                );
 
                 state.content.perform(action.clone());
 
@@ -557,7 +569,10 @@ impl Windowable<MainMessage> for Main {
                 self.update_spellcheck(state);
 
                 let text = state.content.text();
-                let (cursor_y, cursor_x) = state.content.cursor_position();
+                let (cursor_y, cursor_x) = (
+                    state.content.cursor().position.line,
+                    state.content.cursor().position.column,
+                );
                 let cursor_location = point_on_edge_of_text(&text, cursor_x, cursor_y, 3, 400);
 
                 match cursor_location {
@@ -574,7 +589,10 @@ impl Windowable<MainMessage> for Main {
                 }
 
                 if state.content.selection().is_none() {
-                    (self.cursor_line_idx, self.cursor_char_idx) = state.content.cursor_position();
+                    (self.cursor_line_idx, self.cursor_char_idx) = (
+                        state.content.cursor().position.line,
+                        state.content.cursor().position.column,
+                    );
                 }
 
                 if let text_editor::Action::Edit(edit) = &action {
@@ -607,13 +625,13 @@ impl Windowable<MainMessage> for Main {
                     self.search_history_stack.push_undo_action(history_event);
                 }
 
-                let old_cursor_position = self.search_content.cursor_position();
+                // let old_cursor_position = self.search_content.cursor().position;
 
                 self.search_content.perform(action.clone());
 
-                if let Action::Move(motion) = action {
-                    correct_arrow_movement(&mut self.search_content, old_cursor_position, motion);
-                }
+                // if let Action::Move(motion) = action {
+                //     correct_arrow_movement(&mut self.search_content, old_cursor_position, motion);
+                // }
 
                 self.recompute_search(state);
 

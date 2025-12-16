@@ -530,7 +530,7 @@ impl TemplateTask {
         if let Some(entry) = self.entries.get(&entry_date) {
             let task_element = match entry {
                 TaskDataFormat::Standard(standard_data) => {
-                    let checkbox = checkbox("", standard_data.completed).on_toggle(move |ticked| {
+                    let checkbox = checkbox(standard_data.completed).on_toggle(move |ticked| {
                         TemplateTaskMessage::snapshot(
                             self,
                             entry_date,
@@ -561,8 +561,8 @@ impl TemplateTask {
                     }
                 }
                 TaskDataFormat::MultiBinary(multi_binary_data) => {
-                    let completed_checkbox = checkbox("", multi_binary_data.is_completed())
-                        .on_toggle(move |ticked| {
+                    let completed_checkbox =
+                        checkbox(multi_binary_data.is_completed()).on_toggle(move |ticked| {
                             TemplateTaskMessage::snapshot(
                                 self,
                                 entry_date,
@@ -582,7 +582,7 @@ impl TemplateTask {
                     let mut subtask_checkboxes = column![];
 
                     for (i, completion) in multi_binary_data.subtask_completion.iter().enumerate() {
-                        let checkbox = checkbox("", *completion).on_toggle(move |ticked| {
+                        let checkbox = checkbox(*completion).on_toggle(move |ticked| {
                             TemplateTaskMessage::snapshot(
                                 self,
                                 entry_date,
@@ -602,9 +602,9 @@ impl TemplateTask {
                         let name_text = Text::new(subtask_name);
 
                         subtask_checkboxes = subtask_checkboxes.push(row![
-                            Space::with_width(15),
+                            Space::new().width(15),
                             checkbox,
-                            Space::with_width(5),
+                            Space::new().width(5),
                             name_text
                         ]);
                     }
@@ -647,7 +647,7 @@ impl TemplateTask {
                 task_element
             }
         } else {
-            Space::new(0, 0).into()
+            Space::new().width(0).height(0).into()
         }
     }
 
@@ -660,11 +660,11 @@ impl TemplateTask {
     ) -> Element<'a, T> {
         row![
             checkbox,
-            Space::with_width(5),
+            Space::new().width(5),
             name,
-            Space::with_width(Fill),
+            Space::new().width(Fill),
             expand_button,
-            Space::with_width(5),
+            Space::new().width(5),
             options_button,
         ]
         .into()

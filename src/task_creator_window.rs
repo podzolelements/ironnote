@@ -200,28 +200,28 @@ impl Windowable<TaskCreatorMessage> for TaskCreator {
             let weekday_width = 2;
             let weekdays = row![
                 Text::new("Sun"),
-                Space::with_width(weekday_width),
+                Space::new().width(weekday_width),
                 Text::new("Mon"),
-                Space::with_width(weekday_width),
+                Space::new().width(weekday_width),
                 Text::new("Tue"),
-                Space::with_width(weekday_width),
+                Space::new().width(weekday_width),
                 Text::new("Wed"),
-                Space::with_width(weekday_width),
+                Space::new().width(weekday_width),
                 Text::new("Thu"),
-                Space::with_width(weekday_width),
+                Space::new().width(weekday_width),
                 Text::new("Fri"),
-                Space::with_width(weekday_width),
+                Space::new().width(weekday_width),
                 Text::new("Sat"),
             ];
 
             let mut weekmap = row![];
 
             for week_index in 0..7 {
-                weekmap = weekmap.push(checkbox("", self.freq_weekmap[week_index]).on_toggle(
+                weekmap = weekmap.push(checkbox(self.freq_weekmap[week_index]).on_toggle(
                     move |checked| TaskCreatorMessage::CheckedWeekday(week_index, checked),
                 ));
 
-                weekmap = weekmap.push(Space::with_width(6));
+                weekmap = weekmap.push(Space::new().width(6));
             }
 
             let schedule = column![weekdays, weekmap];
@@ -250,7 +250,7 @@ impl Windowable<TaskCreatorMessage> for TaskCreator {
 
             for month_index in 0..31 {
                 let day_checkbox =
-                    checkbox("", self.freq_monthmap[month_index]).on_toggle(move |checked| {
+                    checkbox(self.freq_monthmap[month_index]).on_toggle(move |checked| {
                         TaskCreatorMessage::CheckedMonth(month_index, checked)
                     });
 
