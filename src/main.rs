@@ -183,6 +183,8 @@ impl App {
                 }
             }
             Message::CapturedKeyEvent((event, id)) => {
+                // println!("{:?}", event);
+
                 if let Some(action) = self.keybinds.dispatch(event) {
                     let key_action = action.clone();
 
@@ -287,13 +289,17 @@ impl App {
     }
 
     fn subscription(&self) -> Subscription<Message> {
+        let close_events = iced::window::close_events().map(Message::WindowClosed);
+
+        let listener = listen_with(|event, _status, id| match event {
+            Event::Keyboard(key_event) => Some(Message::CapturedKeyEvent((key_event, id))),
+            Event::Window(window_event) => Some(Message::WindowEvent((window_event, id))),
+            _ => None,
+        });
+
         let subscriptions = vec![
-            iced::window::close_events().map(Message::WindowClosed),
-            listen_with(|event, _status, id| match event {
-                Event::Keyboard(key_event) => Some(Message::CapturedKeyEvent((key_event, id))),
-                Event::Window(window_event) => Some(Message::WindowEvent((window_event, id))),
-                _ => None,
-            }),
+            close_events,
+            listener,
             // ensure view() gets called at a minimum of 10 FPS
             iced::time::every(std::time::Duration::from_millis(100))
                 .map(|_instant| Message::RenderAll),
@@ -317,8 +323,10 @@ impl Default for App {
     }
 }
 
-fn main() -> iced::Result {
-    iced::daemon(App::title, App::update, App::view)
+fn main() -> Result<(), iced::Error> {
+    iced::daemon(App::new, App::update, App::view)
         .subscription(App::subscription)
-        .run_with(App::new)
+        .title(App::title)
+        // .theme(Theme::Light)
+        .run()
 }

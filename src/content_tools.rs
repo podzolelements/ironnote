@@ -3,45 +3,48 @@ use iced::widget::text_editor::{self, Action, Content, Motion};
 
 /// Relocates the cursor to a new position by manually moving the cursor there
 pub fn move_cursor(content: &mut Content, new_line_idx: usize, new_char_idx: usize) {
-    let (mut old_cursor_line, mut old_cursor_char) = content.cursor_position();
+    content.cursor().position.line = new_line_idx;
+    content.cursor().position.column = new_char_idx;
 
-    let direction = if old_cursor_line == new_line_idx {
-        if old_cursor_char < new_char_idx {
-            Motion::Right
-        } else if old_cursor_char > new_char_idx {
-            Motion::Left
-        } else {
-            return;
-        }
-    } else if old_cursor_line < new_line_idx {
-        Motion::Right
-    } else {
-        Motion::Left
-    };
+    // let (mut old_cursor_line, mut old_cursor_char) = content.cursor_position();
 
-    let mut first_stop = false;
+    // let direction = if old_cursor_line == new_line_idx {
+    //     if old_cursor_char < new_char_idx {
+    //         Motion::Right
+    //     } else if old_cursor_char > new_char_idx {
+    //         Motion::Left
+    //     } else {
+    //         return;
+    //     }
+    // } else if old_cursor_line < new_line_idx {
+    //     Motion::Right
+    // } else {
+    //     Motion::Left
+    // };
 
-    loop {
-        // TODO: this is really inefficent but other methods are proving unreliable
-        content.perform(Action::Move(direction));
-        let (cursor_line, cursor_char) = content.cursor_position();
+    // let mut first_stop = false;
 
-        if cursor_line == new_line_idx && cursor_char == new_char_idx {
-            break;
-        }
-        // quit on second repeat location. two are required, as if there is a selection it is possible to have the
-        // first movement that causes the selction to disappear result in the cursor ending up in the same location as
-        // it "was" with the selection
-        if cursor_line == old_cursor_line && cursor_char == old_cursor_char {
-            if !first_stop {
-                first_stop = true;
-            } else {
-                break;
-            }
-        }
+    // loop {
+    //     // TODO: this is really inefficent but other methods are proving unreliable
+    //     content.perform(Action::Move(direction));
+    //     let (cursor_line, cursor_char) = content.cursor_position();
 
-        (old_cursor_line, old_cursor_char) = (cursor_line, cursor_char);
-    }
+    //     if cursor_line == new_line_idx && cursor_char == new_char_idx {
+    //         break;
+    //     }
+    //     // quit on second repeat location. two are required, as if there is a selection it is possible to have the
+    //     // first movement that causes the selction to disappear result in the cursor ending up in the same location as
+    //     // it "was" with the selection
+    //     if cursor_line == old_cursor_line && cursor_char == old_cursor_char {
+    //         if !first_stop {
+    //             first_stop = true;
+    //         } else {
+    //             break;
+    //         }
+    //     }
+
+    //     (old_cursor_line, old_cursor_char) = (cursor_line, cursor_char);
+    // }
 }
 
 /// Used for locating new the cursor position when a line gets removed
@@ -77,7 +80,10 @@ pub fn locate_cursor_start(
     cursor_line_idx: usize,
     cursor_char_idx: usize,
 ) -> (usize, usize) {
-    let (current_line, current_char) = content.cursor_position();
+    let (current_line, current_char) = (
+        content.cursor().position.line,
+        content.cursor().position.column,
+    );
 
     if content.selection().is_none() {
         return (current_line, current_char);
@@ -131,7 +137,10 @@ pub fn correct_arrow_movement(
     old_cursor_position: (usize, usize),
     direction: Motion,
 ) {
-    let new_cursor_position = content.cursor_position();
+    let new_cursor_position = (
+        content.cursor().position.line,
+        content.cursor().position.column,
+    );
 
     if old_cursor_position == new_cursor_position {
         match direction {
@@ -157,12 +166,19 @@ pub fn perform_ctrl_backspace(
     last_known_cursor_line_idx: usize,
     last_known_cursor_char_idx: usize,
 ) -> HistoryEvent {
-    if content.cursor_position() == (0, 0) {
+    if (
+        content.cursor().position.line,
+        content.cursor().position.column,
+    ) == (0, 0)
+    {
         return HistoryEvent::default();
     }
 
     let mut removed_chars = String::new();
-    let (cursor_line_start, cursor_char_start) = content.cursor_position();
+    let (cursor_line_start, cursor_char_start) = (
+        content.cursor().position.line,
+        content.cursor().position.column,
+    );
 
     if let Some(selection) = content.selection() {
         let selection_bounds = get_selection_bounds(
@@ -190,7 +206,10 @@ pub fn perform_ctrl_backspace(
 
     // on edge of newline
     if cursor_char_start == 0 {
-        let (cursor_line, cursor_char) = content.cursor_position();
+        let (cursor_line, cursor_char) = (
+            content.cursor().position.line,
+            content.cursor().position.column,
+        );
 
         let (new_cursor_line, new_cursor_char) =
             decrement_cursor_position(content, cursor_line, cursor_char);
@@ -284,7 +303,10 @@ pub fn perform_ctrl_delete(
 ) -> HistoryEvent {
     let content_text = content.text();
 
-    let (cursor_line_start, cursor_char_start) = content.cursor_position();
+    let (cursor_line_start, cursor_char_start) = (
+        content.cursor().position.line,
+        content.cursor().position.column,
+    );
 
     let line_count = content_text.lines().count();
     let line = match content_text.lines().nth(cursor_line_start) {

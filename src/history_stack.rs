@@ -194,7 +194,10 @@ pub fn edit_action_to_history_event(
 ) -> HistoryEvent {
     let mut history_event = HistoryEvent::default();
 
-    let (cursor_line, cursor_char) = content.cursor_position();
+    let (cursor_line, cursor_char) = (
+        content.cursor().position.line,
+        content.cursor().position.column,
+    );
     let content_text = content.text();
 
     if let Some(selection) = content.selection() {
@@ -255,6 +258,8 @@ pub fn edit_action_to_history_event(
                     cursor_char_idx: adjusted_cursor_char,
                 }
             }
+            Edit::Indent => todo!(),
+            Edit::Unindent => todo!(),
         }
     } else {
         match edit {
@@ -370,6 +375,8 @@ pub fn edit_action_to_history_event(
                     }
                 }
             }
+            Edit::Indent => todo!(),
+            Edit::Unindent => todo!(),
         }
     }
 

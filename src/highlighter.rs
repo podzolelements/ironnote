@@ -5,8 +5,8 @@ use std::ops::Range;
 /// converts the custom highlighting scheme into and iced font format
 pub fn highlight_to_format(highlight: &SpellHighlightColor, _theme: &iced::Theme) -> Format<Font> {
     let color = match highlight {
-        SpellHighlightColor::Red => Some(Color::new(1.0, 0.0, 0.0, 1.0)),
-        SpellHighlightColor::Green => Some(Color::new(0.0, 1.0, 0.0, 1.0)),
+        SpellHighlightColor::Red => Some(Color::from_rgba8(255, 0, 0, 1.0)),
+        SpellHighlightColor::Green => Some(Color::from_rgba8(0, 255, 0, 1.0)),
     };
 
     Format { color, font: None }

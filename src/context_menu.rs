@@ -18,8 +18,8 @@ where
     }
 
     // to get the menu to show up at a specific position, fixed with spacing is used to pad it out
-    let space_top = Space::new(Fill, position.y);
-    let space_left = Space::new(position.x, Fill);
+    let space_top = Space::new().width(Fill).height(position.y);
+    let space_left = Space::new().width(position.x).height(Fill);
 
     let padded_menu_horizontal = row![space_left, menu.into()];
     let padded_menu = column![space_top, padded_menu_horizontal];
