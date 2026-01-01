@@ -1,11 +1,9 @@
 use crate::calender::{self, Calender, CalenderMessage};
 use crate::clipboard::{read_clipboard, write_clipboard};
 use crate::config::UserSettings;
-use crate::content_tools::{correct_arrow_movement, perform_ctrl_backspace, perform_ctrl_delete};
 use crate::context_menu::context_menu;
 use crate::dictionary::{self, DICTIONARY};
 use crate::highlighter::{self, HighlightSettings, SpellHighlighter};
-use crate::history_stack::{HistoryStack, edit_action_to_history_event};
 use crate::keyboard_manager::{KeyboardAction, UnboundKey};
 use crate::logbox::LOGBOX;
 use crate::menu_bar::{MenuBar, menu_bar};
@@ -16,6 +14,7 @@ use crate::misc_tools::point_on_edge_of_text;
 use crate::search_table::{SearchTable, SearchTableMessage};
 use crate::tabview::{TabviewItem, tab_view};
 use crate::template_tasks::TemplateTaskMessage;
+use crate::upgraded_content::{ContentAction, CtrlEdit, UpgradedContent};
 use crate::window_manager::{WindowType, Windowable};
 use crate::word_count::{TimedWordCount, WordCount};
 use crate::{SharedAppState, UpstreamAction, misc_tools};
@@ -35,17 +34,10 @@ use iced::{
         self, column, mouse_area, row,
         scrollable::{Direction, Scrollbar},
         text::Wrapping,
-        text_editor::{self, Content},
+        text_editor::{self},
     },
 };
 use strum::Display;
-
-#[derive(Debug, Default, PartialEq)]
-enum Editor {
-    #[default]
-    Log,
-    Search,
-}
 
 #[derive(Debug, Default, Clone, PartialEq, Display)]
 pub enum Tab {
@@ -65,19 +57,22 @@ impl Tab {
     }
 }
 
+#[derive(Debug, PartialEq)]
+/// options for the currently active text_editor
+pub enum ActiveContent {
+    Editor,
+    Search,
+}
+
 #[derive(Debug)]
 pub struct Main {
     title: String,
-    search_content: text_editor::Content,
+    active_content: Option<ActiveContent>,
+    search_content: UpgradedContent,
     search_text: String,
     calender: Calender,
     search_table: SearchTable,
-    log_history_stack: HistoryStack,
-    search_history_stack: HistoryStack,
     current_tab: Tab,
-    current_editor: Option<Editor>,
-    cursor_line_idx: usize,
-    cursor_char_idx: usize,
     selected_misspelled_word: Option<String>,
     spell_suggestions: Vec<String>,
     last_edit_time: DateTime<Local>,
@@ -132,10 +127,9 @@ impl Windowable<MainMessage> for Main {
     }
 
     fn view<'a>(&'a self, state: &'a SharedAppState) -> Element<'a, MainMessage> {
-        let (cursor_line_idx, cursor_char_idx) = (
-            state.content.cursor().position.line,
-            state.content.cursor().position.column,
-        );
+        let cursor_line_idx = state.content.cursor_line();
+        let cursor_char_idx = state.content.cursor_column();
+
         let cursor_spellcheck_timed_out =
             Local::now().signed_duration_since(self.last_edit_time) > Duration::milliseconds(500);
 
@@ -183,7 +177,7 @@ impl Windowable<MainMessage> for Main {
         };
 
         let search_tab_content = {
-            let searchbar = widget::text_editor(&self.search_content)
+            let searchbar = widget::text_editor(self.search_content.raw_content())
                 .placeholder("Search entries...")
                 .on_action(MainMessage::EditSearch)
                 .size(13)
@@ -279,7 +273,7 @@ impl Windowable<MainMessage> for Main {
                 .height(100),
         ];
 
-        let log_text_input = widget::text_editor(&state.content)
+        let log_text_input = widget::text_editor(state.content.raw_content())
             .placeholder("Type today's log...")
             .on_action(MainMessage::Edit)
             .size(13)
@@ -375,12 +369,13 @@ impl Windowable<MainMessage> for Main {
                 .width(MENU_WIDTH)
         ];
 
-        let undo_message = if self.log_history_stack.undo_stack_height() > 0 {
+        // TODO: extend context menu to all text_editors
+        let undo_message = if state.content.undo_stack_height() > 0 {
             Some(MainMessage::KeyEvent(KeyboardAction::Undo))
         } else {
             None
         };
-        let redo_message = if self.log_history_stack.redo_stack_height() > 0 {
+        let redo_message = if state.content.redo_stack_height() > 0 {
             Some(MainMessage::KeyEvent(KeyboardAction::Redo))
         } else {
             None
@@ -515,65 +510,24 @@ impl Windowable<MainMessage> for Main {
 
                 snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::START)
             }
-            MainMessage::Edit(action) => {
-                self.current_editor = Some(Editor::Log);
+            MainMessage::Edit(editor_action) => {
+                self.active_content = Some(ActiveContent::Editor);
 
-                if state.content.selection().is_none() {
-                    (self.cursor_line_idx, self.cursor_char_idx) = (
-                        state.content.cursor().position.line,
-                        state.content.cursor().position.column,
-                    );
+                if let Action::Edit(_edit) = &editor_action {
+                    self.last_edit_time = Local::now();
                 }
 
-                match &action {
-                    Action::SelectWord => {
-                        let content_text = state.content.text();
-                        let (cursor_line, cursor_char) = (
-                            state.content.cursor().position.line,
-                            state.content.cursor().position.column,
-                        );
-
-                        let line = content_text
-                            .lines()
-                            .nth(cursor_line)
-                            .expect("couldn't extract line");
-
-                        self.cursor_char_idx = misc_tools::first_whitespace_left(line, cursor_char);
-                        self.cursor_line_idx = cursor_line;
-                    }
-                    Action::Edit(edit) => {
-                        self.last_edit_time = Local::now();
-
-                        let history_event = edit_action_to_history_event(
-                            &state.content,
-                            edit.clone(),
-                            self.cursor_line_idx,
-                            self.cursor_char_idx,
-                        );
-                        self.log_history_stack.push_undo_action(history_event);
-                    }
-                    _ => {}
-                }
-
-                let old_cursor_position = (
-                    state.content.cursor().position.line,
-                    state.content.cursor().position.column,
-                );
-
-                state.content.perform(action.clone());
-
-                if let Action::Move(motion) = action {
-                    correct_arrow_movement(&mut state.content, old_cursor_position, motion);
-                }
+                state
+                    .content
+                    .perform(ContentAction::Standard(editor_action.clone()));
 
                 self.update_spellcheck(state);
 
-                let text = state.content.text();
-                let (cursor_y, cursor_x) = (
-                    state.content.cursor().position.line,
-                    state.content.cursor().position.column,
-                );
-                let cursor_location = point_on_edge_of_text(&text, cursor_x, cursor_y, 3, 400);
+                let editor_text = state.content.text();
+                let cursor_y = state.content.cursor_line();
+                let cursor_x = state.content.cursor_column();
+                let cursor_location =
+                    point_on_edge_of_text(&editor_text, cursor_x, cursor_y, 3, 400);
 
                 match cursor_location {
                     Some(true) => snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::START),
@@ -581,21 +535,14 @@ impl Windowable<MainMessage> for Main {
                     None => Task::none(),
                 }
             }
-            MainMessage::EditSearch(action) => {
-                if self.current_editor != Some(Editor::Search) {
-                    self.current_editor = Some(Editor::Search);
+            MainMessage::EditSearch(search_action) => {
+                if self.active_content != Some(ActiveContent::Search) {
+                    self.active_content = Some(ActiveContent::Search);
 
                     self.write_active_entry_to_store(state);
                 }
 
-                if state.content.selection().is_none() {
-                    (self.cursor_line_idx, self.cursor_char_idx) = (
-                        state.content.cursor().position.line,
-                        state.content.cursor().position.column,
-                    );
-                }
-
-                if let text_editor::Action::Edit(edit) = &action {
+                if let text_editor::Action::Edit(edit) = &search_action {
                     // prevent newlines from being entered into the searchbar since it causes issues with the
                     // highlighted search results, among other things
                     match edit {
@@ -615,23 +562,10 @@ impl Windowable<MainMessage> for Main {
                         }
                         _ => {}
                     }
-
-                    let history_event = edit_action_to_history_event(
-                        &self.search_content,
-                        edit.clone(),
-                        self.cursor_line_idx,
-                        self.cursor_char_idx,
-                    );
-                    self.search_history_stack.push_undo_action(history_event);
                 }
 
-                // let old_cursor_position = self.search_content.cursor().position;
-
-                self.search_content.perform(action.clone());
-
-                // if let Action::Move(motion) = action {
-                //     correct_arrow_movement(&mut self.search_content, old_cursor_position, motion);
-                // }
+                self.search_content
+                    .perform(ContentAction::Standard(search_action.clone()));
 
                 self.recompute_search(state);
 
@@ -759,177 +693,58 @@ impl Windowable<MainMessage> for Main {
                     KeyboardAction::BackspaceWord => {
                         self.last_edit_time = Local::now();
 
-                        let stopping_chars = [
-                            ' ', '.', '!', '?', ',', '-', '_', '\"', ';', ':', '(', ')', '{', '}',
-                            '[', ']',
-                        ];
-
-                        let cursor_line_idx = self.cursor_line_idx;
-                        let cursor_char_idx = self.cursor_char_idx;
-
-                        if let Some((content, history_stack)) =
-                            self.active_content_and_history_stack(state)
-                        {
-                            // revert the standard backspace that can't be caught
-                            history_stack.revert(content);
-
-                            history_stack.push_undo_action(perform_ctrl_backspace(
-                                content,
-                                &stopping_chars,
-                                cursor_line_idx,
-                                cursor_char_idx,
-                            ));
-                        }
-
-                        if self.current_editor == Some(Editor::Search) {
-                            self.recompute_search(state);
-                        }
+                        self.content_perform(state, ContentAction::Ctrl(CtrlEdit::BackspaceWord));
                     }
                     KeyboardAction::BackspaceSentence => {
                         self.last_edit_time = Local::now();
 
-                        let stopping_chars = ['.', '!', '?', '\"', ';', ':'];
-
-                        let cursor_line_idx = self.cursor_line_idx;
-                        let cursor_char_idx = self.cursor_char_idx;
-
-                        if let Some((content, history_stack)) =
-                            self.active_content_and_history_stack(state)
-                        {
-                            // revert the standard backspace that can't be caught
-                            history_stack.revert(content);
-
-                            history_stack.push_undo_action(perform_ctrl_backspace(
-                                content,
-                                &stopping_chars,
-                                cursor_line_idx,
-                                cursor_char_idx,
-                            ));
-                        }
-
-                        if self.current_editor == Some(Editor::Search) {
-                            self.recompute_search(state);
-                        }
-                    }
-                    KeyboardAction::Delete => {
-                        // not sure why the text_editor action handler doesn't do this on its own
-                        self.last_edit_time = Local::now();
-
-                        let cursor_line_idx = self.cursor_line_idx;
-                        let cursor_char_idx = self.cursor_char_idx;
-
-                        if let Some((content, history_stack)) =
-                            self.active_content_and_history_stack(state)
-                        {
-                            let history_event = edit_action_to_history_event(
-                                content,
-                                text_editor::Edit::Delete,
-                                cursor_line_idx,
-                                cursor_char_idx,
-                            );
-                            history_stack.push_undo_action(history_event);
-
-                            content.perform(Action::Edit(text_editor::Edit::Delete));
-                        }
-
-                        if self.current_editor == Some(Editor::Search) {
-                            self.recompute_search(state);
-                        }
+                        self.content_perform(
+                            state,
+                            ContentAction::Ctrl(CtrlEdit::BackspaceSentence),
+                        );
                     }
                     KeyboardAction::DeleteWord => {
                         self.last_edit_time = Local::now();
 
-                        let stopping_chars = [
-                            ' ', '.', '!', '?', ',', '-', '_', '\"', ';', ':', '(', ')', '{', '}',
-                            '[', ']',
-                        ];
-
-                        let cursor_line_idx = self.cursor_line_idx;
-                        let cursor_char_idx = self.cursor_char_idx;
-
-                        if let Some((content, history_stack)) =
-                            self.active_content_and_history_stack(state)
-                        {
-                            history_stack.push_undo_action(perform_ctrl_delete(
-                                content,
-                                &stopping_chars,
-                                cursor_line_idx,
-                                cursor_char_idx,
-                            ));
-                        }
-
-                        if self.current_editor == Some(Editor::Search) {
-                            self.recompute_search(state);
-                        }
+                        self.content_perform(state, ContentAction::Ctrl(CtrlEdit::DeleteWord));
                     }
                     KeyboardAction::DeleteSentence => {
                         self.last_edit_time = Local::now();
 
-                        let stopping_chars = ['.', '!', '?', '\"', ';', ':'];
-
-                        let cursor_line_idx = self.cursor_line_idx;
-                        let cursor_char_idx = self.cursor_char_idx;
-
-                        if let Some((content, history_stack)) =
-                            self.active_content_and_history_stack(state)
-                        {
-                            history_stack.push_undo_action(perform_ctrl_delete(
-                                content,
-                                &stopping_chars,
-                                cursor_line_idx,
-                                cursor_char_idx,
-                            ));
-                        }
-
-                        if self.current_editor == Some(Editor::Search) {
-                            self.recompute_search(state);
-                        }
+                        self.content_perform(state, ContentAction::Ctrl(CtrlEdit::DeleteSentence));
                     }
                     KeyboardAction::Undo => {
                         self.last_edit_time = Local::now();
 
-                        if let Some((content, history_stack)) =
-                            self.active_content_and_history_stack(state)
-                        {
-                            history_stack.perform_undo(content);
-                        }
-
-                        if self.current_editor == Some(Editor::Search) {
-                            self.recompute_search(state);
-                        }
+                        self.content_perform(state, ContentAction::Undo);
                     }
                     KeyboardAction::Redo => {
                         self.last_edit_time = Local::now();
 
-                        if let Some((content, history_stack)) =
-                            self.active_content_and_history_stack(state)
-                        {
-                            history_stack.perform_redo(content);
-                        }
-
-                        if self.current_editor == Some(Editor::Search) {
-                            self.recompute_search(state);
-                        }
+                        self.content_perform(state, ContentAction::Redo);
                     }
                     KeyboardAction::Debug => {
                         println!("debug!");
                     }
                     KeyboardAction::JumpToContentStart => {
-                        if let Some((active_content, _)) =
-                            self.active_content_and_history_stack(state)
-                        {
-                            active_content
-                                .perform(Action::Move(text_editor::Motion::DocumentStart));
+                        self.content_perform(
+                            state,
+                            ContentAction::Standard(Action::Move(
+                                text_editor::Motion::DocumentStart,
+                            )),
+                        );
 
+                        if self.active_content == Some(ActiveContent::Editor) {
                             return snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::START);
                         }
                     }
                     KeyboardAction::JumpToContentEnd => {
-                        if let Some((active_content, _)) =
-                            self.active_content_and_history_stack(state)
-                        {
-                            active_content.perform(Action::Move(text_editor::Motion::DocumentEnd));
+                        self.content_perform(
+                            state,
+                            ContentAction::Standard(Action::Move(text_editor::Motion::DocumentEnd)),
+                        );
 
+                        if self.active_content == Some(ActiveContent::Editor) {
                             return snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::END);
                         }
                     }
@@ -989,15 +804,10 @@ impl Windowable<MainMessage> for Main {
 
                 let equivalent_edit = text_editor::Edit::Paste(selected_suggestion.into());
 
-                let history_event = edit_action_to_history_event(
-                    &state.content,
-                    equivalent_edit.clone(),
-                    self.cursor_line_idx,
-                    self.cursor_char_idx,
+                self.content_perform(
+                    state,
+                    ContentAction::Standard(Action::Edit(equivalent_edit)),
                 );
-                self.log_history_stack.push_undo_action(history_event);
-
-                state.content.perform(Action::Edit(equivalent_edit));
 
                 exit_message
             }
@@ -1009,7 +819,8 @@ impl Windowable<MainMessage> for Main {
                 exit_message
             }
             MainMessage::ClearSearch => {
-                self.search_content = Content::new();
+                // TODO: auto focus
+                self.search_content = UpgradedContent::default();
 
                 self.update(
                     state,
@@ -1157,16 +968,12 @@ impl Default for Main {
     fn default() -> Self {
         Self {
             title: String::default(),
-            search_content: text_editor::Content::default(),
+            active_content: None,
+            search_content: UpgradedContent::default(),
             search_text: String::default(),
             calender: Calender::default(),
             search_table: SearchTable::default(),
-            log_history_stack: HistoryStack::default(),
-            search_history_stack: HistoryStack::default(),
             current_tab: Tab::default(),
-            current_editor: None,
-            cursor_line_idx: 0,
-            cursor_char_idx: 0,
             selected_misspelled_word: None,
             spell_suggestions: vec![],
             last_edit_time: Local::now(),
@@ -1186,7 +993,7 @@ impl Default for Main {
 impl Main {
     /// retrieves the text from the store and overwrites the content with it
     fn load_active_entry(&mut self, state: &mut SharedAppState) {
-        state.content = text_editor::Content::with_text(&state.global_store.day().get_day_text());
+        state.content = UpgradedContent::with_text(&state.global_store.day().get_day_text());
     }
 
     /// write the current text into the store
@@ -1244,7 +1051,7 @@ impl Main {
 
         self.last_edit_time = Local::now();
 
-        self.log_history_stack.clear();
+        self.content_perform(state, ContentAction::ClearHistoryStack);
     }
 
     fn update_spellcheck(&mut self, state: &mut SharedAppState) {
@@ -1363,17 +1170,13 @@ impl Main {
         }
     }
 
-    fn active_content_and_history_stack<'a>(
-        &'a mut self,
-        state: &'a mut SharedAppState,
-    ) -> Option<(&'a mut Content, &'a mut HistoryStack)> {
-        if let Some(editor) = &self.current_editor {
-            match editor {
-                Editor::Log => Some((&mut state.content, &mut self.log_history_stack)),
-                Editor::Search => Some((&mut self.search_content, &mut self.search_history_stack)),
+    /// performs the content action on the text editor it would apply to
+    fn content_perform(&mut self, state: &mut SharedAppState, action: ContentAction) {
+        if let Some(active_content) = &self.active_content {
+            match active_content {
+                ActiveContent::Editor => state.content.perform(action),
+                ActiveContent::Search => self.search_content.perform(action),
             }
-        } else {
-            None
         }
     }
 }

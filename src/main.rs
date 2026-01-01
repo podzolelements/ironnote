@@ -6,21 +6,18 @@ use crate::{
     main_window::{Main, MainMessage},
     task_creator_window::{TaskCreator, TaskCreatorMessage},
     tasks::Tasks,
+    upgraded_content::UpgradedContent,
     window_manager::{WindowType, Windowable},
     word_count::WordCount,
 };
+use iced::window;
 use iced::{Element, Event, Subscription, Task, event::listen_with, keyboard, widget::column};
-use iced::{
-    widget::text_editor::{self, Content},
-    window,
-};
 use keybinds::Keybinds;
 use std::collections::BTreeMap;
 
 mod calender;
 mod clipboard;
 mod config;
-mod content_tools;
 mod context_menu;
 mod day_store;
 mod dictionary;
@@ -43,6 +40,7 @@ mod tabview;
 mod task_creator_window;
 mod tasks;
 mod template_tasks;
+mod upgraded_content;
 mod window_manager;
 mod word_count;
 
@@ -50,7 +48,7 @@ mod word_count;
 /// stores the application state that needs to be shared between different windows
 struct SharedAppState {
     upstream_action: Option<UpstreamAction>,
-    content: text_editor::Content,
+    content: UpgradedContent,
     global_store: GlobalStore,
     all_tasks: Tasks,
 }
@@ -61,7 +59,7 @@ impl Default for SharedAppState {
         global_store.load_all();
         global_store.update_word_count();
 
-        let content = Content::with_text(&global_store.day().get_day_text());
+        let content = UpgradedContent::with_text(&global_store.day().get_day_text());
 
         let all_tasks = Tasks::load_all();
 
