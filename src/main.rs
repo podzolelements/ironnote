@@ -181,8 +181,6 @@ impl App {
                 }
             }
             Message::CapturedKeyEvent((event, id)) => {
-                // println!("{:?}", event);
-
                 if let Some(action) = self.keybinds.dispatch(event) {
                     let key_action = action.clone();
 

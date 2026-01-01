@@ -44,8 +44,7 @@ impl From<&StandardDataDisk> for StandardData {
 
 impl From<&StandardData> for StandardDataDisk {
     fn from(value: &StandardData) -> Self {
-        let mut text = value.text_content.text();
-        text.pop();
+        let text = value.text_content.text();
 
         StandardDataDisk {
             text,
@@ -107,8 +106,7 @@ impl From<&MultiBinaryDataDisk> for MultiBinaryData {
 
 impl From<&MultiBinaryData> for MultiBinaryDataDisk {
     fn from(value: &MultiBinaryData) -> Self {
-        let mut text = value.text_content.text();
-        text.pop();
+        let text = value.text_content.text();
 
         Self {
             text,

@@ -90,10 +90,7 @@ impl Windowable<FileExportMessage> for FileExport {
             FileExportMessage::FilepathEdit(action) => {
                 self.filepath_content.perform(action);
 
-                let mut filepath_text = self.filepath_content.text();
-                filepath_text.pop();
-
-                self.file_path = filepath_text.into();
+                self.file_path = self.filepath_content.text().into();
             }
             FileExportMessage::OpenFileDialog => {
                 let file_path = match self.export_strategy {

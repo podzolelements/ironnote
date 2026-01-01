@@ -54,7 +54,7 @@ impl Menus {
 
     /// returns the total horizontal space the menu bar takes up
     pub fn total_bar_width() -> u32 {
-        Menus::iter().map(|menu| menu.width() as u32).sum()
+        Menus::iter().map(|menu| menu.width()).sum()
     }
 
     /// returns the menu bar present at the given position, and None if the position is outside of the range the menu
@@ -63,7 +63,7 @@ impl Menus {
         let mut accumulator = 0;
 
         for menu in Menus::iter() {
-            accumulator += menu.width() as u32;
+            accumulator += menu.width();
 
             if position < accumulator {
                 return Some(menu);
