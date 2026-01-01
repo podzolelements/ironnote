@@ -998,9 +998,7 @@ impl Main {
 
     /// write the current text into the store
     fn write_active_entry_to_store(&mut self, state: &mut SharedAppState) {
-        let mut current_text = state.content.text();
-        // remove the trailing newline that is created by the content
-        current_text.pop();
+        let current_text = state.content.text();
 
         state.global_store.day_mut().set_day_text(current_text);
 
@@ -1107,12 +1105,11 @@ impl Main {
         self.search_table.clear();
         self.search_text.clear();
 
-        let mut search_text = self.search_content.text();
-        search_text.pop();
-
-        if self.settings.ignore_search_case {
-            search_text = search_text.to_lowercase();
-        }
+        let search_text = if self.settings.ignore_search_case {
+            self.search_content.text().to_lowercase()
+        } else {
+            self.search_content.text()
+        };
 
         if search_text.is_empty() || search_text == " " {
             return;

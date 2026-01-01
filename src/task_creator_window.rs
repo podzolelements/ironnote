@@ -64,8 +64,7 @@ impl Default for TaskCreator {
 impl TaskCreator {
     /// returns true if all the information required to create a task is present and false if any information is missing
     pub fn is_valid_task(&self, state: &SharedAppState) -> bool {
-        let mut name_text = self.name_content.text();
-        name_text.pop();
+        let name_text = self.name_content.text();
 
         if name_text.is_empty() {
             return false;
@@ -387,8 +386,7 @@ impl Windowable<TaskCreatorMessage> for TaskCreator {
                 state.upstream_action = Some(UpstreamAction::CloseWindow(WindowType::TaskCreator));
             }
             TaskCreatorMessage::CreateTask => {
-                let mut name_text = self.name_content.text();
-                name_text.pop();
+                let name_text = self.name_content.text();
 
                 let active_date = state.global_store.date_time().date_naive();
 
@@ -398,12 +396,7 @@ impl Windowable<TaskCreatorMessage> for TaskCreator {
                         let subtask_names = self
                             .multi_binary_contents
                             .iter()
-                            .map(|content| {
-                                let mut name = content.text();
-                                name.pop();
-
-                                name
-                            })
+                            .map(|content| content.text())
                             .collect();
 
                         let common_data = MultiBinaryCommonData::new(subtask_names);
