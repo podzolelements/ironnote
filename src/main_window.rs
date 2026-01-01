@@ -18,12 +18,12 @@ use crate::upgraded_content::{ContentAction, CtrlEdit, UpgradedContent};
 use crate::window_manager::{WindowType, Windowable};
 use crate::word_count::{TimedWordCount, WordCount};
 use crate::{SharedAppState, UpstreamAction, misc_tools};
-use chrono::{DateTime, Datelike, Days, Duration, Local, Months, NaiveDate};
+use chrono::{DateTime, Datelike, Days, Local, Months, NaiveDate};
 use iced::Length::Fill;
 use iced::widget::operation::snap_to;
 use iced::widget::scrollable::{AbsoluteOffset, RelativeOffset, Viewport};
 use iced::widget::text_editor::Action;
-use iced::widget::{Id, Space, Text};
+use iced::widget::{Id, Space, Text, tooltip};
 use iced::window;
 use iced::{
     Alignment::Center,
@@ -37,6 +37,7 @@ use iced::{
         text_editor::{self},
     },
 };
+use std::time;
 use strum::Display;
 
 #[derive(Debug, Default, Clone, PartialEq, Display)]
@@ -127,11 +128,13 @@ impl Windowable<MainMessage> for Main {
     }
 
     fn view<'a>(&'a self, state: &'a SharedAppState) -> Element<'a, MainMessage> {
+        const TOOLTIP_DELAY: time::Duration = time::Duration::from_millis(600);
+
         let cursor_line_idx = state.content.cursor_line();
         let cursor_char_idx = state.content.cursor_column();
 
-        let cursor_spellcheck_timed_out =
-            Local::now().signed_duration_since(self.last_edit_time) > Duration::milliseconds(500);
+        let cursor_spellcheck_timed_out = Local::now().signed_duration_since(self.last_edit_time)
+            > chrono::Duration::milliseconds(500);
 
         let back_button = widget::button(widget::Text::new("<---").align_x(Center))
             .on_press(MainMessage::BackOneDay)
@@ -165,7 +168,15 @@ impl Windowable<MainMessage> for Main {
                 .on_press(MainMessage::AddTask)
                 .width(40)
                 .height(40);
-            let add_button_layer = row![add_button_h_padding, add_button];
+
+            let add_button_tooltip = tooltip(
+                add_button,
+                Text::new("Create New Task").size(15),
+                tooltip::Position::Left,
+            )
+            .delay(TOOLTIP_DELAY);
+
+            let add_button_layer = row![add_button_h_padding, add_button_tooltip];
 
             column![tasks, Space::new().height(Fill), add_button_layer]
         };
@@ -193,7 +204,27 @@ impl Windowable<MainMessage> for Main {
                 .width(32)
                 .height(26);
 
-            let search_line = row![searchbar, clear_search_button, match_case_button];
+            let clear_search_tooltip = tooltip(
+                clear_search_button,
+                Text::new("Clear Search").size(13),
+                tooltip::Position::Top,
+            )
+            .delay(TOOLTIP_DELAY);
+
+            let match_case_tooltip_text = if self.settings.ignore_search_case {
+                "Match Case"
+            } else {
+                "Ignore Case"
+            };
+
+            let match_case_tooltip = tooltip(
+                match_case_button,
+                Text::new(match_case_tooltip_text).size(13),
+                tooltip::Position::Top,
+            )
+            .delay(TOOLTIP_DELAY);
+
+            let search_line = row![searchbar, clear_search_tooltip, match_case_tooltip];
 
             let table = SearchTable::view(&self.search_table).map(MainMessage::TableSearch);
 
