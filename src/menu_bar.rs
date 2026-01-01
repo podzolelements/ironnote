@@ -1,7 +1,6 @@
 use iced::Alignment::Center;
 use iced::Element;
-use iced::Length::Fill;
-use iced::widget::{self, Space, column, mouse_area, opaque, row, stack};
+use iced::widget::{self, column, mouse_area, row, stack};
 
 #[derive(Debug)]
 pub enum MenuItemType<Message> {
@@ -163,13 +162,9 @@ where
         .map(|dropdown| dropdown.name_width)
         .sum::<u32>();
 
-    let top_space = Space::new().width(Fill).height(menu_height);
-    let left_space = Space::new().width(dropdown_x_alignment).height(Fill);
+    let pinned_dropdown = widget::pin(dropdown).x(dropdown_x_alignment).y(menu_height);
 
-    let padded_dropdown_horizontal = row![left_space, dropdown];
-    let padded_dropdown = column![top_space, opaque(padded_dropdown_horizontal)];
-
-    let full_dropdown = mouse_area(padded_dropdown)
+    let full_dropdown = mouse_area(pinned_dropdown)
         .on_press(menu_structure.on_click_away.clone())
         .on_right_press(menu_structure.on_click_away.clone())
         .on_middle_press(menu_structure.on_click_away.clone());
