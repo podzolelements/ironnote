@@ -1,5 +1,6 @@
 use crate::{
     SharedAppState, UpstreamAction,
+    upgraded_content::UpgradedContent,
     window_manager::{WindowType, Windowable},
 };
 use iced::{
@@ -124,19 +125,13 @@ impl Windowable<FileImportMessage> for FileImport {
             }
             FileImportMessage::Import(strategy) => {
                 if let Ok(imported_string) = fs::read_to_string(self.file_path.clone()) {
-                    let new_content = match strategy {
-                        FileImportStrategy::AppendEnd => {
-                            let new_text = state.content.text() + &imported_string;
-                            Content::with_text(&new_text)
-                        }
-                        FileImportStrategy::AppendStart => {
-                            let new_text = imported_string + &state.content.text();
-                            Content::with_text(&new_text)
-                        }
-                        FileImportStrategy::Overwrite => Content::with_text(&imported_string),
+                    let new_text = match strategy {
+                        FileImportStrategy::AppendEnd => state.content.text() + &imported_string,
+                        FileImportStrategy::AppendStart => imported_string + &state.content.text(),
+                        FileImportStrategy::Overwrite => imported_string,
                     };
 
-                    state.content = new_content;
+                    state.content = UpgradedContent::with_text(&new_text);
 
                     state.upstream_action =
                         Some(UpstreamAction::CloseWindow(WindowType::FileImport));

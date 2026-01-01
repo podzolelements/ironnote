@@ -15,7 +15,6 @@ pub enum KeyboardAction {
     Save,
     BackspaceWord,
     BackspaceSentence,
-    Delete,
     DeleteWord,
     DeleteSentence,
     Undo,
@@ -44,10 +43,6 @@ pub fn bind_keybinds() -> Keybinds<KeyboardAction> {
     keybinds
         .bind("Ctrl+Shift+Backspace", KeyboardAction::BackspaceSentence)
         .expect("couldn't bind Ctrl+Shift+Backspace");
-    // text_editor delete key doesn't seem to get handled right, so we need to manually implement it
-    keybinds
-        .bind("Delete", KeyboardAction::Delete)
-        .expect("couldn't bind Delete");
     keybinds
         .bind("Ctrl+Delete", KeyboardAction::DeleteWord)
         .expect("couldn't bind Ctrl+Delete");
