@@ -1,4 +1,4 @@
-use crate::history_stack::{HistoryEvent, HistoryStack};
+use crate::history_stack::{HistoryEvent, HistoryStack, TextRemoval};
 use crate::misc_tools;
 use iced::widget::text_editor::{self, Action, Content, Cursor, Edit, Position};
 
@@ -58,9 +58,13 @@ impl UpgradedContent {
         let old_text = self.text();
 
         let selection = self.content.selection();
-        let selected_char_count = selection.clone().unwrap_or_default().chars().count();
+        let selection_char_count = selection.clone().unwrap_or_default().chars().count();
 
-        let history_event = match content_action {
+        let selection_text_removal = selection
+            .clone()
+            .map(|selection_text| TextRemoval::new(selection_text, false));
+
+        let potential_history_event = match content_action {
             ContentAction::Standard(action) => {
                 self.content.perform(action.clone());
 
@@ -69,26 +73,29 @@ impl UpgradedContent {
                 match action {
                     text_editor::Action::Edit(edit) => match edit {
                         Edit::Insert(inserted_char) => Some(HistoryEvent {
-                            text_removed: selection,
+                            text_removed: selection_text_removal,
                             text_added: Some(inserted_char.to_string()),
-                            selected_char_count,
-                            cursor: old_cursor,
+                            selection_char_count,
+                            redo_cursor: old_cursor,
+                            undo_cursor: new_cursor,
                         }),
                         Edit::Paste(pasted_text) => {
                             let pasted_string = pasted_text.to_string();
 
                             Some(HistoryEvent {
-                                text_removed: selection,
+                                text_removed: selection_text_removal,
                                 text_added: Some(pasted_string),
-                                selected_char_count,
-                                cursor: old_cursor,
+                                selection_char_count,
+                                redo_cursor: old_cursor,
+                                undo_cursor: new_cursor,
                             })
                         }
                         Edit::Enter => Some(HistoryEvent {
-                            text_removed: selection,
+                            text_removed: selection_text_removal,
                             text_added: Some("\n".to_string()),
-                            selected_char_count,
-                            cursor: old_cursor,
+                            selection_char_count,
+                            redo_cursor: old_cursor,
+                            undo_cursor: new_cursor,
                         }),
                         Edit::Indent => todo!(),
                         Edit::Unindent => todo!(),
@@ -99,35 +106,36 @@ impl UpgradedContent {
 
                             if selection.is_some() {
                                 Some(HistoryEvent {
-                                    text_removed: selection,
+                                    text_removed: selection_text_removal,
                                     text_added: None,
-                                    selected_char_count,
-                                    cursor: new_cursor,
+                                    selection_char_count,
+                                    redo_cursor: new_cursor,
+                                    undo_cursor: new_cursor,
                                 })
                             } else if old_cursor.position.column == 0 {
                                 Some(HistoryEvent {
-                                    text_removed: Some("\n".to_string()),
+                                    text_removed: Some(TextRemoval::new("\n".to_string(), false)),
                                     text_added: None,
-                                    selected_char_count,
-                                    cursor: new_cursor,
+                                    selection_char_count,
+                                    redo_cursor: new_cursor,
+                                    undo_cursor: new_cursor,
                                 })
                             } else {
-                                let text_removed = Some(
-                                    old_text
-                                        .lines()
-                                        .nth(old_cursor.position.line)
-                                        .expect("couldn't get line")
-                                        .chars()
-                                        .nth(old_cursor.position.column - 1)
-                                        .expect("couldn't get char")
-                                        .to_string(),
-                                );
+                                let text_removed = old_text
+                                    .lines()
+                                    .nth(old_cursor.position.line)
+                                    .expect("couldn't get line")
+                                    .chars()
+                                    .nth(old_cursor.position.column - 1)
+                                    .expect("couldn't get char")
+                                    .to_string();
 
                                 Some(HistoryEvent {
-                                    text_removed,
+                                    text_removed: Some(TextRemoval::new(text_removed, false)),
                                     text_added: None,
-                                    selected_char_count,
-                                    cursor: new_cursor,
+                                    selection_char_count,
+                                    redo_cursor: new_cursor,
+                                    undo_cursor: new_cursor,
                                 })
                             }
                         }
@@ -141,19 +149,21 @@ impl UpgradedContent {
                                 .nth(old_cursor.position.line)
                                 .expect("couldn't get line")
                                 .chars()
-                                .count()
-                                .saturating_sub(1);
+                                .count();
                             let delete_index = old_cursor.position.column + 1;
 
                             let max_line_index = old_text.lines().count() - 1;
                             let next_line_index = old_cursor.position.line + 1;
 
-                            if selection.is_some() {
+                            if let Some(selection_text) = selection {
+                                // note that this isn't a delete removal since a delete with a selection is identical
+                                // to a backspace with a selection
                                 Some(HistoryEvent {
-                                    text_removed: selection,
+                                    text_removed: Some(TextRemoval::new(selection_text, false)),
                                     text_added: None,
-                                    selected_char_count,
-                                    cursor: old_cursor,
+                                    selection_char_count,
+                                    redo_cursor: old_cursor,
+                                    undo_cursor: new_cursor,
                                 })
                             } else if delete_index > max_char_index
                                 && (next_line_index > max_line_index)
@@ -163,28 +173,28 @@ impl UpgradedContent {
                             } else if delete_index > max_char_index {
                                 // deleting a newline not at the end of the text
                                 Some(HistoryEvent {
-                                    text_removed: Some("\n".to_string()),
+                                    text_removed: Some(TextRemoval::new("\n".to_string(), true)),
                                     text_added: None,
-                                    selected_char_count,
-                                    cursor: old_cursor,
+                                    selection_char_count,
+                                    redo_cursor: old_cursor,
+                                    undo_cursor: old_cursor,
                                 })
                             } else {
-                                let text_removed = Some(
-                                    old_text
-                                        .lines()
-                                        .nth(old_cursor.position.line)
-                                        .expect("couldn't get line")
-                                        .chars()
-                                        .nth(old_cursor.position.column + 1)
-                                        .expect("couldn't get char")
-                                        .to_string(),
-                                );
+                                let text_removed = old_text
+                                    .lines()
+                                    .nth(old_cursor.position.line)
+                                    .expect("couldn't get line")
+                                    .chars()
+                                    .nth(old_cursor.position.column)
+                                    .expect("couldn't get char")
+                                    .to_string();
 
                                 Some(HistoryEvent {
-                                    text_removed,
+                                    text_removed: Some(TextRemoval::new(text_removed, true)),
                                     text_added: None,
-                                    selected_char_count,
-                                    cursor: old_cursor,
+                                    selection_char_count,
+                                    redo_cursor: old_cursor,
+                                    undo_cursor: old_cursor,
                                 })
                             }
                         }
@@ -224,8 +234,9 @@ impl UpgradedContent {
                         ))
                     }
                     CtrlEdit::DeleteWord | CtrlEdit::DeleteSentence => {
-                        // not sure why ctrl+delete doesn't get caught and need to be revert()ed but ctrl+backspace
-                        // does...
+                        // revert delete handled automatically by the content
+                        self.history_stack.revert(&mut self.content);
+
                         Some(Self::perform_ctrl_delete(&mut self.content, stopping_chars))
                     }
                 }
@@ -247,8 +258,10 @@ impl UpgradedContent {
             }
         };
 
-        if let Some(valid_history_event) = history_event {
-            self.history_stack.push_undo_action(valid_history_event);
+        if let Some(history_event) = potential_history_event
+            && history_event != HistoryEvent::default()
+        {
+            self.history_stack.push_undo_action(history_event);
         }
     }
 
@@ -306,17 +319,21 @@ impl UpgradedContent {
         let old_text = content.text();
 
         let selection = content.selection();
-        let selected_char_count = selection.clone().unwrap_or_default().chars().count();
+        let selection_char_count = selection.clone().unwrap_or_default().chars().count();
 
-        if selection.is_some() {
+        if let Some(selection_text) = selection {
+            content.perform(Action::Edit(Edit::Backspace));
+
+            let new_cursor = content.cursor();
+
             let history_event = HistoryEvent {
-                text_removed: selection,
+                text_removed: Some(TextRemoval::new(selection_text, false)),
                 text_added: None,
-                selected_char_count,
-                cursor: old_cursor,
+                selection_char_count,
+                redo_cursor: old_cursor,
+                undo_cursor: new_cursor,
             };
 
-            content.perform(Action::Edit(Edit::Backspace));
             return history_event;
         }
 
@@ -338,10 +355,11 @@ impl UpgradedContent {
             };
 
             let history_event = HistoryEvent {
-                text_removed: Some("\n".to_string()),
+                text_removed: Some(TextRemoval::new("\n".to_string(), false)),
                 text_added: None,
-                selected_char_count,
-                cursor: new_cursor,
+                selection_char_count,
+                redo_cursor: new_cursor,
+                undo_cursor: new_cursor,
             };
 
             content.perform(Action::Edit(text_editor::Edit::Backspace));
@@ -403,10 +421,11 @@ impl UpgradedContent {
         let new_cursor = content.cursor();
 
         HistoryEvent {
-            text_removed: Some(removed_chars),
+            text_removed: Some(TextRemoval::new(removed_chars, false)),
             text_added: None,
-            selected_char_count,
-            cursor: new_cursor,
+            selection_char_count,
+            redo_cursor: new_cursor,
+            undo_cursor: new_cursor,
         }
     }
 
@@ -421,7 +440,7 @@ impl UpgradedContent {
         let old_cursor = content.cursor();
 
         let selection = content.selection();
-        let selected_char_count = selection.clone().unwrap_or_default().chars().count();
+        let selection_char_count = selection.clone().unwrap_or_default().chars().count();
 
         let line_count = content_text.lines().count();
         let line = match content_text.lines().nth(cursor_line_start) {
@@ -432,14 +451,19 @@ impl UpgradedContent {
         let char_count = line.chars().count();
 
         if let Some(selection_text) = selection {
+            content.perform(Action::Edit(text_editor::Edit::Backspace));
+
+            let new_cursor = content.cursor();
+
             let history_event = HistoryEvent {
-                text_removed: Some(selection_text),
+                // again, this isn't a delete removal since a ctrl+delete with a selection is simply a backspace
+                text_removed: Some(TextRemoval::new(selection_text, false)),
                 text_added: None,
-                selected_char_count,
-                cursor: old_cursor,
+                selection_char_count,
+                redo_cursor: old_cursor,
+                undo_cursor: new_cursor,
             };
 
-            content.perform(Action::Edit(text_editor::Edit::Backspace));
             return history_event;
         }
 
@@ -449,10 +473,11 @@ impl UpgradedContent {
         } else if char_count == cursor_char_start {
             // deletes following newline
             let history_event = HistoryEvent {
-                text_removed: Some('\n'.to_string()),
+                text_removed: Some(TextRemoval::new('\n'.to_string(), true)),
                 text_added: None,
-                selected_char_count,
-                cursor: old_cursor,
+                selection_char_count,
+                redo_cursor: old_cursor,
+                undo_cursor: old_cursor,
             };
             content.perform(Action::Edit(text_editor::Edit::Delete));
 
@@ -506,10 +531,11 @@ impl UpgradedContent {
             }
 
             HistoryEvent {
-                text_removed: Some(removed_chars),
+                text_removed: Some(TextRemoval::new(removed_chars, true)),
                 text_added: None,
-                selected_char_count,
-                cursor: old_cursor,
+                selection_char_count,
+                redo_cursor: old_cursor,
+                undo_cursor: old_cursor,
             }
         }
     }

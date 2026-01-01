@@ -2,12 +2,35 @@ use iced::widget::text_editor::{Action, Content, Cursor, Edit, Motion, Position}
 use std::collections::VecDeque;
 
 #[derive(Debug, Clone, PartialEq)]
+/// contains information about what and how text gets removed
+pub struct TextRemoval {
+    text: String,
+    /// if the removal is caused by a delete, the characters get removed on the right of the cursor, which is
+    /// needs to be known for reconstructing events in the HistoryStack
+    removed_right_of_cursor: bool,
+}
+
+impl TextRemoval {
+    /// creates a new TextRemoval with the text that was removed, and if it was caused by a delete action
+    pub fn new(text: String, is_delete_removal: bool) -> Self {
+        Self {
+            text,
+            removed_right_of_cursor: is_delete_removal,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 /// contains all of the information of the changes to the content
 pub struct HistoryEvent {
-    pub(crate) text_removed: Option<String>,
+    pub(crate) text_removed: Option<TextRemoval>,
     pub(crate) text_added: Option<String>,
-    pub(crate) selected_char_count: usize,
-    pub(crate) cursor: Cursor,
+    pub(crate) selection_char_count: usize,
+    /// what the cursor should be set to when moving along the redo stack
+    pub(crate) redo_cursor: Cursor,
+    /// what the cursor should be set to when moving along the undo stack; the final cursor state after the event has
+    /// been completed
+    pub(crate) undo_cursor: Cursor,
 }
 
 impl Default for HistoryEvent {
@@ -15,8 +38,12 @@ impl Default for HistoryEvent {
         Self {
             text_removed: Default::default(),
             text_added: Default::default(),
-            selected_char_count: 0,
-            cursor: Cursor {
+            selection_char_count: 0,
+            redo_cursor: Cursor {
+                position: Position { line: 0, column: 0 },
+                selection: None,
+            },
+            undo_cursor: Cursor {
                 position: Position { line: 0, column: 0 },
                 selection: None,
             },
@@ -33,11 +60,14 @@ pub struct HistoryStack {
 }
 
 impl HistoryStack {
+    /// removes all contents from both the undo and redo stacks
     pub fn clear(&mut self) {
         self.undo_history.clear();
         self.redo_history.clear();
     }
 
+    /// adds a new event onto the undo stack. the redo stack gets cleared when doing this, since the redo actions are
+    /// no longer valid when a new edit is added to the undo stack
     pub fn push_undo_action(&mut self, history_event: HistoryEvent) {
         self.stack_undo_action(history_event);
         self.redo_history.clear();
@@ -83,42 +113,38 @@ impl HistoryStack {
         }
     }
 
+    /// undoes the last HistoryEvent on the undo stack, applying its effects to the provided content and moving the event
+    /// into the redo stack
     pub fn perform_undo(&mut self, content: &mut Content) {
         if let Some(history_event) = self.move_undo_to_redo_stack() {
-            if (history_event.text_removed.is_some() && history_event.cursor.selection.is_none())
-                || content.selection().is_some()
-            {
-                content.move_to(history_event.cursor);
+            if content.selection().is_some() {
+                // this clears any existing selection since move_to() doesn't work right when there is one
+                content.perform(Action::Move(Motion::DocumentStart));
+            }
+            content.move_to(history_event.undo_cursor);
+
+            let inverse_actions = Self::history_event_to_inverse_actions(&history_event);
+
+            for action in inverse_actions {
+                content.perform(action);
             }
 
-            let inverse_edits = Self::history_event_to_inverse_edits(&history_event);
-
-            for edit in inverse_edits {
-                content.perform(Action::Edit(edit));
-            }
-
-            for _i in 0..history_event.selected_char_count {
+            for _i in 0..history_event.selection_char_count {
                 content.perform(Action::Select(Motion::Left));
             }
         }
     }
 
+    /// redoes the last HistoryEvent on the redo stack, applying its effects to the provided content and moving the event
+    /// back onto the undo stack
     pub fn perform_redo(&mut self, content: &mut Content) {
         if let Some(history_event) = self.move_redo_to_undo_stack() {
-            if let Some(removed) = &history_event.text_removed
-                && history_event.cursor.selection.is_none()
-            {
-                // content_tools::move_cursor(
-                //     content,
-                //     history_event.cursor_line_idx,
-                //     history_event.cursor_char_idx + removed.chars().count(),
-                // );
-            }
+            content.move_to(history_event.redo_cursor);
 
-            let redo_edits = Self::history_event_to_edits(history_event);
+            let redo_actions = Self::history_event_to_actions(history_event);
 
-            for edit in redo_edits {
-                content.perform(Action::Edit(edit));
+            for action in redo_actions {
+                content.perform(action);
             }
         }
     }
@@ -129,52 +155,66 @@ impl HistoryStack {
         self.redo_history.pop_front();
     }
 
-    /// takes a HistoryEvent and decomposes it into an equivelent set of Edit actions that can reconstruct the original
+    /// takes a HistoryEvent and decomposes it into an equivalent set of Actions that can reconstruct the original
     /// event for implementing a redo
-    fn history_event_to_edits(history_event: HistoryEvent) -> Vec<Edit> {
+    fn history_event_to_actions(history_event: HistoryEvent) -> Vec<Action> {
         let mut edit_sequence = vec![];
 
         if let Some(added_text) = history_event.text_added.clone() {
             for chara in added_text.chars() {
                 if chara == '\n' {
-                    edit_sequence.push(Edit::Enter);
+                    edit_sequence.push(Action::Edit(Edit::Enter));
                 } else {
-                    edit_sequence.push(Edit::Insert(chara));
+                    edit_sequence.push(Action::Edit(Edit::Insert(chara)));
                 }
             }
         }
 
-        if history_event.cursor.selection.is_none() {
-            if let Some(deleted_text) = history_event.text_removed {
-                for _chara in deleted_text.chars() {
-                    edit_sequence.push(Edit::Backspace);
+        if history_event.redo_cursor.selection.is_none() {
+            if let Some(removed_text) = history_event.text_removed {
+                for _chara in removed_text.text.chars() {
+                    if removed_text.removed_right_of_cursor {
+                        edit_sequence.push(Action::Edit(Edit::Delete));
+                    } else {
+                        edit_sequence.push(Action::Edit(Edit::Backspace));
+                    }
                 }
             }
-        } else if history_event.cursor.selection.is_some() && history_event.text_added.is_none() {
-            // remove the selection manually if no text was added (which automatically removes it via the insertion)
-            edit_sequence.push(Edit::Backspace);
+        } else if history_event.redo_cursor.selection.is_some()
+            && history_event.text_added.is_none()
+        {
+            // remove the selection manually if no text was added
+            edit_sequence.push(Action::Edit(Edit::Backspace));
         }
 
         edit_sequence
     }
 
-    /// takes a HistoryEvent and decomposes it into an equivelent set of Edit actions that can perform the inverse
+    /// takes a HistoryEvent and decomposes it into an equivalent set of Actions that can perform the inverse
     /// of the original event for implementing an undo
-    fn history_event_to_inverse_edits(history_event: &HistoryEvent) -> Vec<Edit> {
+    fn history_event_to_inverse_actions(history_event: &HistoryEvent) -> Vec<Action> {
         let mut inverse_sequence = vec![];
 
         if let Some(added_text) = &history_event.text_added {
             for _chara in added_text.chars() {
-                inverse_sequence.push(Edit::Backspace);
+                inverse_sequence.push(Action::Edit(Edit::Backspace));
             }
         }
 
-        if let Some(deleted_text) = &history_event.text_removed {
-            for chara in deleted_text.chars() {
+        if let Some(removed_text) = &history_event.text_removed {
+            for chara in removed_text.text.chars() {
                 if chara == '\n' {
-                    inverse_sequence.push(Edit::Enter);
+                    inverse_sequence.push(Action::Edit(Edit::Enter));
                 } else {
-                    inverse_sequence.push(Edit::Insert(chara));
+                    inverse_sequence.push(Action::Edit(Edit::Insert(chara)));
+                }
+            }
+
+            // since the cursor moves right when performing Inserts, if it was a delete we need to move the cursor back
+            // to where it should be
+            if removed_text.removed_right_of_cursor {
+                for _chara in removed_text.text.chars() {
+                    inverse_sequence.push(Action::Move(Motion::Left));
                 }
             }
         }
