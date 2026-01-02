@@ -18,7 +18,6 @@ use std::collections::BTreeMap;
 
 mod calender;
 mod clipboard;
-mod config;
 mod context_menu;
 mod day_store;
 mod dictionary;
@@ -43,6 +42,7 @@ mod task_creator_window;
 mod tasks;
 mod template_tasks;
 mod upgraded_content;
+mod user_preferences;
 mod window_manager;
 mod word_count;
 
