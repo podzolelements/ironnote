@@ -1,12 +1,13 @@
-use crate::{filetools::template_tasks_path, month_day::MonthDay};
+use crate::{
+    filetools::template_tasks_path,
+    month_day::MonthDay,
+    upgraded_content::{ContentAction, UpgradedContent},
+};
 use chrono::{Datelike, NaiveDate, Weekday};
 use iced::{
     Element,
     Length::Fill,
-    widget::{
-        self, Space, Text, button, checkbox, column, row,
-        text_editor::{Action, Content},
-    },
+    widget::{self, Space, Text, button, checkbox, column, row, text_editor::Action},
 };
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs};
@@ -22,7 +23,7 @@ pub enum StandardMessage {
 #[derive(Debug, Default)]
 /// the standard task with a text box and a single checkbox
 pub struct StandardData {
-    text_content: Content,
+    text_content: UpgradedContent,
     completed: bool,
 }
 
@@ -36,7 +37,7 @@ pub struct StandardDataDisk {
 impl From<&StandardDataDisk> for StandardData {
     fn from(value: &StandardDataDisk) -> Self {
         StandardData {
-            text_content: Content::with_text(&value.text),
+            text_content: UpgradedContent::with_text(&value.text),
             completed: value.completed,
         }
     }
@@ -76,7 +77,7 @@ pub enum MultiBinaryMessage {
 #[derive(Debug, Default)]
 /// a task that can have any number of binary subtasks. the names of the subtasks are stored in the common data section
 pub struct MultiBinaryData {
-    text_content: Content,
+    text_content: UpgradedContent,
     subtask_completion: Vec<bool>,
     completion_override: bool,
 }
@@ -97,7 +98,7 @@ pub struct MultiBinaryDataDisk {
 impl From<&MultiBinaryDataDisk> for MultiBinaryData {
     fn from(value: &MultiBinaryDataDisk) -> Self {
         MultiBinaryData {
-            text_content: Content::with_text(&value.text),
+            text_content: UpgradedContent::with_text(&value.text),
             subtask_completion: value.subtask_completion.clone(),
             completion_override: value.completion_override,
         }
@@ -121,7 +122,7 @@ impl MultiBinaryData {
     /// number in the common data section
     pub fn new(subtask_count: usize) -> Self {
         Self {
-            text_content: Content::new(),
+            text_content: UpgradedContent::default(),
             subtask_completion: vec![false; subtask_count],
             completion_override: false,
         }
@@ -543,8 +544,8 @@ impl TemplateTask {
                         options_button.into(),
                     );
 
-                    let text =
-                        widget::text_editor(&standard_data.text_content).on_action(move |action| {
+                    let text = widget::text_editor(standard_data.text_content.raw_content())
+                        .on_action(move |action| {
                             TemplateTaskMessage::snapshot(
                                 self,
                                 entry_date,
@@ -607,15 +608,14 @@ impl TemplateTask {
                         ]);
                     }
 
-                    let text = widget::text_editor(&multi_binary_data.text_content).on_action(
-                        move |action| {
+                    let text = widget::text_editor(multi_binary_data.text_content.raw_content())
+                        .on_action(move |action| {
                             TemplateTaskMessage::snapshot(
                                 self,
                                 entry_date,
                                 TemplateMessage::MultiBinary(MultiBinaryMessage::TextEdit(action)),
                             )
-                        },
-                    );
+                        });
 
                     if !self.expanded {
                         minimized_task
@@ -699,7 +699,9 @@ impl TemplateTask {
                         standard_data.set_completion(checked);
                     }
                     StandardMessage::TextEdit(action) => {
-                        standard_data.text_content.perform(action);
+                        standard_data
+                            .text_content
+                            .perform(ContentAction::Standard(action));
                     }
                 },
                 (
@@ -714,7 +716,9 @@ impl TemplateTask {
                         multi_binary_data.set_completion_override(checked);
                     }
                     MultiBinaryMessage::TextEdit(action) => {
-                        multi_binary_data.text_content.perform(action);
+                        multi_binary_data
+                            .text_content
+                            .perform(ContentAction::Standard(action));
                     }
                 },
                 _ => {

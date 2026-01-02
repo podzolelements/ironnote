@@ -1,14 +1,12 @@
 use crate::{
     SharedAppState, UpstreamAction,
-    upgraded_content::UpgradedContent,
+    keyboard_manager::KeyboardAction,
+    upgraded_content::{ContentAction, UpgradedContent},
     window_manager::{WindowType, Windowable},
 };
 use iced::{
     Task,
-    widget::{
-        self, Text, button, column, radio, row,
-        text_editor::{Action, Content},
-    },
+    widget::{self, Text, button, column, radio, row, text_editor::Action},
 };
 use rfd::FileDialog;
 use std::{fs, path::PathBuf};
@@ -22,6 +20,8 @@ pub enum FileImportStrategy {
 
 #[derive(Debug, Clone)]
 pub enum FileImportMessage {
+    KeyEvent(KeyboardAction),
+
     FilepathEdit(Action),
     OpenFileDialog,
     SelectedStrategy(FileImportStrategy),
@@ -31,7 +31,7 @@ pub enum FileImportMessage {
 
 #[derive(Debug, Default)]
 pub struct FileImport {
-    filepath_content: Content,
+    filepath_content: UpgradedContent,
     file_path: PathBuf,
     import_strategy: Option<FileImportStrategy>,
 }
@@ -42,8 +42,8 @@ impl Windowable<FileImportMessage> for FileImport {
     }
 
     fn view<'a>(&'a self, _state: &SharedAppState) -> iced::Element<'a, FileImportMessage> {
-        let filepath_text =
-            widget::text_editor(&self.filepath_content).on_action(FileImportMessage::FilepathEdit);
+        let filepath_text = widget::text_editor(self.filepath_content.raw_content())
+            .on_action(FileImportMessage::FilepathEdit);
 
         let filepath_picker =
             widget::button("open file").on_press(FileImportMessage::OpenFileDialog);
@@ -95,8 +95,19 @@ impl Windowable<FileImportMessage> for FileImport {
         message: FileImportMessage,
     ) -> iced::Task<FileImportMessage> {
         match message {
+            FileImportMessage::KeyEvent(keyboard_action) => {
+                match keyboard_action {
+                    KeyboardAction::Content(text_edit) => {
+                        self.content_perform(state, text_edit.to_content_action());
+                    }
+                    KeyboardAction::Save => {}
+                    KeyboardAction::Debug => {}
+                    KeyboardAction::Unbound(_unbound_key) => {}
+                };
+            }
             FileImportMessage::FilepathEdit(action) => {
-                self.filepath_content.perform(action);
+                self.filepath_content
+                    .perform(ContentAction::Standard(action));
 
                 self.file_path = self.filepath_content.text().into();
             }
@@ -110,7 +121,7 @@ impl Windowable<FileImportMessage> for FileImport {
                 if let Some(path) = file_path {
                     self.file_path = path.clone();
                     self.filepath_content =
-                        Content::with_text(path.to_str().expect("path is not valid utf-8"));
+                        UpgradedContent::with_text(path.to_str().expect("path is not valid utf-8"));
                 }
             }
             FileImportMessage::SelectedStrategy(strategy) => {
@@ -139,5 +150,9 @@ impl Windowable<FileImportMessage> for FileImport {
         }
 
         Task::none()
+    }
+
+    fn content_perform(&mut self, _state: &mut SharedAppState, action: ContentAction) {
+        self.filepath_content.perform(action);
     }
 }

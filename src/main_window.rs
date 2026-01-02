@@ -4,7 +4,7 @@ use crate::config::UserSettings;
 use crate::context_menu::context_menu;
 use crate::dictionary::{self, DICTIONARY};
 use crate::highlighter::{self, HighlightSettings, SpellHighlighter};
-use crate::keyboard_manager::{KeyboardAction, UnboundKey};
+use crate::keyboard_manager::{KeyboardAction, TextEdit, UnboundKey};
 use crate::logbox::LOGBOX;
 use crate::menu_bar::{MenuBar, menu_bar};
 use crate::menu_bar_builder::{
@@ -14,7 +14,7 @@ use crate::misc_tools::point_on_edge_of_text;
 use crate::search_table::{SearchTable, SearchTableMessage};
 use crate::tabview::{TabviewItem, tab_view};
 use crate::template_tasks::TemplateTaskMessage;
-use crate::upgraded_content::{ContentAction, CtrlEdit, UpgradedContent};
+use crate::upgraded_content::{ContentAction, UpgradedContent};
 use crate::window_manager::{WindowType, Windowable};
 use crate::word_count::{TimedWordCount, WordCount};
 use crate::{SharedAppState, UpstreamAction, misc_tools};
@@ -402,12 +402,16 @@ impl Windowable<MainMessage> for Main {
 
         // TODO: extend context menu to all text_editors
         let undo_message = if state.content.undo_stack_height() > 0 {
-            Some(MainMessage::KeyEvent(KeyboardAction::Undo))
+            Some(MainMessage::KeyEvent(KeyboardAction::Content(
+                TextEdit::Undo,
+            )))
         } else {
             None
         };
         let redo_message = if state.content.redo_stack_height() > 0 {
-            Some(MainMessage::KeyEvent(KeyboardAction::Redo))
+            Some(MainMessage::KeyEvent(KeyboardAction::Content(
+                TextEdit::Redo,
+            )))
         } else {
             None
         };
@@ -718,66 +722,16 @@ impl Windowable<MainMessage> for Main {
                 self.show_context_menu = false;
 
                 match event {
+                    KeyboardAction::Content(text_edit) => {
+                        self.content_perform(state, text_edit.to_content_action());
+
+                        self.last_edit_time = Local::now();
+                    }
                     KeyboardAction::Save => {
                         self.save_all(state);
                     }
-                    KeyboardAction::BackspaceWord => {
-                        self.last_edit_time = Local::now();
-
-                        self.content_perform(state, ContentAction::Ctrl(CtrlEdit::BackspaceWord));
-                    }
-                    KeyboardAction::BackspaceSentence => {
-                        self.last_edit_time = Local::now();
-
-                        self.content_perform(
-                            state,
-                            ContentAction::Ctrl(CtrlEdit::BackspaceSentence),
-                        );
-                    }
-                    KeyboardAction::DeleteWord => {
-                        self.last_edit_time = Local::now();
-
-                        self.content_perform(state, ContentAction::Ctrl(CtrlEdit::DeleteWord));
-                    }
-                    KeyboardAction::DeleteSentence => {
-                        self.last_edit_time = Local::now();
-
-                        self.content_perform(state, ContentAction::Ctrl(CtrlEdit::DeleteSentence));
-                    }
-                    KeyboardAction::Undo => {
-                        self.last_edit_time = Local::now();
-
-                        self.content_perform(state, ContentAction::Undo);
-                    }
-                    KeyboardAction::Redo => {
-                        self.last_edit_time = Local::now();
-
-                        self.content_perform(state, ContentAction::Redo);
-                    }
                     KeyboardAction::Debug => {
                         println!("debug!");
-                    }
-                    KeyboardAction::JumpToContentStart => {
-                        self.content_perform(
-                            state,
-                            ContentAction::Standard(Action::Move(
-                                text_editor::Motion::DocumentStart,
-                            )),
-                        );
-
-                        if self.active_content == Some(ActiveContent::Editor) {
-                            return snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::START);
-                        }
-                    }
-                    KeyboardAction::JumpToContentEnd => {
-                        self.content_perform(
-                            state,
-                            ContentAction::Standard(Action::Move(text_editor::Motion::DocumentEnd)),
-                        );
-
-                        if self.active_content == Some(ActiveContent::Editor) {
-                            return snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::END);
-                        }
                     }
                     KeyboardAction::Unbound(unbounded_action) => match unbounded_action {
                         UnboundKey::Cut => {
@@ -938,10 +892,16 @@ impl Windowable<MainMessage> for Main {
                     },
                     MenuMessage::Edit(edit_message) => match edit_message {
                         EditMessage::Undo => {
-                            return self.update(state, MainMessage::KeyEvent(KeyboardAction::Undo));
+                            return self.update(
+                                state,
+                                MainMessage::KeyEvent(KeyboardAction::Content(TextEdit::Undo)),
+                            );
                         }
                         EditMessage::Redo => {
-                            return self.update(state, MainMessage::KeyEvent(KeyboardAction::Redo));
+                            return self.update(
+                                state,
+                                MainMessage::KeyEvent(KeyboardAction::Content(TextEdit::Redo)),
+                            );
                         }
                         EditMessage::Cut => {
                             return self.update(
@@ -990,6 +950,15 @@ impl Windowable<MainMessage> for Main {
                 state.all_tasks.template_tasks.update(template_message);
 
                 Task::none()
+            }
+        }
+    }
+
+    fn content_perform(&mut self, state: &mut SharedAppState, action: ContentAction) {
+        if let Some(active_content) = &self.active_content {
+            match active_content {
+                ActiveContent::Editor => state.content.perform(action),
+                ActiveContent::Search => self.search_content.perform(action),
             }
         }
     }
@@ -1194,16 +1163,6 @@ impl Main {
                     self.search_table
                         .insert_element(start_text, bolded_text, end_text, date);
                 }
-            }
-        }
-    }
-
-    /// performs the content action on the text editor it would apply to
-    fn content_perform(&mut self, state: &mut SharedAppState, action: ContentAction) {
-        if let Some(active_content) = &self.active_content {
-            match active_content {
-                ActiveContent::Editor => state.content.perform(action),
-                ActiveContent::Search => self.search_content.perform(action),
             }
         }
     }

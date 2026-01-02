@@ -1,10 +1,12 @@
 use crate::{
     SharedAppState, UpstreamAction,
+    keyboard_manager::KeyboardAction,
     month_day::{DispMonth, MonthDay},
     template_tasks::{
         Frequency, FrequencyType, MultiBinaryCommonData, TaskCommonDataFormat, TaskType,
         TemplateTask,
     },
+    upgraded_content::{ContentAction, UpgradedContent},
     window_manager::{WindowType, Windowable},
 };
 use iced::{
@@ -13,13 +15,15 @@ use iced::{
     advanced::widget::Text,
     widget::{
         self, Space, button, checkbox, column, hover, pick_list, radio, row, scrollable,
-        text_editor::{Action, Content},
+        text_editor::Action,
     },
 };
 use strum::VariantArray;
 
 #[derive(Debug, Clone)]
 pub enum TaskCreatorMessage {
+    KeyEvent(KeyboardAction),
+
     SelectedTask(TaskType),
     SelectedFrequency(FrequencyType),
     EditedName(Action),
@@ -35,28 +39,37 @@ pub enum TaskCreatorMessage {
 }
 
 #[derive(Debug)]
+/// the currently active text editor content
+pub enum ActiveContent {
+    Name,
+    MultiBinaryComponent(usize),
+}
+
+#[derive(Debug)]
 pub struct TaskCreator {
     selected_task_type: TaskType,
-    name_content: Content,
+    active_content: Option<ActiveContent>,
+    name_content: UpgradedContent,
     selected_frequency: FrequencyType,
     freq_weekmap: [bool; 7],
     freq_monthmap: [bool; 31],
     freq_day: u32,
     freq_month: DispMonth,
-    multi_binary_contents: Vec<Content>,
+    multi_binary_contents: Vec<UpgradedContent>,
 }
 
 impl Default for TaskCreator {
     fn default() -> Self {
         Self {
             selected_task_type: TaskType::Standard,
-            name_content: Content::default(),
+            active_content: None,
+            name_content: UpgradedContent::default(),
             selected_frequency: FrequencyType::Daily,
             freq_weekmap: [false; 7],
             freq_monthmap: [false; 31],
             freq_day: 1,
             freq_month: DispMonth::January,
-            multi_binary_contents: vec![Content::new(), Content::new()],
+            multi_binary_contents: vec![UpgradedContent::default(), UpgradedContent::default()],
         }
     }
 }
@@ -116,7 +129,7 @@ impl Windowable<TaskCreatorMessage> for TaskCreator {
     }
 
     fn view<'a>(&'a self, state: &SharedAppState) -> iced::Element<'a, TaskCreatorMessage> {
-        let name_entry = widget::text_editor(&self.name_content)
+        let name_entry = widget::text_editor(self.name_content.raw_content())
             .placeholder("Enter task name...")
             .on_action(TaskCreatorMessage::EditedName);
 
@@ -148,9 +161,10 @@ impl Windowable<TaskCreatorMessage> for TaskCreator {
 
                     for (task_index, content) in self.multi_binary_contents.iter().enumerate() {
                         let index_text = Text::new(format!("Task {}:", task_index + 1));
-                        let name_editor = widget::text_editor(content).on_action(move |action| {
-                            TaskCreatorMessage::EditedMultiBinName((task_index, action))
-                        });
+                        let name_editor =
+                            widget::text_editor(content.raw_content()).on_action(move |action| {
+                                TaskCreatorMessage::EditedMultiBinName((task_index, action))
+                            });
 
                         let name_entry = row![index_text, name_editor];
 
@@ -345,33 +359,62 @@ impl Windowable<TaskCreatorMessage> for TaskCreator {
         message: TaskCreatorMessage,
     ) -> iced::Task<TaskCreatorMessage> {
         match message {
+            TaskCreatorMessage::KeyEvent(keyboard_action) => {
+                match keyboard_action {
+                    KeyboardAction::Content(text_edit) => {
+                        self.content_perform(state, text_edit.to_content_action());
+                    }
+                    KeyboardAction::Save => {
+                        if self.is_valid_task(state) {
+                            return self.update(state, TaskCreatorMessage::CreateTask);
+                        }
+                    }
+                    KeyboardAction::Debug => {}
+                    KeyboardAction::Unbound(_unbound_key) => {}
+                };
+            }
             TaskCreatorMessage::SelectedTask(task_type) => {
+                self.active_content = None;
+
                 self.selected_task_type = task_type;
             }
             TaskCreatorMessage::SelectedFrequency(frequency) => {
+                self.active_content = None;
+
                 self.selected_frequency = frequency;
             }
             TaskCreatorMessage::EditedName(action) => {
-                self.name_content.perform(action);
+                self.active_content = Some(ActiveContent::Name);
+
+                self.name_content.perform(ContentAction::Standard(action));
             }
             TaskCreatorMessage::CheckedWeekday(weekday_index, checked) => {
+                self.active_content = None;
+
                 self.freq_weekmap[weekday_index] = checked;
             }
             TaskCreatorMessage::CheckedMonth(month_index, checked) => {
+                self.active_content = None;
+
                 self.freq_monthmap[month_index] = checked;
             }
             TaskCreatorMessage::IncreasedMultiBinCount => {
-                self.multi_binary_contents.push(Content::new());
+                self.active_content = None;
+
+                self.multi_binary_contents.push(UpgradedContent::default());
             }
             TaskCreatorMessage::DecreasedMultiBinCount => {
+                self.active_content = None;
+
                 if self.multi_binary_contents.len() > 1 {
                     self.multi_binary_contents.pop();
                 }
             }
             TaskCreatorMessage::EditedMultiBinName((index, action)) => {
-                self.multi_binary_contents[index].perform(action);
-            }
+                self.active_content = Some(ActiveContent::MultiBinaryComponent(index));
 
+                self.multi_binary_contents[index].perform(ContentAction::Standard(action));
+            }
             TaskCreatorMessage::SelectedMonth(month) => {
                 self.freq_month = month;
 
@@ -380,12 +423,18 @@ impl Windowable<TaskCreatorMessage> for TaskCreator {
                 }
             }
             TaskCreatorMessage::SelectedDay(day) => {
+                self.active_content = None;
+
                 self.freq_day = day;
             }
             TaskCreatorMessage::Cancel => {
+                self.active_content = None;
+
                 state.upstream_action = Some(UpstreamAction::CloseWindow(WindowType::TaskCreator));
             }
             TaskCreatorMessage::CreateTask => {
+                self.active_content = None;
+
                 let name_text = self.name_content.text();
 
                 let active_date = state.global_store.date_time().date_naive();
@@ -428,5 +477,16 @@ impl Windowable<TaskCreatorMessage> for TaskCreator {
         }
 
         Task::none()
+    }
+
+    fn content_perform(&mut self, _state: &mut SharedAppState, action: ContentAction) {
+        if let Some(active_content) = &self.active_content {
+            match active_content {
+                ActiveContent::Name => self.name_content.perform(action),
+                ActiveContent::MultiBinaryComponent(component_index) => {
+                    self.multi_binary_contents[*component_index].perform(action);
+                }
+            }
+        }
     }
 }

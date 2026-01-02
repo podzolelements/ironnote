@@ -195,9 +195,21 @@ impl App {
                                 keyboard_action,
                             ))));
                         }
-                        WindowType::FileImport => {}
-                        WindowType::FileExport => {}
-                        WindowType::TaskCreator => {}
+                        WindowType::FileImport => {
+                            tasks.push(self.update(Message::FileImportWindow(
+                                FileImportMessage::KeyEvent(keyboard_action),
+                            )));
+                        }
+                        WindowType::FileExport => {
+                            tasks.push(self.update(Message::FileExportWindow(
+                                FileExportMessage::KeyEvent(keyboard_action),
+                            )));
+                        }
+                        WindowType::TaskCreator => {
+                            tasks.push(self.update(Message::TaskCreatorWindow(
+                                TaskCreatorMessage::KeyEvent(keyboard_action),
+                            )));
+                        }
                     }
                 }
             }
