@@ -1,6 +1,5 @@
 use crate::calender::{self, Calender, CalenderMessage};
 use crate::clipboard::{read_clipboard, write_clipboard};
-use crate::config::UserSettings;
 use crate::context_menu::context_menu;
 use crate::dictionary::{self, DICTIONARY};
 use crate::highlighter::{self, HighlightSettings, SpellHighlighter};
@@ -15,6 +14,7 @@ use crate::search_table::{SearchTable, SearchTableMessage};
 use crate::tabview::{TabviewItem, tabview_content_vertical};
 use crate::template_tasks::TemplateTaskMessage;
 use crate::upgraded_content::{ContentAction, UpgradedContent};
+use crate::user_preferences::{preferences, preferences_mut};
 use crate::window_manager::{WindowType, Windowable};
 use crate::word_count::{TimedWordCount, WordCount};
 use crate::{SharedAppState, UpstreamAction, misc_tools};
@@ -77,7 +77,6 @@ pub struct Main {
     selected_misspelled_word: Option<String>,
     spell_suggestions: Vec<String>,
     last_edit_time: DateTime<Local>,
-    settings: UserSettings,
     show_context_menu: bool,
     mouse_position: Point,
     captured_mouse_position: Point,
@@ -213,7 +212,7 @@ impl Windowable<MainMessage> for Main {
             )
             .delay(TOOLTIP_DELAY);
 
-            let match_case_tooltip_text = if self.settings.ignore_search_case {
+            let match_case_tooltip_text = if preferences().search.ignore_search_case {
                 "Match Case"
             } else {
                 "Ignore Case"
@@ -319,7 +318,7 @@ impl Windowable<MainMessage> for Main {
                     cursor_char_idx,
                     cursor_spellcheck_timed_out,
                     search_text: self.search_text.clone(),
-                    ignore_search_case: self.settings.ignore_search_case,
+                    ignore_search_case: preferences().search.ignore_search_case,
                 },
                 highlighter::highlight_to_format,
             );
@@ -815,7 +814,7 @@ impl Windowable<MainMessage> for Main {
                 )
             }
             MainMessage::ToggleSearchCase => {
-                self.settings.ignore_search_case = !self.settings.ignore_search_case;
+                preferences_mut().search.toggle_ignore_search_case();
 
                 self.update(
                     state,
@@ -989,7 +988,6 @@ impl Default for Main {
             selected_misspelled_word: None,
             spell_suggestions: vec![],
             last_edit_time: Local::now(),
-            settings: UserSettings::default(),
             show_context_menu: false,
             mouse_position: Point::default(),
             captured_mouse_position: Point::default(),
@@ -1117,7 +1115,7 @@ impl Main {
         self.search_table.clear();
         self.search_text.clear();
 
-        let search_text = if self.settings.ignore_search_case {
+        let search_text = if preferences().search.ignore_search_case {
             self.search_content.text().to_lowercase()
         } else {
             self.search_content.text()
@@ -1131,7 +1129,7 @@ impl Main {
             for day_store in month_store.days().rev() {
                 let original_content_text = day_store.get_day_text();
 
-                let content_text = if self.settings.ignore_search_case {
+                let content_text = if preferences().search.ignore_search_case {
                     original_content_text.to_lowercase()
                 } else {
                     original_content_text.clone()
