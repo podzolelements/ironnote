@@ -20,12 +20,18 @@ pub enum EditMessage {
     Paste,
 }
 
+#[derive(Debug, Clone, EnumIter, Display)]
+pub enum ToolsMessage {
+    Preferences,
+}
+
 #[derive(Debug, Clone)]
 pub enum MenuMessage {
     ClickedAway,
     ClickedMenu(Menus),
     File(FileMessage),
     Edit(EditMessage),
+    Tools(ToolsMessage),
 }
 
 #[derive(Debug, Clone, EnumIter, Display)]
@@ -33,6 +39,7 @@ pub enum MenuMessage {
 pub enum Menus {
     File,
     Edit,
+    Tools,
 }
 
 impl Menus {
@@ -41,6 +48,7 @@ impl Menus {
         match self {
             Menus::File => 0,
             Menus::Edit => 1,
+            Menus::Tools => 2,
         }
     }
 
@@ -49,6 +57,7 @@ impl Menus {
         match self {
             Menus::File => 45,
             Menus::Edit => 45,
+            Menus::Tools => 50,
         }
     }
 
@@ -110,8 +119,22 @@ pub fn build_menu_bar() -> MenuBar<crate::MainMessage> {
         ));
     }
 
+    let mut tools_dropdown = Dropdown::new(
+        &Menus::Tools.to_string(),
+        Menus::Tools.width(),
+        MainMessage::MenuBar(MenuMessage::ClickedMenu(Menus::Tools)),
+    );
+
+    for tools_message in ToolsMessage::iter() {
+        tools_dropdown.push_menu_item(MenuItem::new(
+            &tools_message.to_string(),
+            MenuItemType::Button(MainMessage::MenuBar(MenuMessage::Tools(tools_message))),
+        ));
+    }
+
     menu_bar.push_dropdown(file_dropdown);
     menu_bar.push_dropdown(edit_dropdown);
+    menu_bar.push_dropdown(tools_dropdown);
 
     menu_bar
 }

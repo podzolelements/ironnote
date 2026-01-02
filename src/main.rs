@@ -4,6 +4,7 @@ use crate::{
     global_store::GlobalStore,
     keyboard_manager::{KeyboardAction, bind_keybinds},
     main_window::{Main, MainMessage},
+    preferences_window::{Preferences, PreferencesMessage},
     task_creator_window::{TaskCreator, TaskCreatorMessage},
     tasks::Tasks,
     upgraded_content::UpgradedContent,
@@ -35,6 +36,7 @@ mod menu_bar_builder;
 mod misc_tools;
 mod month_day;
 mod month_store;
+mod preferences_window;
 mod search_table;
 mod tabview;
 mod task_creator_window;
@@ -80,6 +82,7 @@ struct App {
     file_import_window: FileImport,
     file_export_window: FileExport,
     task_creator_window: TaskCreator,
+    preferences_window: Preferences,
 }
 
 #[derive(Debug, Clone)]
@@ -95,6 +98,7 @@ pub enum Message {
     FileImportWindow(FileImportMessage),
     FileExportWindow(FileExportMessage),
     TaskCreatorWindow(TaskCreatorMessage),
+    PreferencesWindow(PreferencesMessage),
 }
 
 #[derive(Debug)]
@@ -124,10 +128,12 @@ impl App {
     fn title(&self, id: window::Id) -> String {
         if let Some(window_type) = self.windows.get(&id) {
             match window_type {
+                // TODO: is this nessesary?
                 WindowType::Main => self.main_window.title(),
                 WindowType::FileImport => self.file_import_window.title(),
                 WindowType::FileExport => self.file_export_window.title(),
                 WindowType::TaskCreator => self.task_creator_window.title(),
+                WindowType::Preferences => self.preferences_window.title(),
             }
         } else {
             "orphaned window".to_string()
@@ -153,6 +159,10 @@ impl App {
                     .task_creator_window
                     .view(&self.shared_state)
                     .map(Message::TaskCreatorWindow),
+                WindowType::Preferences => self
+                    .preferences_window
+                    .view(&self.shared_state)
+                    .map(Message::PreferencesWindow),
             }
         } else {
             column![].into()
@@ -210,6 +220,11 @@ impl App {
                                 TaskCreatorMessage::KeyEvent(keyboard_action),
                             )));
                         }
+                        WindowType::Preferences => {
+                            tasks.push(self.update(Message::PreferencesWindow(
+                                PreferencesMessage::KeyEvent(keyboard_action),
+                            )));
+                        }
                     }
                 }
             }
@@ -224,6 +239,7 @@ impl App {
                         WindowType::FileImport => {}
                         WindowType::FileExport => {}
                         WindowType::TaskCreator => {}
+                        WindowType::Preferences => {}
                     }
                 }
             }
@@ -257,6 +273,14 @@ impl App {
                     .map(Message::TaskCreatorWindow);
 
                 tasks.push(task_task);
+            }
+            Message::PreferencesWindow(preferences_message) => {
+                let preferences_task = self
+                    .preferences_window
+                    .update(&mut self.shared_state, preferences_message)
+                    .map(Message::PreferencesWindow);
+
+                tasks.push(preferences_task);
             }
         }
 
@@ -327,6 +351,7 @@ impl Default for App {
             file_import_window: FileImport::default(),
             file_export_window: FileExport::default(),
             task_creator_window: TaskCreator::default(),
+            preferences_window: Preferences::default(),
         }
     }
 }
@@ -335,6 +360,5 @@ fn main() -> Result<(), iced::Error> {
     iced::daemon(App::new, App::update, App::view)
         .subscription(App::subscription)
         .title(App::title)
-        // .theme(Theme::Light)
         .run()
 }
