@@ -12,7 +12,7 @@ use crate::menu_bar_builder::{
 };
 use crate::misc_tools::point_on_edge_of_text;
 use crate::search_table::{SearchTable, SearchTableMessage};
-use crate::tabview::{TabviewItem, tab_view};
+use crate::tabview::{TabviewItem, tabview_content_vertical};
 use crate::template_tasks::TemplateTaskMessage;
 use crate::upgraded_content::{ContentAction, UpgradedContent};
 use crate::window_manager::{WindowType, Windowable};
@@ -182,8 +182,8 @@ impl Windowable<MainMessage> for Main {
         };
 
         let tasks_tab = TabviewItem {
-            tab_name: Tab::Tasks.to_string(),
-            tab_clicked: MainMessage::TabSwitched(Tab::Tasks),
+            title: Tab::Tasks.to_string(),
+            clicked_message: MainMessage::TabSwitched(Tab::Tasks),
             content: tasks_tab_content.into(),
         };
 
@@ -233,8 +233,8 @@ impl Windowable<MainMessage> for Main {
         };
 
         let search_tab = TabviewItem {
-            tab_name: Tab::Search.to_string(),
-            tab_clicked: MainMessage::TabSwitched(Tab::Search),
+            title: Tab::Search.to_string(),
+            clicked_message: MainMessage::TabSwitched(Tab::Search),
             content: search_tab_content.into(),
         };
 
@@ -276,14 +276,14 @@ impl Windowable<MainMessage> for Main {
         };
 
         let stats_tab: TabviewItem<'_, MainMessage> = TabviewItem {
-            tab_name: Tab::Stats.to_string(),
-            tab_clicked: MainMessage::TabSwitched(Tab::Stats),
+            title: Tab::Stats.to_string(),
+            clicked_message: MainMessage::TabSwitched(Tab::Stats),
             content: stats_tab_content.into(),
         };
 
         let tab_elements = vec![tasks_tab, search_tab, stats_tab];
 
-        let tab_view = tab_view(
+        let tab_view = tabview_content_vertical(
             tab_elements,
             self.current_tab.to_index(),
             Length::Fixed(250.0),
