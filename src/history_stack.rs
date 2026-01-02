@@ -57,6 +57,7 @@ pub struct HistoryStack {
     max_undo_size: Option<usize>,
     redo_history: VecDeque<HistoryEvent>,
     max_redo_size: Option<usize>,
+    able_to_revert: bool,
 }
 
 impl HistoryStack {
@@ -66,9 +67,18 @@ impl HistoryStack {
         self.redo_history.clear();
     }
 
+    /// prevents revert() from being called when unrevertable. this should be set whenever a HistoryEvent should have
+    /// been pushed to the undo stack, but wasn't able to be completed or wouldn't change the state of the content for
+    /// the CtrlEdits that depend on revert()s
+    pub fn set_unrevertable(&mut self) {
+        self.able_to_revert = false;
+    }
+
     /// adds a new event onto the undo stack. the redo stack gets cleared when doing this, since the redo actions are
-    /// no longer valid when a new edit is added to the undo stack
+    /// no longer valid when a new edit is added to the undo stack. HistoryStack becomes revert()able after a push
     pub fn push_undo_action(&mut self, history_event: HistoryEvent) {
+        self.able_to_revert = true;
+
         self.stack_undo_action(history_event);
         self.redo_history.clear();
     }
@@ -149,8 +159,12 @@ impl HistoryStack {
         }
     }
 
-    /// performs an undo but does not move the action into the redo stack
+    /// performs an undo but does not move the action into the redo stack, provided the stack is in a revertable state
     pub fn revert(&mut self, content: &mut Content) {
+        if !self.able_to_revert {
+            return;
+        }
+
         self.perform_undo(content);
         self.redo_history.pop_front();
     }
@@ -240,6 +254,7 @@ impl Default for HistoryStack {
             max_undo_size: Some(1000),
             redo_history: Default::default(),
             max_redo_size: Some(1000),
+            able_to_revert: false,
         }
     }
 }
