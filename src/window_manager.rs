@@ -1,6 +1,5 @@
+use crate::{SharedAppState, upgraded_content::ContentAction};
 use iced::{Element, Size, Task, window};
-
-use crate::SharedAppState;
 
 #[derive(Debug, Clone, PartialEq)]
 /// all of the types windows that can be created
@@ -14,6 +13,7 @@ pub enum WindowType {
 impl WindowType {
     const WINDOW_WIDTH: f32 = 1024.0;
     const WINDOW_HEIGHT: f32 = 768.0;
+
     const SMALL_WINDOW_SIZE: Size<f32> =
         Size::new(Self::WINDOW_WIDTH / 2.0, Self::WINDOW_HEIGHT / 2.0);
     const MEDIUM_WINDOW_SIZE: Size<f32> =
@@ -59,4 +59,8 @@ pub trait Windowable<Message> {
 
     /// update the internal state based on the message received
     fn update(&mut self, state: &mut SharedAppState, message: Message) -> Task<Message>;
+
+    /// performs the provided action on the window's UpgradedContents. internal tracking should be used to ensure the
+    /// proper content has the action applied
+    fn content_perform(&mut self, state: &mut SharedAppState, action: ContentAction);
 }

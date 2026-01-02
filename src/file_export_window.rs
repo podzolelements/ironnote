@@ -1,14 +1,13 @@
 use crate::{
     SharedAppState, UpstreamAction,
+    keyboard_manager::KeyboardAction,
+    upgraded_content::{ContentAction, UpgradedContent},
     window_manager::{WindowType, Windowable},
 };
 use chrono::{Datelike, Days};
 use iced::{
     Task,
-    widget::{
-        self, Text, button, column, radio, row,
-        text_editor::{Action, Content},
-    },
+    widget::{self, Text, button, column, radio, row, text_editor::Action},
 };
 use rfd::FileDialog;
 use std::{fs, path::PathBuf};
@@ -22,6 +21,8 @@ pub enum FileExportStrategy {
 
 #[derive(Debug, Clone)]
 pub enum FileExportMessage {
+    KeyEvent(KeyboardAction),
+
     FilepathEdit(Action),
     OpenFileDialog,
     SelectedStrategy(FileExportStrategy),
@@ -31,7 +32,7 @@ pub enum FileExportMessage {
 
 #[derive(Debug, Default)]
 pub struct FileExport {
-    filepath_content: Content,
+    filepath_content: UpgradedContent,
     file_path: PathBuf,
     export_strategy: FileExportStrategy,
 }
@@ -58,8 +59,8 @@ impl Windowable<FileExportMessage> for FileExport {
             FileExportMessage::SelectedStrategy,
         );
 
-        let filepath_text =
-            widget::text_editor(&self.filepath_content).on_action(FileExportMessage::FilepathEdit);
+        let filepath_text = widget::text_editor(self.filepath_content.raw_content())
+            .on_action(FileExportMessage::FilepathEdit);
 
         let filepath_picker = widget::button("open").on_press(FileExportMessage::OpenFileDialog);
 
@@ -87,8 +88,19 @@ impl Windowable<FileExportMessage> for FileExport {
         message: FileExportMessage,
     ) -> iced::Task<FileExportMessage> {
         match message {
+            FileExportMessage::KeyEvent(keyboard_action) => {
+                match keyboard_action {
+                    KeyboardAction::Content(text_edit) => {
+                        self.content_perform(state, text_edit.to_content_action());
+                    }
+                    KeyboardAction::Save => {}
+                    KeyboardAction::Debug => {}
+                    KeyboardAction::Unbound(_unbound_key) => {}
+                };
+            }
             FileExportMessage::FilepathEdit(action) => {
-                self.filepath_content.perform(action);
+                self.filepath_content
+                    .perform(ContentAction::Standard(action));
 
                 self.file_path = self.filepath_content.text().into();
             }
@@ -107,7 +119,7 @@ impl Windowable<FileExportMessage> for FileExport {
                 if let Some(path) = file_path {
                     self.file_path = path.clone();
                     self.filepath_content =
-                        Content::with_text(path.to_str().expect("path is not valid utf-8"));
+                        UpgradedContent::with_text(path.to_str().expect("path is not valid utf-8"));
                 }
             }
             FileExportMessage::SelectedStrategy(strategy) => {
@@ -156,5 +168,9 @@ impl Windowable<FileExportMessage> for FileExport {
         }
 
         Task::none()
+    }
+
+    fn content_perform(&mut self, _state: &mut SharedAppState, action: ContentAction) {
+        self.filepath_content.perform(action);
     }
 }
