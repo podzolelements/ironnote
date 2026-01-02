@@ -35,6 +35,20 @@ pub enum ContentAction {
     ClearHistoryStack,
 }
 
+/// the result in terms of HistoryEvents of a ContentAction
+pub enum ActionHistoryEvent {
+    /// successfully created a valid HistoryEvent that should be pushed onto the undo stack
+    Push(HistoryEvent),
+
+    /// a HistoryEvent should have been created but wasn't, likely due to nothing changing on the editor (backspacing
+    /// at the start of the document, deleting at the end...etc). since an event was not written to the the undo stack
+    /// but should have, revert()ing must be disabled to ensure the stack remains valid
+    DisableRevert,
+
+    /// the ContentAction doesn't produce events for the HistoryStack
+    Ignore,
+}
+
 #[derive(Debug, Default)]
 /// the UpgradedContent is a wrapper around iced's text_editor::Content that provides significant additional
 /// functionality through the ContentAction extended actions
@@ -64,7 +78,7 @@ impl UpgradedContent {
             .clone()
             .map(|selection_text| TextRemoval::new(selection_text, false));
 
-        let potential_history_event = match content_action {
+        let content_action_status = match content_action {
             ContentAction::Standard(action) => {
                 self.content.perform(action.clone());
 
@@ -72,7 +86,7 @@ impl UpgradedContent {
 
                 match action {
                     text_editor::Action::Edit(edit) => match edit {
-                        Edit::Insert(inserted_char) => Some(HistoryEvent {
+                        Edit::Insert(inserted_char) => ActionHistoryEvent::Push(HistoryEvent {
                             text_removed: selection_text_removal,
                             text_added: Some(inserted_char.to_string()),
                             selection_char_count,
@@ -82,7 +96,7 @@ impl UpgradedContent {
                         Edit::Paste(pasted_text) => {
                             let pasted_string = pasted_text.to_string();
 
-                            Some(HistoryEvent {
+                            ActionHistoryEvent::Push(HistoryEvent {
                                 text_removed: selection_text_removal,
                                 text_added: Some(pasted_string),
                                 selection_char_count,
@@ -90,7 +104,7 @@ impl UpgradedContent {
                                 undo_cursor: new_cursor,
                             })
                         }
-                        Edit::Enter => Some(HistoryEvent {
+                        Edit::Enter => ActionHistoryEvent::Push(HistoryEvent {
                             text_removed: selection_text_removal,
                             text_added: Some("\n".to_string()),
                             selection_char_count,
@@ -101,19 +115,19 @@ impl UpgradedContent {
                         Edit::Unindent => todo!(),
                         Edit::Backspace => {
                             if old_text.is_empty() {
-                                return;
-                            }
-
-                            if selection.is_some() {
-                                Some(HistoryEvent {
+                                ActionHistoryEvent::DisableRevert
+                            } else if selection.is_some() {
+                                ActionHistoryEvent::Push(HistoryEvent {
                                     text_removed: selection_text_removal,
                                     text_added: None,
                                     selection_char_count,
                                     redo_cursor: new_cursor,
                                     undo_cursor: new_cursor,
                                 })
-                            } else if old_cursor.position.column == 0 {
-                                Some(HistoryEvent {
+                            } else if Self::cursor_at_start_of_text(&old_cursor) {
+                                ActionHistoryEvent::DisableRevert
+                            } else if Self::cursor_at_start_of_line(&old_cursor) {
+                                ActionHistoryEvent::Push(HistoryEvent {
                                     text_removed: Some(TextRemoval::new("\n".to_string(), false)),
                                     text_added: None,
                                     selection_char_count,
@@ -130,7 +144,7 @@ impl UpgradedContent {
                                     .expect("couldn't get char")
                                     .to_string();
 
-                                Some(HistoryEvent {
+                                ActionHistoryEvent::Push(HistoryEvent {
                                     text_removed: Some(TextRemoval::new(text_removed, false)),
                                     text_added: None,
                                     selection_char_count,
@@ -141,38 +155,21 @@ impl UpgradedContent {
                         }
                         Edit::Delete => {
                             if old_text.is_empty() {
-                                return;
-                            }
-
-                            let max_char_index = old_text
-                                .lines()
-                                .nth(old_cursor.position.line)
-                                .expect("couldn't get line")
-                                .chars()
-                                .count();
-                            let delete_index = old_cursor.position.column + 1;
-
-                            let max_line_index = old_text.lines().count() - 1;
-                            let next_line_index = old_cursor.position.line + 1;
-
-                            if let Some(selection_text) = selection {
+                                ActionHistoryEvent::DisableRevert
+                            } else if let Some(selection_text) = selection {
                                 // note that this isn't a delete removal since a delete with a selection is identical
                                 // to a backspace with a selection
-                                Some(HistoryEvent {
+                                ActionHistoryEvent::Push(HistoryEvent {
                                     text_removed: Some(TextRemoval::new(selection_text, false)),
                                     text_added: None,
                                     selection_char_count,
                                     redo_cursor: old_cursor,
                                     undo_cursor: new_cursor,
                                 })
-                            } else if delete_index > max_char_index
-                                && (next_line_index > max_line_index)
-                            {
-                                // deleting at the end of text has no effect
-                                None
-                            } else if delete_index > max_char_index {
-                                // deleting a newline not at the end of the text
-                                Some(HistoryEvent {
+                            } else if Self::cursor_at_end_of_text(&old_cursor, &old_text) {
+                                ActionHistoryEvent::DisableRevert
+                            } else if Self::cursor_at_end_of_line(&old_cursor, &old_text) {
+                                ActionHistoryEvent::Push(HistoryEvent {
                                     text_removed: Some(TextRemoval::new("\n".to_string(), true)),
                                     text_added: None,
                                     selection_char_count,
@@ -189,7 +186,7 @@ impl UpgradedContent {
                                     .expect("couldn't get char")
                                     .to_string();
 
-                                Some(HistoryEvent {
+                                ActionHistoryEvent::Push(HistoryEvent {
                                     text_removed: Some(TextRemoval::new(text_removed, true)),
                                     text_added: None,
                                     selection_char_count,
@@ -215,9 +212,9 @@ impl UpgradedContent {
                             }
                         }
 
-                        None
+                        ActionHistoryEvent::Ignore
                     }
-                    _ => None,
+                    _ => ActionHistoryEvent::Ignore,
                 }
             }
             ContentAction::Ctrl(ctrl_type) => {
@@ -228,41 +225,105 @@ impl UpgradedContent {
                         // revert the backspace handled automatically by the content
                         self.history_stack.revert(&mut self.content);
 
-                        Some(Self::perform_ctrl_backspace(
-                            &mut self.content,
-                            stopping_chars,
-                        ))
+                        if let Some(history_event) =
+                            Self::perform_ctrl_backspace(&mut self.content, stopping_chars)
+                        {
+                            ActionHistoryEvent::Push(history_event)
+                        } else {
+                            ActionHistoryEvent::DisableRevert
+                        }
                     }
                     CtrlEdit::DeleteWord | CtrlEdit::DeleteSentence => {
                         // revert delete handled automatically by the content
                         self.history_stack.revert(&mut self.content);
 
-                        Some(Self::perform_ctrl_delete(&mut self.content, stopping_chars))
+                        if let Some(history_event) =
+                            Self::perform_ctrl_delete(&mut self.content, stopping_chars)
+                        {
+                            ActionHistoryEvent::Push(history_event)
+                        } else {
+                            ActionHistoryEvent::DisableRevert
+                        }
                     }
                 }
             }
             ContentAction::Undo => {
                 self.history_stack.perform_undo(&mut self.content);
 
-                None
+                ActionHistoryEvent::Ignore
             }
             ContentAction::Redo => {
                 self.history_stack.perform_redo(&mut self.content);
 
-                None
+                ActionHistoryEvent::Ignore
             }
             ContentAction::ClearHistoryStack => {
                 self.history_stack.clear();
 
-                None
+                ActionHistoryEvent::Ignore
             }
         };
 
-        if let Some(history_event) = potential_history_event
-            && history_event != HistoryEvent::default()
-        {
-            self.history_stack.push_undo_action(history_event);
+        match content_action_status {
+            ActionHistoryEvent::Push(history_event) => {
+                self.history_stack.push_undo_action(history_event);
+            }
+            ActionHistoryEvent::DisableRevert => {
+                self.history_stack.set_unrevertable();
+            }
+            ActionHistoryEvent::Ignore => {}
         }
+    }
+
+    /// returns true if the given cursor is at the start of the current line
+    fn cursor_at_start_of_line(cursor: &Cursor) -> bool {
+        cursor.position.column == 0
+    }
+
+    /// returns true if the given cursor is at the end of the current line in the provided text. also returns true if
+    /// the text is empty. the cursor must exist positionally inside of the text
+    fn cursor_at_end_of_line(cursor: &Cursor, text: &str) -> bool {
+        if text.is_empty() {
+            return true;
+        }
+
+        let max_char_index = text
+            .lines()
+            .nth(cursor.position.line)
+            .expect("couldn't extract line")
+            .chars()
+            .count();
+
+        let current_char_index = cursor.position.column;
+
+        if current_char_index == max_char_index {
+            return true;
+        }
+
+        false
+    }
+
+    /// returns true if the given cursor is at the start of the text, ie at (0,0)
+    fn cursor_at_start_of_text(cursor: &Cursor) -> bool {
+        cursor.position.column == 0 && cursor.position.line == 0
+    }
+
+    /// returns true if the given cursor is at the end of the current line and at the last character in the provided
+    /// text. returns true if the text is the empty string
+    fn cursor_at_end_of_text(cursor: &Cursor, text: &str) -> bool {
+        if text.is_empty() {
+            return true;
+        }
+
+        let max_line_index = text.lines().count() - 1;
+
+        let current_line_index = cursor.position.line;
+
+        if Self::cursor_at_end_of_line(cursor, text) && current_line_index == max_line_index {
+            return true;
+        }
+
+        false
     }
 
     /// returns the zero-indexed line number of the cursor
@@ -301,19 +362,21 @@ impl UpgradedContent {
     }
 
     /// performs a ctrl+backspace on the content, for a given set of stopping_chars, which dictates the characters that
-    /// stop the ctrl+backspace from continuing. returns the corresponding HistoryEvent that represents the action.
-    /// Note that the HistoryStack must be reverted before calling this, as the regular backspace before the
-    /// ctrl+backspace must be undone.
-    pub fn perform_ctrl_backspace(content: &mut Content, stopping_chars: &[char]) -> HistoryEvent {
-        if content.cursor().position.line == 0 && content.cursor().position.column == 0 {
-            return HistoryEvent::default();
+    /// stop the ctrl+backspace from continuing. returns the corresponding HistoryEvent that represents the action, if
+    /// the action changed the state of the content, None otherwise. Note that the HistoryStack must be reverted before
+    /// calling this, as the regular backspace before the ctrl+backspace must be undone.
+    pub fn perform_ctrl_backspace(
+        content: &mut Content,
+        stopping_chars: &[char],
+    ) -> Option<HistoryEvent> {
+        if Self::cursor_at_start_of_text(&content.cursor()) {
+            return None;
         }
 
         let mut removed_chars = String::new();
-        let (cursor_line_start, cursor_char_start) = (
-            content.cursor().position.line,
-            content.cursor().position.column,
-        );
+
+        let cursor_line_start = content.cursor().position.line;
+        let cursor_char_start = content.cursor().position.column;
 
         let old_cursor = content.cursor();
         let old_text = content.text();
@@ -334,11 +397,10 @@ impl UpgradedContent {
                 undo_cursor: new_cursor,
             };
 
-            return history_event;
+            return Some(history_event);
         }
 
-        // on edge of newline
-        if cursor_char_start == 0 {
+        if Self::cursor_at_start_of_line(&old_cursor) {
             let previous_line_char_count = old_text
                 .lines()
                 .nth(old_cursor.position.line - 1)
@@ -363,7 +425,7 @@ impl UpgradedContent {
             };
 
             content.perform(Action::Edit(text_editor::Edit::Backspace));
-            return history_event;
+            return Some(history_event);
         }
 
         let char_line = old_text
@@ -420,33 +482,32 @@ impl UpgradedContent {
 
         let new_cursor = content.cursor();
 
-        HistoryEvent {
+        Some(HistoryEvent {
             text_removed: Some(TextRemoval::new(removed_chars, false)),
             text_added: None,
             selection_char_count,
             redo_cursor: new_cursor,
             undo_cursor: new_cursor,
-        }
+        })
     }
 
     /// performs a ctrl+delete on the content, for a given set of stopping_chars, which dictates the characters that
-    /// stop the ctrl+delete from continuing. returns the corresponding HistoryEvent that represents the action
-    pub fn perform_ctrl_delete(content: &mut Content, stopping_chars: &[char]) -> HistoryEvent {
-        let content_text = content.text();
-
-        let cursor_line_start = content.cursor().position.line;
-        let cursor_char_start = content.cursor().position.column;
-
+    /// stop the ctrl+delete from continuing. returns the corresponding HistoryEvent that represents the action if the
+    /// state of the content was changed, None otherwise
+    pub fn perform_ctrl_delete(
+        content: &mut Content,
+        stopping_chars: &[char],
+    ) -> Option<HistoryEvent> {
+        let old_text = content.text();
         let old_cursor = content.cursor();
+
+        let cursor_line_start = old_cursor.position.line;
+        let cursor_char_start = old_cursor.position.column;
 
         let selection = content.selection();
         let selection_char_count = selection.clone().unwrap_or_default().chars().count();
 
-        let line_count = content_text.lines().count();
-        let line = match content_text.lines().nth(cursor_line_start) {
-            Some(line) => line,
-            None => return HistoryEvent::default(),
-        };
+        let line = old_text.lines().nth(cursor_line_start)?;
 
         let char_count = line.chars().count();
 
@@ -464,14 +525,12 @@ impl UpgradedContent {
                 undo_cursor: new_cursor,
             };
 
-            return history_event;
+            return Some(history_event);
         }
 
-        if line_count == (cursor_line_start + 1) && char_count == cursor_char_start {
-            // nothing to delete, end of text
-            HistoryEvent::default()
-        } else if char_count == cursor_char_start {
-            // deletes following newline
+        if Self::cursor_at_end_of_text(&old_cursor, &old_text) {
+            None
+        } else if Self::cursor_at_end_of_line(&old_cursor, &old_text) {
             let history_event = HistoryEvent {
                 text_removed: Some(TextRemoval::new('\n'.to_string(), true)),
                 text_added: None,
@@ -481,7 +540,7 @@ impl UpgradedContent {
             };
             content.perform(Action::Edit(text_editor::Edit::Delete));
 
-            history_event
+            Some(history_event)
         } else {
             // standard ctrl+delete
             let mut removed_chars = String::new();
@@ -530,13 +589,13 @@ impl UpgradedContent {
                 }
             }
 
-            HistoryEvent {
+            Some(HistoryEvent {
                 text_removed: Some(TextRemoval::new(removed_chars, true)),
                 text_added: None,
                 selection_char_count,
                 redo_cursor: old_cursor,
                 undo_cursor: old_cursor,
-            }
+            })
         }
     }
 }
