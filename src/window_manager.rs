@@ -8,6 +8,7 @@ pub enum WindowType {
     FileImport,
     FileExport,
     TaskCreator,
+    Preferences,
 }
 
 impl WindowType {
@@ -40,6 +41,12 @@ impl WindowType {
                 ..Default::default()
             },
             WindowType::TaskCreator => window::Settings {
+                size: Self::MEDIUM_WINDOW_SIZE,
+                resizable: false,
+                position: window::Position::Centered,
+                ..Default::default()
+            },
+            WindowType::Preferences => window::Settings {
                 size: Self::MEDIUM_WINDOW_SIZE,
                 resizable: false,
                 position: window::Position::Centered,

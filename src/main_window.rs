@@ -8,7 +8,7 @@ use crate::keyboard_manager::{KeyboardAction, TextEdit, UnboundKey};
 use crate::logbox::LOGBOX;
 use crate::menu_bar::{MenuBar, menu_bar};
 use crate::menu_bar_builder::{
-    EditMessage, FileMessage, MENU_BAR_HEIGHT, MenuMessage, Menus, build_menu_bar,
+    EditMessage, FileMessage, MENU_BAR_HEIGHT, MenuMessage, Menus, ToolsMessage, build_menu_bar,
 };
 use crate::misc_tools::point_on_edge_of_text;
 use crate::search_table::{SearchTable, SearchTableMessage};
@@ -95,6 +95,10 @@ pub enum MainMessage {
     KeyEvent(KeyboardAction),
     WindowEvent(window::Event),
 
+    OpenFileImportWindow,
+    OpenFileExportWindow,
+    OpenPreferencesWindow,
+
     BackOneDay,
     ForwardOneDay,
     JumpToToday,
@@ -113,8 +117,6 @@ pub enum MainMessage {
     RightClickEditArea,
     ExitContextMenu,
     MenuBar(MenuMessage),
-    OpenFileImportWindow,
-    OpenFileExportWindow,
     EditorScrolled(Viewport),
     AddTask,
     TaskAction(TemplateTaskMessage),
@@ -922,6 +924,11 @@ impl Windowable<MainMessage> for Main {
                             );
                         }
                     },
+                    MenuMessage::Tools(tools_message) => match tools_message {
+                        ToolsMessage::Preferences => {
+                            return self.update(state, MainMessage::OpenPreferencesWindow);
+                        }
+                    },
                 }
 
                 Task::none()
@@ -933,6 +940,11 @@ impl Windowable<MainMessage> for Main {
             }
             MainMessage::OpenFileExportWindow => {
                 state.upstream_action = Some(UpstreamAction::CreateWindow(WindowType::FileExport));
+
+                Task::none()
+            }
+            MainMessage::OpenPreferencesWindow => {
+                state.upstream_action = Some(UpstreamAction::CreateWindow(WindowType::Preferences));
 
                 Task::none()
             }
