@@ -411,10 +411,22 @@ impl WordCount for GlobalStore {
 
 impl TimedWordCount for GlobalStore {
     fn average_words(&self) -> f64 {
-        (self.total_word_count() as f64) / (self.edited_day_count() as f64)
+        let average_words = (self.total_word_count() as f64) / (self.edited_day_count() as f64);
+
+        if average_words.is_finite() {
+            average_words
+        } else {
+            0.0
+        }
     }
 
     fn average_chars(&self) -> f64 {
-        (self.total_char_count() as f64) / (self.edited_day_count() as f64)
+        let average_chars = (self.total_char_count() as f64) / (self.edited_day_count() as f64);
+
+        if average_chars.is_finite() {
+            average_chars
+        } else {
+            0.0
+        }
     }
 }
