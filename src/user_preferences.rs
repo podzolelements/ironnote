@@ -1,8 +1,25 @@
-use std::sync::{LazyLock, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::{
+    sync::{LazyLock, RwLock, RwLockReadGuard, RwLockWriteGuard},
+    time::Duration,
+};
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 /// general settings
-pub struct GeneralPreferences {}
+pub struct GeneralPreferences {
+    /// if true, the editor will perform the Autosave action at the autosave_interval
+    pub(crate) autosave_enabled: bool,
+    /// how often the autosave would occour if autosaving is enabled
+    pub(crate) autosave_interval: Duration,
+}
+
+impl Default for GeneralPreferences {
+    fn default() -> Self {
+        Self {
+            autosave_enabled: false,
+            autosave_interval: Duration::from_mins(5),
+        }
+    }
+}
 
 #[derive(Debug, Default, Clone)]
 /// settings specific to the search functionality
@@ -21,7 +38,7 @@ impl SearchPreferences {
 #[derive(Debug, Default, Clone)]
 /// stores all of the settings of the application
 pub struct UserPreferences {
-    pub(crate) _general: GeneralPreferences,
+    pub(crate) general: GeneralPreferences,
     pub(crate) search: SearchPreferences,
 }
 

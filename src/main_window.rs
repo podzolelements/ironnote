@@ -4,7 +4,7 @@ use crate::context_menu::context_menu;
 use crate::dictionary::{self, DICTIONARY};
 use crate::highlighter::{self, HighlightSettings, SpellHighlighter};
 use crate::keyboard_manager::{KeyboardAction, TextEdit, UnboundKey};
-use crate::logbox::LOGBOX;
+use crate::logbox::{logbox, logbox_mut};
 use crate::menu_bar::{MenuBar, menu_bar};
 use crate::menu_bar_builder::{
     EditMessage, FileMessage, MENU_BAR_HEIGHT, MenuMessage, Menus, ToolsMessage, build_menu_bar,
@@ -119,6 +119,7 @@ pub enum MainMessage {
     EditorScrolled(Viewport),
     AddTask,
     TaskAction(TemplateTaskMessage),
+    Autosave,
 }
 
 const LOG_EDIT_AREA_ID: &str = "log_edit_area";
@@ -467,15 +468,10 @@ impl Windowable<MainMessage> for Main {
 
         let top_ui = row![left_ui, right_ui];
 
-        let logbox = widget::text(
-            LOGBOX
-                .read()
-                .expect("couldn't get logbox read")
-                .get_log_at_time(),
-        )
-        .size(14)
-        .font(Font::DEFAULT)
-        .height(Length::Shrink);
+        let logbox = widget::text(logbox().get_log_at_time())
+            .size(14)
+            .font(Font::DEFAULT)
+            .height(Length::Shrink);
 
         let cursor_position_box = widget::Text::new(format!(
             "Ln {}, Col {}",
@@ -730,6 +726,8 @@ impl Windowable<MainMessage> for Main {
                     }
                     KeyboardAction::Save => {
                         self.save_all(state);
+
+                        logbox_mut().log("Saved");
                     }
                     KeyboardAction::Debug => {
                         println!("debug!");
@@ -959,6 +957,13 @@ impl Windowable<MainMessage> for Main {
             }
             MainMessage::TaskAction(template_message) => {
                 state.all_tasks.template_tasks.update(template_message);
+
+                Task::none()
+            }
+            MainMessage::Autosave => {
+                self.save_all(state);
+
+                logbox_mut().log("Autosaved");
 
                 Task::none()
             }
