@@ -1,7 +1,6 @@
 use crate::{
     day_store::DayStore,
     filetools::setup_savedata_dirs,
-    logbox::LOGBOX,
     word_count::{TimedWordCount, WordCount, WordCounts},
 };
 use chrono::{DateTime, Datelike, Days, Local};
@@ -184,11 +183,6 @@ impl MonthStore {
                 fs::remove_file(save_path).expect("couldn't remove existing json");
             }
         }
-
-        LOGBOX
-            .write()
-            .expect("couldn't get logbox write")
-            .log("Saved");
     }
 }
 

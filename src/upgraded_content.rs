@@ -26,9 +26,20 @@ impl CtrlEdit {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+/// a Restriction is a subset of the ContentAction::Standard variant, which imposes additional requirements on the
+/// types of Actions that can be performed on the UpgradedContent. Note a Restriction only ever blocks Actions from
+/// being perform()ed on the content, it will NEVER retroactively apply the Restriction rules to the content
+pub enum Restriction {
+    /// any Edits that would result in non-number characters (anything other than ASCII '0'-'9') being added to the
+    /// content are blocked
+    NumbersOnly,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 /// types of extended actions the UpgradedContent can perform
 pub enum ContentAction {
     Standard(text_editor::Action),
+    Restricted((Restriction, text_editor::Action)),
     Ctrl(CtrlEdit),
     Undo,
     Redo,
@@ -216,6 +227,38 @@ impl UpgradedContent {
                     }
                     _ => ActionHistoryEvent::Ignore,
                 }
+            }
+            ContentAction::Restricted((restriction, action)) => {
+                match restriction {
+                    Restriction::NumbersOnly => {
+                        let edit_contains_only_numbers = if let Action::Edit(edit) = &action {
+                            match edit {
+                                Edit::Insert(inserted_char) => inserted_char.is_ascii_digit(),
+                                Edit::Paste(pasted_string) => pasted_string
+                                    .to_string()
+                                    .chars()
+                                    .all(|character| character.is_ascii_digit()),
+                                Edit::Enter => false,
+                                Edit::Indent => false,
+                                Edit::Unindent => false,
+                                Edit::Backspace => true,
+                                Edit::Delete => true,
+                            }
+                        } else {
+                            // no non-Edit actions could add a non-number character, so all non-Edits will be valid
+                            true
+                        };
+
+                        if edit_contains_only_numbers {
+                            self.perform(ContentAction::Standard(action));
+                        }
+                    }
+                }
+
+                // the self.perform() will take care of any HistoryEvents it generates on its own. if the ContentAction
+                // fails to meet the restriction requirements, the content is not altered in any way so no
+                // HistoryEvents could be generated, making it safe to ignore Restricted ContentActions
+                ActionHistoryEvent::Ignore
             }
             ContentAction::Ctrl(ctrl_type) => {
                 let stopping_chars = ctrl_type.stopping_char_set();

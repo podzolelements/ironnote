@@ -8,6 +8,7 @@ use crate::{
     task_creator_window::{TaskCreator, TaskCreatorMessage},
     tasks::Tasks,
     upgraded_content::UpgradedContent,
+    user_preferences::preferences,
     window_manager::{WindowType, Windowable},
     word_count::WordCount,
 };
@@ -107,6 +108,7 @@ pub enum Message {
 pub enum UpstreamAction {
     CreateWindow(WindowType),
     CloseWindow(WindowType),
+    Autosave,
 }
 
 impl App {
@@ -284,33 +286,42 @@ impl App {
             }
         }
 
-        match &self.shared_state.upstream_action {
-            None => {}
-            Some(UpstreamAction::CreateWindow(window_type)) => {
-                let new_window_type = window_type.clone();
+        if let Some(upstream_action) = &self.shared_state.upstream_action {
+            match upstream_action {
+                UpstreamAction::CreateWindow(window_type) => {
+                    let new_window_type = window_type.clone();
 
-                let mut window_already_exists = false;
+                    let mut window_already_exists = false;
 
-                for (window_id, window_type) in &self.windows {
-                    if new_window_type == *window_type {
-                        tasks.push(window::gain_focus(*window_id));
-                        window_already_exists = true;
-                        break;
+                    for (window_id, window_type) in &self.windows {
+                        if new_window_type == *window_type {
+                            tasks.push(window::gain_focus(*window_id));
+                            window_already_exists = true;
+                            break;
+                        }
+                    }
+
+                    if !window_already_exists {
+                        let (_new_id, task) = iced::window::open(new_window_type.settings());
+                        tasks.push(
+                            task.map(move |id| Message::WindowOpened(id, new_window_type.clone())),
+                        );
                     }
                 }
-
-                if !window_already_exists {
-                    let (_new_id, task) = iced::window::open(new_window_type.settings());
-                    tasks.push(
-                        task.map(move |id| Message::WindowOpened(id, new_window_type.clone())),
-                    );
-                }
-            }
-            Some(UpstreamAction::CloseWindow(closing_window_type)) => {
-                for (window_id, window_type) in &self.windows {
-                    if *window_type == *closing_window_type {
-                        tasks.push(window::close(*window_id));
+                UpstreamAction::CloseWindow(closing_window_type) => {
+                    for (window_id, window_type) in &self.windows {
+                        if *window_type == *closing_window_type {
+                            tasks.push(window::close(*window_id));
+                        }
                     }
+                }
+                UpstreamAction::Autosave => {
+                    let autosave_task = self
+                        .main_window
+                        .update(&mut self.shared_state, MainMessage::Autosave)
+                        .map(Message::MainWindow);
+
+                    tasks.push(autosave_task);
                 }
             }
         }
@@ -329,13 +340,20 @@ impl App {
             _ => None,
         });
 
-        let subscriptions = vec![
+        let mut subscriptions = vec![
             close_events,
             listener,
             // ensure view() gets called at a minimum of 10 FPS
             iced::time::every(std::time::Duration::from_millis(100))
                 .map(|_instant| Message::RenderAll),
         ];
+
+        if preferences().general.autosave_enabled {
+            subscriptions.push(
+                iced::time::every(preferences().general.autosave_interval)
+                    .map(|_instant| Message::MainWindow(MainMessage::Autosave)),
+            );
+        }
 
         Subscription::batch(subscriptions)
     }

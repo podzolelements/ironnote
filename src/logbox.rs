@@ -1,8 +1,5 @@
 use chrono::{DateTime, Local};
-use std::sync::{LazyLock, RwLock};
-
-/// the global logbox that stores the last log intended to be read by the user during runtime
-pub static LOGBOX: LazyLock<RwLock<Logbox>> = LazyLock::new(|| RwLock::new(Logbox::default()));
+use std::sync::{LazyLock, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 pub struct Logbox {
     message: Option<String>,
@@ -33,4 +30,17 @@ impl Logbox {
             "".to_string()
         }
     }
+}
+
+/// the global logbox that stores the last log intended to be read by the user during runtime
+static LOGBOX: LazyLock<RwLock<Logbox>> = LazyLock::new(|| RwLock::new(Logbox::default()));
+
+/// gives read-only access to the LOGBOX
+pub fn logbox() -> RwLockReadGuard<'static, Logbox> {
+    LOGBOX.read().expect("unable to get LOGBOX read")
+}
+
+/// gives mutable access to the LOGBOX
+pub fn logbox_mut() -> RwLockWriteGuard<'static, Logbox> {
+    LOGBOX.write().expect("unable to get LOGBOX write")
 }
