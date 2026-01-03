@@ -1,14 +1,14 @@
 use crate::{
-    SharedAppState,
+    SharedAppState, UpstreamAction,
     keyboard_manager::KeyboardAction,
     tabview::{TabviewItem, tabview_content_horizontal},
     upgraded_content::{ContentAction, Restriction, UpgradedContent},
-    user_preferences::{UserPreferences, preferences},
-    window_manager::Windowable,
+    user_preferences::{UserPreferences, overwrite_preferences, preferences},
+    window_manager::{WindowType, Windowable},
 };
 use iced::{
     Length, Task,
-    widget::{self, Space, Text, checkbox, column, row, text_editor::Action},
+    widget::{self, Space, Text, button, checkbox, column, row, text_editor::Action},
 };
 use std::time::Duration;
 use strum::Display;
@@ -41,6 +41,10 @@ pub enum PreferencesMessage {
     KeyEvent(KeyboardAction),
 
     TabSwitched(PreferencesTab),
+    Cancel,
+    Save,
+    SaveAndExit,
+
     General(GeneralMessage),
 }
 
@@ -53,6 +57,7 @@ pub enum ActiveContent {
 #[derive(Debug)]
 pub struct Preferences {
     working_preferences: UserPreferences,
+    edited_preferences: bool,
 
     current_preference_tab: PreferencesTab,
     active_content: Option<ActiveContent>,
@@ -67,8 +72,11 @@ impl Default for Preferences {
     fn default() -> Self {
         Self {
             working_preferences: preferences().clone(),
+            edited_preferences: false,
+
             current_preference_tab: PreferencesTab::default(),
             active_content: None,
+
             autosave_minute_content: UpgradedContent::with_text("5"),
             autosave_minutes: 5,
             autosave_second_content: UpgradedContent::with_text("0"),
@@ -148,12 +156,29 @@ impl Windowable<PreferencesMessage> for Preferences {
 
         let tab_elements = vec![general_tab, keyboard_tab];
 
-        tabview_content_horizontal(
+        let preference_editor = tabview_content_horizontal(
             tab_elements,
             self.current_preference_tab.to_index(),
             Length::Fill,
             Length::Fill,
-        )
+        );
+
+        let cancel_button = button(Text::new("Cancel")).on_press(PreferencesMessage::Cancel);
+        let save_button = button(Text::new("Save"))
+            .on_press_maybe(self.edited_preferences.then_some(PreferencesMessage::Save));
+        let save_exit_button = button(Text::new("Save and Exit")).on_press_maybe(
+            self.edited_preferences
+                .then_some(PreferencesMessage::SaveAndExit),
+        );
+
+        let save_options = row![
+            Space::new().width(Length::Fill),
+            cancel_button,
+            save_button,
+            save_exit_button
+        ];
+
+        column![preference_editor, save_options].into()
     }
 
     fn update(
@@ -166,7 +191,11 @@ impl Windowable<PreferencesMessage> for Preferences {
                 KeyboardAction::Content(text_edit) => {
                     self.content_perform(state, text_edit.to_content_action());
                 }
-                KeyboardAction::Save => todo!(),
+                KeyboardAction::Save => {
+                    if self.edited_preferences {
+                        return self.update(state, PreferencesMessage::Save);
+                    }
+                }
                 KeyboardAction::Debug => {}
                 KeyboardAction::Unbound(_unbound_key) => {}
             },
@@ -177,6 +206,8 @@ impl Windowable<PreferencesMessage> for Preferences {
             }
             PreferencesMessage::General(general_message) => match general_message {
                 GeneralMessage::ToggleAutosave(is_checked) => {
+                    self.edited_preferences = true;
+
                     self.working_preferences.general.autosave_enabled = is_checked;
                 }
                 GeneralMessage::EditAutosaveMinute(action) => {
@@ -200,6 +231,8 @@ impl Windowable<PreferencesMessage> for Preferences {
                         self.autosave_minute_content =
                             UpgradedContent::with_text(&self.autosave_minutes.to_string())
                     }
+
+                    self.edited_preferences = true;
 
                     self.working_preferences.general.autosave_interval =
                         Duration::from_mins(self.autosave_minutes)
@@ -227,11 +260,24 @@ impl Windowable<PreferencesMessage> for Preferences {
                             UpgradedContent::with_text(&self.autosave_seconds.to_string())
                     }
 
+                    self.edited_preferences = true;
+
                     self.working_preferences.general.autosave_interval =
                         Duration::from_mins(self.autosave_minutes)
                             + Duration::from_secs(self.autosave_seconds);
                 }
             },
+            PreferencesMessage::Cancel => {
+                state.upstream_action = Some(UpstreamAction::CloseWindow(WindowType::Preferences));
+            }
+            PreferencesMessage::Save => {
+                self.save_preferences();
+            }
+            PreferencesMessage::SaveAndExit => {
+                self.save_preferences();
+
+                state.upstream_action = Some(UpstreamAction::CloseWindow(WindowType::Preferences));
+            }
         }
 
         Task::none()
@@ -244,5 +290,16 @@ impl Windowable<PreferencesMessage> for Preferences {
                 ActiveContent::AutosaveSecond => self.autosave_second_content.perform(action),
             }
         }
+    }
+}
+
+impl Preferences {
+    /// copies the current working preferences as stored in the preference editor into the actual preferences. since
+    /// the working preferences are now up to date with the actual ones, the current state is now "no preferences have
+    /// been changed"
+    fn save_preferences(&mut self) {
+        overwrite_preferences(self.working_preferences.clone());
+
+        self.edited_preferences = false;
     }
 }
