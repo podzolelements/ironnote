@@ -60,3 +60,8 @@ pub fn preferences_mut() -> RwLockWriteGuard<'static, UserPreferences> {
         .write()
         .expect("unable to get PREFERENCES write")
 }
+
+/// sets PREFERENCES to the provided new preferences
+pub fn overwrite_preferences(new_preferences: UserPreferences) {
+    *preferences_mut() = new_preferences;
+}
