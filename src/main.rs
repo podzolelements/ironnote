@@ -50,7 +50,7 @@ mod word_count;
 #[derive(Debug)]
 /// stores the application state that needs to be shared between different windows
 struct SharedAppState {
-    upstream_action: Option<UpstreamAction>,
+    upstream_actions: Vec<UpstreamAction>,
     content: UpgradedContent,
     global_store: GlobalStore,
     all_tasks: Tasks,
@@ -67,7 +67,7 @@ impl Default for SharedAppState {
         let all_tasks = Tasks::load_all();
 
         Self {
-            upstream_action: None,
+            upstream_actions: Vec::default(),
             content,
             global_store,
             all_tasks,
@@ -102,7 +102,7 @@ pub enum Message {
     PreferencesWindow(PreferencesMessage),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// allows for windows to pass up requests to be done by the main application, since they don't have access to the main
 /// application Messages
 pub enum UpstreamAction {
@@ -286,7 +286,7 @@ impl App {
             }
         }
 
-        if let Some(upstream_action) = &self.shared_state.upstream_action {
+        for upstream_action in &self.shared_state.upstream_actions.clone() {
             match upstream_action {
                 UpstreamAction::CreateWindow(window_type) => {
                     let new_window_type = window_type.clone();
@@ -326,7 +326,7 @@ impl App {
             }
         }
 
-        self.shared_state.upstream_action = None;
+        self.shared_state.upstream_actions.clear();
 
         Task::batch(tasks)
     }

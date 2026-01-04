@@ -268,7 +268,9 @@ impl Windowable<PreferencesMessage> for Preferences {
                 }
             },
             PreferencesMessage::Cancel => {
-                state.upstream_action = Some(UpstreamAction::CloseWindow(WindowType::Preferences));
+                state
+                    .upstream_actions
+                    .push(UpstreamAction::CloseWindow(WindowType::Preferences));
             }
             PreferencesMessage::Save => {
                 self.save_preferences();
@@ -276,7 +278,9 @@ impl Windowable<PreferencesMessage> for Preferences {
             PreferencesMessage::SaveAndExit => {
                 self.save_preferences();
 
-                state.upstream_action = Some(UpstreamAction::CloseWindow(WindowType::Preferences));
+                state
+                    .upstream_actions
+                    .push(UpstreamAction::CloseWindow(WindowType::Preferences));
             }
         }
 
