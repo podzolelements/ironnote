@@ -128,7 +128,9 @@ impl Windowable<FileImportMessage> for FileImport {
                 self.import_strategy = Some(strategy);
             }
             FileImportMessage::Cancel => {
-                state.upstream_action = Some(UpstreamAction::CloseWindow(WindowType::FileImport));
+                state
+                    .upstream_actions
+                    .push(UpstreamAction::CloseWindow(WindowType::FileImport));
             }
             FileImportMessage::Import(strategy) => {
                 if let Ok(imported_string) = fs::read_to_string(self.file_path.clone()) {
@@ -139,13 +141,13 @@ impl Windowable<FileImportMessage> for FileImport {
                     };
 
                     state.content = UpgradedContent::with_text(&new_text);
-
-                    state.upstream_action =
-                        Some(UpstreamAction::CloseWindow(WindowType::FileImport));
                 } else {
-                    state.upstream_action =
-                        Some(UpstreamAction::CloseWindow(WindowType::FileImport))
+                    //TODO: unable to import
                 }
+
+                state
+                    .upstream_actions
+                    .push(UpstreamAction::CloseWindow(WindowType::FileImport));
             }
         }
 

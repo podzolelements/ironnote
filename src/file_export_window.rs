@@ -126,7 +126,9 @@ impl Windowable<FileExportMessage> for FileExport {
                 self.export_strategy = strategy;
             }
             FileExportMessage::Cancel => {
-                state.upstream_action = Some(UpstreamAction::CloseWindow(WindowType::FileExport));
+                state
+                    .upstream_actions
+                    .push(UpstreamAction::CloseWindow(WindowType::FileExport));
             }
             FileExportMessage::Export => match self.export_strategy {
                 FileExportStrategy::SingleDay => {

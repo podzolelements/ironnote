@@ -430,7 +430,9 @@ impl Windowable<TaskCreatorMessage> for TaskCreator {
             TaskCreatorMessage::Cancel => {
                 self.active_content = None;
 
-                state.upstream_action = Some(UpstreamAction::CloseWindow(WindowType::TaskCreator));
+                state
+                    .upstream_actions
+                    .push(UpstreamAction::CloseWindow(WindowType::TaskCreator));
             }
             TaskCreatorMessage::CreateTask => {
                 self.active_content = None;
@@ -470,9 +472,11 @@ impl Windowable<TaskCreatorMessage> for TaskCreator {
 
                 state.all_tasks.template_tasks.add_template(template);
                 state.all_tasks.save_all();
+                state
+                    .upstream_actions
+                    .push(UpstreamAction::CloseWindow(WindowType::TaskCreator));
 
                 *self = Self::default();
-                state.upstream_action = Some(UpstreamAction::CloseWindow(WindowType::TaskCreator));
             }
         }
 

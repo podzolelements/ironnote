@@ -931,17 +931,23 @@ impl Windowable<MainMessage> for Main {
                 Task::none()
             }
             MainMessage::OpenFileImportWindow => {
-                state.upstream_action = Some(UpstreamAction::CreateWindow(WindowType::FileImport));
+                state
+                    .upstream_actions
+                    .push(UpstreamAction::CreateWindow(WindowType::FileImport));
 
                 Task::none()
             }
             MainMessage::OpenFileExportWindow => {
-                state.upstream_action = Some(UpstreamAction::CreateWindow(WindowType::FileExport));
+                state
+                    .upstream_actions
+                    .push(UpstreamAction::CreateWindow(WindowType::FileExport));
 
                 Task::none()
             }
             MainMessage::OpenPreferencesWindow => {
-                state.upstream_action = Some(UpstreamAction::CreateWindow(WindowType::Preferences));
+                state
+                    .upstream_actions
+                    .push(UpstreamAction::CreateWindow(WindowType::Preferences));
 
                 Task::none()
             }
@@ -951,7 +957,9 @@ impl Windowable<MainMessage> for Main {
                 Task::none()
             }
             MainMessage::AddTask => {
-                state.upstream_action = Some(UpstreamAction::CreateWindow(WindowType::TaskCreator));
+                state
+                    .upstream_actions
+                    .push(UpstreamAction::CreateWindow(WindowType::TaskCreator));
 
                 Task::none()
             }
