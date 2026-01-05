@@ -1,6 +1,6 @@
 use crate::{
     day_store::DayStore,
-    filetools::setup_savedata_dirs,
+    user_preferences::preferences,
     word_count::{TimedWordCount, WordCount, WordCounts},
 };
 use chrono::{DateTime, Datelike, Days, Local};
@@ -81,17 +81,21 @@ impl MonthStore {
         day_stores
     }
 
+    /// attempts to load the month store of the given datetime from disk. if a valid month store is found matching the
+    /// given date, it is loaded, otherwise an empty month store is generated
     pub fn load_month(&mut self, date: DateTime<Local>) {
         let date_rfc3339 = date.to_rfc3339();
         self.month = (date_rfc3339[0..7]).to_string();
         self.days_in_month = date.num_days_in_month();
 
         let filename = self.month.clone() + ".json";
-        let save_path = setup_savedata_dirs(&filename);
+
+        let mut save_file_path = preferences().paths.savedata_dir();
+        save_file_path.push(filename);
 
         self.days.clear();
 
-        match fs::exists(&save_path) {
+        match fs::exists(&save_file_path) {
             Err(_) => {
                 panic!("couldn't determine if file exists");
             }
@@ -104,7 +108,8 @@ impl MonthStore {
             }
         }
 
-        let month_json = fs::read_to_string(&save_path).expect("couldn't read json into string");
+        let month_json =
+            fs::read_to_string(&save_file_path).expect("couldn't read json into string");
 
         let json_data: serde_json::Map<String, Value> =
             if let Ok(data) = serde_json::from_str(&month_json) {
@@ -137,11 +142,14 @@ impl MonthStore {
         }
     }
 
+    /// writes the month store to the disk with the filename "YYYY-MM.json"
     pub fn save_month(&self) {
         let filename = self.month.clone() + ".json";
-        let save_path = setup_savedata_dirs(&filename);
 
-        let month_json = if let Ok(existing_savedata) = fs::read_to_string(&save_path) {
+        let mut save_file_path = preferences().paths.savedata_dir();
+        save_file_path.push(filename);
+
+        let month_json = if let Ok(existing_savedata) = fs::read_to_string(&save_file_path) {
             existing_savedata
         } else {
             "{}".to_string()
@@ -175,12 +183,12 @@ impl MonthStore {
             serde_json::to_string_pretty(&json_data).expect("couldn't serialize on save");
 
         if new_json != "{}" {
-            fs::write(&save_path, new_json).expect("couldn't save new json");
+            fs::write(&save_file_path, new_json).expect("couldn't save new json");
         } else {
             // if there previously were entries that got deleted on the current save, resulting in the month store
             // becoming empty, delete the file
-            if save_path.exists() {
-                fs::remove_file(save_path).expect("couldn't remove existing json");
+            if save_file_path.exists() {
+                fs::remove_file(save_file_path).expect("couldn't remove existing json");
             }
         }
     }
