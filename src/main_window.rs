@@ -12,7 +12,9 @@ use crate::menu_bar_builder::{
 use crate::misc_tools::point_on_edge_of_text;
 use crate::search_table::{SearchTable, SearchTableMessage};
 use crate::tabview::{TabviewItem, tabview_content_vertical};
-use crate::template_tasks::TemplateTaskMessage;
+use crate::template_tasks::{
+    MultiBinaryMessage, StandardMessage, TaskType, TemplateMessage, TemplateTaskMessage,
+};
 use crate::upgraded_content::{ContentAction, UpgradedContent};
 use crate::user_preferences::{preferences, preferences_mut};
 use crate::window_manager::{WindowType, Windowable};
@@ -63,6 +65,8 @@ impl Tab {
 pub enum ActiveContent {
     Editor,
     Search,
+    /// the TemplateTaskMessage stores which task has the editor, so we don't need to store anything else
+    Task(TemplateTaskMessage),
 }
 
 #[derive(Debug)]
@@ -497,6 +501,8 @@ impl Windowable<MainMessage> for Main {
                 panic!("uninit message");
             }
             MainMessage::BackOneDay => {
+                self.active_content = None;
+
                 let previous_day = state
                     .global_store
                     .date_time()
@@ -517,6 +523,8 @@ impl Windowable<MainMessage> for Main {
                 snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::START)
             }
             MainMessage::ForwardOneDay => {
+                self.active_content = None;
+
                 let next_day = state
                     .global_store
                     .date_time()
@@ -537,6 +545,8 @@ impl Windowable<MainMessage> for Main {
                 snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::START)
             }
             MainMessage::JumpToToday => {
+                self.active_content = None;
+
                 let new_datetime = Local::now();
                 self.reload_date(state, new_datetime);
 
@@ -569,10 +579,9 @@ impl Windowable<MainMessage> for Main {
             }
             MainMessage::EditSearch(search_action) => {
                 if self.active_content != Some(ActiveContent::Search) {
-                    self.active_content = Some(ActiveContent::Search);
-
                     self.write_active_entry_to_store(state);
                 }
+                self.active_content = Some(ActiveContent::Search);
 
                 if let text_editor::Action::Edit(edit) = &search_action {
                     // prevent newlines from being entered into the searchbar since it causes issues with the
@@ -604,11 +613,15 @@ impl Windowable<MainMessage> for Main {
                 Task::none()
             }
             MainMessage::TempTopBarMessage => {
+                self.active_content = None;
+
                 println!("topbar");
 
                 Task::none()
             }
             MainMessage::Calender(calender_message) => {
+                self.active_content = None;
+
                 match calender_message {
                     CalenderMessage::DayButton(new_day, month) => {
                         let new_datetime = match month {
@@ -764,6 +777,8 @@ impl Windowable<MainMessage> for Main {
                 Task::none()
             }
             MainMessage::TableSearch(table_message) => {
+                self.active_content = None;
+
                 let SearchTableMessage::EntryClicked(table_time) = table_message;
 
                 self.reload_date(state, table_time);
@@ -771,6 +786,8 @@ impl Windowable<MainMessage> for Main {
                 snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::START)
             }
             MainMessage::TabSwitched(tab) => {
+                self.active_content = None;
+
                 self.write_active_entry_to_store(state);
 
                 self.current_tab = tab;
@@ -804,6 +821,8 @@ impl Windowable<MainMessage> for Main {
             }
             MainMessage::ClearSearch => {
                 // TODO: auto focus
+                // self.active_content = Some(ActiveContent::Search);
+
                 self.search_content = UpgradedContent::default();
 
                 self.update(
@@ -812,6 +831,9 @@ impl Windowable<MainMessage> for Main {
                 )
             }
             MainMessage::ToggleSearchCase => {
+                // TODO: keep focus?
+                self.active_content = None;
+
                 preferences_mut().search.toggle_ignore_search_case();
 
                 self.update(
@@ -931,6 +953,8 @@ impl Windowable<MainMessage> for Main {
                 Task::none()
             }
             MainMessage::OpenFileImportWindow => {
+                self.active_content = None;
+
                 state
                     .upstream_actions
                     .push(UpstreamAction::CreateWindow(WindowType::FileImport));
@@ -938,6 +962,8 @@ impl Windowable<MainMessage> for Main {
                 Task::none()
             }
             MainMessage::OpenFileExportWindow => {
+                self.active_content = None;
+
                 state
                     .upstream_actions
                     .push(UpstreamAction::CreateWindow(WindowType::FileExport));
@@ -945,6 +971,8 @@ impl Windowable<MainMessage> for Main {
                 Task::none()
             }
             MainMessage::OpenPreferencesWindow => {
+                self.active_content = None;
+
                 state
                     .upstream_actions
                     .push(UpstreamAction::CreateWindow(WindowType::Preferences));
@@ -957,6 +985,8 @@ impl Windowable<MainMessage> for Main {
                 Task::none()
             }
             MainMessage::AddTask => {
+                self.active_content = None;
+
                 state
                     .upstream_actions
                     .push(UpstreamAction::CreateWindow(WindowType::TaskCreator));
@@ -964,6 +994,10 @@ impl Windowable<MainMessage> for Main {
                 Task::none()
             }
             MainMessage::TaskAction(template_message) => {
+                self.active_content = template_message
+                    .message_edits_content()
+                    .then_some(ActiveContent::Task(template_message.clone()));
+
                 state.all_tasks.template_tasks.update(template_message);
 
                 Task::none()
@@ -983,6 +1017,26 @@ impl Windowable<MainMessage> for Main {
             match active_content {
                 ActiveContent::Editor => state.content.perform(action),
                 ActiveContent::Search => self.search_content.perform(action),
+                ActiveContent::Task(template_message) => {
+                    let task_type = template_message.task_type();
+
+                    let new_message = match task_type {
+                        TaskType::Standard => {
+                            TemplateMessage::Standard(StandardMessage::TextEdit(action))
+                        }
+                        TaskType::MultiBinary => {
+                            TemplateMessage::MultiBinary(MultiBinaryMessage::TextEdit(action))
+                        }
+                    };
+
+                    let mut modified_template_message = template_message.clone();
+                    modified_template_message.change_message(new_message);
+
+                    state
+                        .all_tasks
+                        .template_tasks
+                        .update(modified_template_message);
+                }
             }
         }
     }
