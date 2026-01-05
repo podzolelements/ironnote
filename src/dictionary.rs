@@ -1,4 +1,4 @@
-use crate::filetools::{self, system_dictionary_path};
+use crate::user_preferences::preferences;
 use regex::Regex;
 use spellbook::Dictionary;
 use std::{
@@ -36,15 +36,14 @@ pub fn extract_words(text: &str) -> Vec<(&str, usize, usize)> {
 
 /// generates a dictionary composed from the system dictionary combined with the personal dictionary
 pub fn composite_dictionary() -> Dictionary {
-    let (sys_aff_path, sys_dic_path) = system_dictionary_path();
+    let sys_aff_path = preferences().paths.system_dictionary_aff.clone();
+    let sys_dic_path = preferences().paths.system_dictionary_dic.clone();
 
     let sys_aff = fs::read_to_string(sys_aff_path).expect("couldn't read aff");
     let sys_dic = fs::read_to_string(sys_dic_path).expect("couldn't read dic");
 
-    let personal_dic_path = filetools::personal_dictionary_path("personal.dic");
-    if !personal_dic_path.exists() {
-        fs::write(&personal_dic_path, "").expect("couldn't create new personal dic");
-    }
+    let personal_dic_path = preferences().paths.personal_dictionary_dic.clone();
+
     let personal_dic = fs::read_to_string(personal_dic_path).expect("couldn't read personal dic");
 
     let composite_dic = sys_dic + "\n" + &personal_dic;
@@ -55,7 +54,7 @@ pub fn composite_dictionary() -> Dictionary {
 /// adds a word to the personal dictionary. the global dictionary is updated through .add(), and the personal
 /// dictionary file is updated
 pub fn add_word_to_personal_dictionary(new_word: &str) {
-    let personal_dic_path = filetools::personal_dictionary_path("personal.dic");
+    let personal_dic_path = preferences().paths.personal_dictionary_dic.clone();
     let personal_dic =
         fs::read_to_string(&personal_dic_path).expect("couldn't read personal dic to string");
     let mut dic_entries: Vec<&str> = personal_dic.lines().collect();

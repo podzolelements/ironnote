@@ -1,7 +1,7 @@
 use crate::{
-    filetools::template_tasks_path,
     month_day::MonthDay,
     upgraded_content::{ContentAction, UpgradedContent},
+    user_preferences::preferences,
 };
 use chrono::{Datelike, NaiveDate, Weekday};
 use iced::{
@@ -787,7 +787,7 @@ impl TemplateTasks {
             .map(|template| template.into())
             .collect::<Vec<TemplateTaskDisk>>();
 
-        let mut template_path = template_tasks_path();
+        let mut template_path = preferences().paths.template_tasks_dir();
         template_path.push("templates.json");
 
         let template_json = serde_json::to_string_pretty(&disk_templates)
@@ -798,7 +798,7 @@ impl TemplateTasks {
 
     /// loads all templates from disk
     pub fn load_templates(&mut self) {
-        let mut template_path = template_tasks_path();
+        let mut template_path = preferences().paths.template_tasks_dir();
         template_path.push("templates.json");
 
         if let Ok(template_string) = fs::read_to_string(template_path)

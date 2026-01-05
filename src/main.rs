@@ -24,7 +24,6 @@ mod day_store;
 mod dictionary;
 mod file_export_window;
 mod file_import_window;
-mod filetools;
 mod global_store;
 mod highlighter;
 mod history_stack;
@@ -109,6 +108,7 @@ pub enum UpstreamAction {
     CreateWindow(WindowType),
     CloseWindow(WindowType),
     Autosave,
+    RestartApplication,
 }
 
 impl App {
@@ -125,6 +125,23 @@ impl App {
         let tasks = vec![generate_window, jump_today];
 
         (app, Task::batch(tasks))
+    }
+
+    /// performs a "software restart" of the application that closes all open windows and effectively relaunches the
+    /// program from its bootup configuration, without actually quitting out of the application
+    fn restart_without_saving(&mut self) -> Task<Message> {
+        let mut close_tasks = vec![];
+        for window_id in self.windows.keys() {
+            close_tasks.push(iced::window::close(*window_id));
+        }
+
+        let batch_close_windows = Task::batch(close_tasks);
+
+        let (new_app, init_message) = App::new();
+
+        *self = new_app;
+
+        batch_close_windows.chain(init_message)
     }
 
     fn title(&self, id: window::Id) -> String {
@@ -322,6 +339,11 @@ impl App {
                         .map(Message::MainWindow);
 
                     tasks.push(autosave_task);
+                }
+                UpstreamAction::RestartApplication => {
+                    let restart_task = self.restart_without_saving();
+
+                    tasks.push(restart_task);
                 }
             }
         }

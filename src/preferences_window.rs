@@ -10,13 +10,14 @@ use iced::{
     Length, Task,
     widget::{self, Space, Text, button, checkbox, column, row, text_editor::Action},
 };
-use std::time::Duration;
+use std::{path::PathBuf, time::Duration};
 use strum::Display;
 
 #[derive(Debug, Default, Clone, PartialEq, Display)]
 pub enum PreferencesTab {
     #[default]
     General,
+    Paths,
     Keyboard,
 }
 
@@ -24,7 +25,8 @@ impl PreferencesTab {
     pub fn to_index(&self) -> usize {
         match self {
             PreferencesTab::General => 0,
-            PreferencesTab::Keyboard => 1,
+            PreferencesTab::Paths => 1,
+            PreferencesTab::Keyboard => 2,
         }
     }
 }
@@ -37,6 +39,14 @@ pub enum GeneralMessage {
 }
 
 #[derive(Debug, Clone)]
+pub enum PathsMessage {
+    Journal(Action),
+    SystemDic(Action),
+    SystemAff(Action),
+    PersonalDic(Action),
+}
+
+#[derive(Debug, Clone)]
 pub enum PreferencesMessage {
     KeyEvent(KeyboardAction),
 
@@ -46,18 +56,25 @@ pub enum PreferencesMessage {
     SaveAndExit,
 
     General(GeneralMessage),
+    Paths(PathsMessage),
 }
 
 #[derive(Debug)]
 pub enum ActiveContent {
     AutosaveMinute,
     AutosaveSecond,
+
+    JournalPath,
+    SystemDicPath,
+    SystemAffPath,
+    PersonalDicPath,
 }
 
 #[derive(Debug)]
 pub struct Preferences {
     working_preferences: UserPreferences,
     edited_preferences: bool,
+    preference_edit_requires_restart: bool,
 
     current_preference_tab: PreferencesTab,
     active_content: Option<ActiveContent>,
@@ -66,13 +83,21 @@ pub struct Preferences {
     autosave_minutes: u64,
     autosave_second_content: UpgradedContent,
     autosave_seconds: u64,
+
+    journal_path_content: UpgradedContent,
+    system_dic_path_content: UpgradedContent,
+    system_aff_path_content: UpgradedContent,
+    personal_dic_path_content: UpgradedContent,
 }
 
 impl Default for Preferences {
     fn default() -> Self {
+        let working_preferences = preferences().clone();
+
         Self {
-            working_preferences: preferences().clone(),
+            working_preferences: working_preferences.clone(),
             edited_preferences: false,
+            preference_edit_requires_restart: false,
 
             current_preference_tab: PreferencesTab::default(),
             active_content: None,
@@ -81,6 +106,35 @@ impl Default for Preferences {
             autosave_minutes: 5,
             autosave_second_content: UpgradedContent::with_text("0"),
             autosave_seconds: 0,
+
+            journal_path_content: UpgradedContent::with_text(
+                working_preferences
+                    .paths
+                    .journal_path
+                    .to_str()
+                    .expect("journal path contains invalid utf-8"),
+            ),
+            system_dic_path_content: UpgradedContent::with_text(
+                working_preferences
+                    .paths
+                    .system_dictionary_dic
+                    .to_str()
+                    .expect("system dic path contains invalid utf-8"),
+            ),
+            system_aff_path_content: UpgradedContent::with_text(
+                working_preferences
+                    .paths
+                    .system_dictionary_aff
+                    .to_str()
+                    .expect("journal path contains invalid utf-8"),
+            ),
+            personal_dic_path_content: UpgradedContent::with_text(
+                working_preferences
+                    .paths
+                    .personal_dictionary_dic
+                    .to_str()
+                    .expect("journal path contains invalid utf-8"),
+            ),
         }
     }
 }
@@ -146,6 +200,45 @@ impl Windowable<PreferencesMessage> for Preferences {
             content: general_tab_content.into(),
         };
 
+        let paths_tab_content = {
+            let title = Text::new("Path Settings");
+
+            let journal_location_path =
+                widget::text_editor(self.journal_path_content.raw_content())
+                    .on_action(|action| PreferencesMessage::Paths(PathsMessage::Journal(action)));
+            let journal_location =
+                column![Text::new("Journal Save Location"), journal_location_path];
+
+            let system_dic_path = widget::text_editor(self.system_dic_path_content.raw_content())
+                .on_action(|action| PreferencesMessage::Paths(PathsMessage::SystemDic(action)));
+            let system_dic = column![Text::new("System Dictionary .dic"), system_dic_path];
+
+            let system_aff_path = widget::text_editor(self.system_aff_path_content.raw_content())
+                .on_action(|action| PreferencesMessage::Paths(PathsMessage::SystemAff(action)));
+            let system_aff = column![Text::new("System Dictionary .aff"), system_aff_path];
+
+            let personal_dic_path = widget::text_editor(
+                self.personal_dic_path_content.raw_content(),
+            )
+            .on_action(|action| PreferencesMessage::Paths(PathsMessage::PersonalDic(action)));
+            let personal_dic = column![Text::new("Personal Dictionary .dic"), personal_dic_path];
+
+            column![
+                title,
+                journal_location,
+                system_dic,
+                system_aff,
+                personal_dic
+            ]
+            .into()
+        };
+
+        let paths_tab = TabviewItem {
+            title: PreferencesTab::Paths.to_string(),
+            clicked_message: PreferencesMessage::TabSwitched(PreferencesTab::Paths),
+            content: paths_tab_content,
+        };
+
         let keyboard_tab_content = { column![Text::new("Keyboard Settings")] };
 
         let keyboard_tab = TabviewItem {
@@ -154,7 +247,7 @@ impl Windowable<PreferencesMessage> for Preferences {
             content: keyboard_tab_content.into(),
         };
 
-        let tab_elements = vec![general_tab, keyboard_tab];
+        let tab_elements = vec![general_tab, paths_tab, keyboard_tab];
 
         let preference_editor = tabview_content_horizontal(
             tab_elements,
@@ -267,6 +360,53 @@ impl Windowable<PreferencesMessage> for Preferences {
                             + Duration::from_secs(self.autosave_seconds);
                 }
             },
+            PreferencesMessage::Paths(paths_message) => match paths_message {
+                PathsMessage::Journal(action) => {
+                    self.active_content = Some(ActiveContent::JournalPath);
+
+                    self.content_perform(state, ContentAction::Standard(action));
+
+                    self.edited_preferences = true;
+                    self.preference_edit_requires_restart = true;
+
+                    self.working_preferences.paths.journal_path =
+                        PathBuf::from(self.journal_path_content.text());
+                }
+                PathsMessage::SystemDic(action) => {
+                    self.active_content = Some(ActiveContent::SystemDicPath);
+
+                    self.content_perform(state, ContentAction::Standard(action));
+
+                    self.edited_preferences = true;
+                    self.preference_edit_requires_restart = true;
+
+                    self.working_preferences.paths.system_dictionary_dic =
+                        PathBuf::from(self.system_dic_path_content.text());
+                }
+                PathsMessage::SystemAff(action) => {
+                    self.active_content = Some(ActiveContent::SystemAffPath);
+
+                    self.content_perform(state, ContentAction::Standard(action));
+
+                    self.edited_preferences = true;
+                    self.preference_edit_requires_restart = true;
+
+                    self.working_preferences.paths.system_dictionary_aff =
+                        PathBuf::from(self.system_aff_path_content.text());
+                }
+                PathsMessage::PersonalDic(action) => {
+                    self.active_content = Some(ActiveContent::PersonalDicPath);
+
+                    self.content_perform(state, ContentAction::Standard(action));
+
+                    self.edited_preferences = true;
+                    self.preference_edit_requires_restart = true;
+
+                    self.working_preferences.paths.personal_dictionary_dic =
+                        PathBuf::from(self.personal_dic_path_content.text());
+                }
+            },
+
             PreferencesMessage::Cancel => {
                 state
                     .upstream_actions
@@ -274,13 +414,21 @@ impl Windowable<PreferencesMessage> for Preferences {
             }
             PreferencesMessage::Save => {
                 self.save_preferences();
+
+                if self.preference_edit_requires_restart {
+                    state
+                        .upstream_actions
+                        .push(UpstreamAction::RestartApplication);
+                }
             }
             PreferencesMessage::SaveAndExit => {
-                self.save_preferences();
+                let save_task = self.update(state, PreferencesMessage::Save);
 
                 state
                     .upstream_actions
                     .push(UpstreamAction::CloseWindow(WindowType::Preferences));
+
+                return save_task;
             }
         }
 
@@ -292,6 +440,10 @@ impl Windowable<PreferencesMessage> for Preferences {
             match active_content {
                 ActiveContent::AutosaveMinute => self.autosave_minute_content.perform(action),
                 ActiveContent::AutosaveSecond => self.autosave_second_content.perform(action),
+                ActiveContent::JournalPath => self.journal_path_content.perform(action),
+                ActiveContent::SystemDicPath => self.system_dic_path_content.perform(action),
+                ActiveContent::SystemAffPath => self.system_aff_path_content.perform(action),
+                ActiveContent::PersonalDicPath => self.personal_dic_path_content.perform(action),
             }
         }
     }

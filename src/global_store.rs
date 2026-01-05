@@ -1,8 +1,8 @@
 use crate::{
     day_store::DayStore,
-    filetools,
     misc_tools::{self, string_to_datetime},
     month_store::MonthStore,
+    user_preferences::preferences,
     word_count::{TimedWordCount, WordCount, WordCounts},
 };
 use chrono::{DateTime, Datelike, Days, Local, Months, NaiveDate};
@@ -92,15 +92,15 @@ impl GlobalStore {
         static FILENAME_REGEX: LazyLock<Regex> =
             LazyLock::new(|| Regex::new(r"\d\d\d\d-\d\d\.json").expect("couldn't create regex"));
 
-        let filepath = filetools::savedata_path();
+        let savedata_dir = preferences().paths.savedata_dir();
 
-        if let Ok(files_in_savedir) = filepath.read_dir() {
-            for file in files_in_savedir.flatten() {
-                if !file.path().is_file() {
+        if let Ok(savedata_entries) = savedata_dir.read_dir() {
+            for dir_entry in savedata_entries.flatten() {
+                if !dir_entry.path().is_file() {
                     continue;
                 }
 
-                let filename = file
+                let filename = dir_entry
                     .file_name()
                     .into_string()
                     .expect("couldn't convert filename to string");
