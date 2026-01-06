@@ -41,6 +41,7 @@ pub enum GeneralMessage {
 #[derive(Debug, Clone)]
 pub enum PathsMessage {
     Journal(Action),
+    Preferences(Action),
     SystemDic(Action),
     SystemAff(Action),
     PersonalDic(Action),
@@ -65,6 +66,7 @@ pub enum ActiveContent {
     AutosaveSecond,
 
     JournalPath,
+    PreferencesPath,
     SystemDicPath,
     SystemAffPath,
     PersonalDicPath,
@@ -85,6 +87,7 @@ pub struct Preferences {
     autosave_seconds: u64,
 
     journal_path_content: UpgradedContent,
+    preferences_path_content: UpgradedContent,
     system_dic_path_content: UpgradedContent,
     system_aff_path_content: UpgradedContent,
     personal_dic_path_content: UpgradedContent,
@@ -113,6 +116,13 @@ impl Default for Preferences {
                     .journal_path
                     .to_str()
                     .expect("journal path contains invalid utf-8"),
+            ),
+            preferences_path_content: UpgradedContent::with_text(
+                working_preferences
+                    .paths
+                    .preferences_path
+                    .to_str()
+                    .expect("preferences path contains invalid utf-8"),
             ),
             system_dic_path_content: UpgradedContent::with_text(
                 working_preferences
@@ -209,6 +219,15 @@ impl Windowable<PreferencesMessage> for Preferences {
             let journal_location =
                 column![Text::new("Journal Save Location"), journal_location_path];
 
+            let preferences_path_editor = widget::text_editor(
+                self.preferences_path_content.raw_content(),
+            )
+            .on_action(|action| PreferencesMessage::Paths(PathsMessage::Preferences(action)));
+            let preferences_path = column![
+                Text::new("Preferences Save Location"),
+                preferences_path_editor
+            ];
+
             let system_dic_path = widget::text_editor(self.system_dic_path_content.raw_content())
                 .on_action(|action| PreferencesMessage::Paths(PathsMessage::SystemDic(action)));
             let system_dic = column![Text::new("System Dictionary .dic"), system_dic_path];
@@ -226,6 +245,7 @@ impl Windowable<PreferencesMessage> for Preferences {
             column![
                 title,
                 journal_location,
+                preferences_path,
                 system_dic,
                 system_aff,
                 personal_dic
@@ -372,6 +392,17 @@ impl Windowable<PreferencesMessage> for Preferences {
                     self.working_preferences.paths.journal_path =
                         PathBuf::from(self.journal_path_content.text());
                 }
+                PathsMessage::Preferences(action) => {
+                    self.active_content = Some(ActiveContent::PreferencesPath);
+
+                    self.content_perform(state, ContentAction::Standard(action));
+
+                    self.edited_preferences = true;
+                    self.preference_edit_requires_restart = true;
+
+                    self.working_preferences.paths.preferences_path =
+                        PathBuf::from(self.preferences_path_content.text());
+                }
                 PathsMessage::SystemDic(action) => {
                     self.active_content = Some(ActiveContent::SystemDicPath);
 
@@ -416,6 +447,8 @@ impl Windowable<PreferencesMessage> for Preferences {
                 self.save_preferences();
 
                 if self.preference_edit_requires_restart {
+                    state.upstream_actions.push(UpstreamAction::Autosave);
+
                     state
                         .upstream_actions
                         .push(UpstreamAction::RestartApplication);
@@ -441,6 +474,7 @@ impl Windowable<PreferencesMessage> for Preferences {
                 ActiveContent::AutosaveMinute => self.autosave_minute_content.perform(action),
                 ActiveContent::AutosaveSecond => self.autosave_second_content.perform(action),
                 ActiveContent::JournalPath => self.journal_path_content.perform(action),
+                ActiveContent::PreferencesPath => self.preferences_path_content.perform(action),
                 ActiveContent::SystemDicPath => self.system_dic_path_content.perform(action),
                 ActiveContent::SystemAffPath => self.system_aff_path_content.perform(action),
                 ActiveContent::PersonalDicPath => self.personal_dic_path_content.perform(action),
