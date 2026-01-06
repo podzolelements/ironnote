@@ -1,5 +1,7 @@
 use crate::{
     SharedAppState, UpstreamAction,
+    file_extensions::{AFF_EXT_LIST, DIC_EXT_LIST, JSON_EXT_LIST, build_extensions},
+    file_picker::{FilePicker, FilePickerMessage},
     keyboard_manager::KeyboardAction,
     tabview::{TabviewItem, tabview_content_horizontal},
     upgraded_content::{ContentAction, Restriction, UpgradedContent},
@@ -10,7 +12,7 @@ use iced::{
     Length, Task,
     widget::{self, Space, Text, button, checkbox, column, row, text_editor::Action},
 };
-use std::{path::PathBuf, time::Duration};
+use std::time::Duration;
 use strum::Display;
 
 #[derive(Debug, Default, Clone, PartialEq, Display)]
@@ -40,11 +42,11 @@ pub enum GeneralMessage {
 
 #[derive(Debug, Clone)]
 pub enum PathsMessage {
-    Journal(Action),
-    Preferences(Action),
-    SystemDic(Action),
-    SystemAff(Action),
-    PersonalDic(Action),
+    Journal(FilePickerMessage),
+    Preferences(FilePickerMessage),
+    SystemDic(FilePickerMessage),
+    SystemAff(FilePickerMessage),
+    PersonalDic(FilePickerMessage),
 }
 
 #[derive(Debug, Clone)]
@@ -86,11 +88,11 @@ pub struct Preferences {
     autosave_second_content: UpgradedContent,
     autosave_seconds: u64,
 
-    journal_path_content: UpgradedContent,
-    preferences_path_content: UpgradedContent,
-    system_dic_path_content: UpgradedContent,
-    system_aff_path_content: UpgradedContent,
-    personal_dic_path_content: UpgradedContent,
+    journal_path_picker: FilePicker,
+    preferences_path_picker: FilePicker,
+    system_dic_path_picker: FilePicker,
+    system_aff_path_picker: FilePicker,
+    personal_dic_path_picker: FilePicker,
 }
 
 impl Default for Preferences {
@@ -110,40 +112,22 @@ impl Default for Preferences {
             autosave_second_content: UpgradedContent::with_text("0"),
             autosave_seconds: 0,
 
-            journal_path_content: UpgradedContent::with_text(
-                working_preferences
-                    .paths
-                    .journal_path
-                    .to_str()
-                    .expect("journal path contains invalid utf-8"),
+            journal_path_picker: FilePicker::directory(working_preferences.paths.journal_path),
+            preferences_path_picker: FilePicker::file(
+                working_preferences.paths.preferences_path,
+                &build_extensions(JSON_EXT_LIST),
             ),
-            preferences_path_content: UpgradedContent::with_text(
-                working_preferences
-                    .paths
-                    .preferences_path
-                    .to_str()
-                    .expect("preferences path contains invalid utf-8"),
+            system_dic_path_picker: FilePicker::file(
+                working_preferences.paths.system_dictionary_dic,
+                &build_extensions(DIC_EXT_LIST),
             ),
-            system_dic_path_content: UpgradedContent::with_text(
-                working_preferences
-                    .paths
-                    .system_dictionary_dic
-                    .to_str()
-                    .expect("system dic path contains invalid utf-8"),
+            system_aff_path_picker: FilePicker::file(
+                working_preferences.paths.system_dictionary_aff,
+                &build_extensions(AFF_EXT_LIST),
             ),
-            system_aff_path_content: UpgradedContent::with_text(
-                working_preferences
-                    .paths
-                    .system_dictionary_aff
-                    .to_str()
-                    .expect("journal path contains invalid utf-8"),
-            ),
-            personal_dic_path_content: UpgradedContent::with_text(
-                working_preferences
-                    .paths
-                    .personal_dictionary_dic
-                    .to_str()
-                    .expect("journal path contains invalid utf-8"),
+            personal_dic_path_picker: FilePicker::file(
+                working_preferences.paths.personal_dictionary_dic,
+                &build_extensions(DIC_EXT_LIST),
             ),
         }
     }
@@ -213,33 +197,38 @@ impl Windowable<PreferencesMessage> for Preferences {
         let paths_tab_content = {
             let title = Text::new("Path Settings");
 
-            let journal_location_path =
-                widget::text_editor(self.journal_path_content.raw_content())
-                    .on_action(|action| PreferencesMessage::Paths(PathsMessage::Journal(action)));
+            let journal_location_path = self
+                .journal_path_picker
+                .view()
+                .map(|message| PreferencesMessage::Paths(PathsMessage::Journal(message)));
             let journal_location =
                 column![Text::new("Journal Save Location"), journal_location_path];
 
-            let preferences_path_editor = widget::text_editor(
-                self.preferences_path_content.raw_content(),
-            )
-            .on_action(|action| PreferencesMessage::Paths(PathsMessage::Preferences(action)));
+            let preferences_path_editor = self
+                .preferences_path_picker
+                .view()
+                .map(|message| PreferencesMessage::Paths(PathsMessage::Preferences(message)));
             let preferences_path = column![
                 Text::new("Preferences Save Location"),
                 preferences_path_editor
             ];
 
-            let system_dic_path = widget::text_editor(self.system_dic_path_content.raw_content())
-                .on_action(|action| PreferencesMessage::Paths(PathsMessage::SystemDic(action)));
+            let system_dic_path = self
+                .system_dic_path_picker
+                .view()
+                .map(|message| PreferencesMessage::Paths(PathsMessage::SystemDic(message)));
             let system_dic = column![Text::new("System Dictionary .dic"), system_dic_path];
 
-            let system_aff_path = widget::text_editor(self.system_aff_path_content.raw_content())
-                .on_action(|action| PreferencesMessage::Paths(PathsMessage::SystemAff(action)));
+            let system_aff_path = self
+                .system_aff_path_picker
+                .view()
+                .map(|message| PreferencesMessage::Paths(PathsMessage::SystemAff(message)));
             let system_aff = column![Text::new("System Dictionary .aff"), system_aff_path];
 
-            let personal_dic_path = widget::text_editor(
-                self.personal_dic_path_content.raw_content(),
-            )
-            .on_action(|action| PreferencesMessage::Paths(PathsMessage::PersonalDic(action)));
+            let personal_dic_path = self
+                .personal_dic_path_picker
+                .view()
+                .map(|message| PreferencesMessage::Paths(PathsMessage::PersonalDic(message)));
             let personal_dic = column![Text::new("Personal Dictionary .dic"), personal_dic_path];
 
             column![
@@ -380,63 +369,63 @@ impl Windowable<PreferencesMessage> for Preferences {
                             + Duration::from_secs(self.autosave_seconds);
                 }
             },
-            PreferencesMessage::Paths(paths_message) => match paths_message {
-                PathsMessage::Journal(action) => {
-                    self.active_content = Some(ActiveContent::JournalPath);
+            PreferencesMessage::Paths(paths_message) => {
+                match paths_message {
+                    PathsMessage::Journal(message) => {
+                        self.active_content =
+                            matches!(&message, FilePickerMessage::FilepathEdit(_content_action))
+                                .then_some(ActiveContent::JournalPath);
 
-                    self.content_perform(state, ContentAction::Standard(action));
+                        self.journal_path_picker.update(message);
 
-                    self.edited_preferences = true;
-                    self.preference_edit_requires_restart = true;
+                        self.working_preferences.paths.journal_path =
+                            self.journal_path_picker.path();
+                    }
+                    PathsMessage::Preferences(message) => {
+                        self.active_content =
+                            matches!(&message, FilePickerMessage::FilepathEdit(_content_action))
+                                .then_some(ActiveContent::PreferencesPath);
 
-                    self.working_preferences.paths.journal_path =
-                        PathBuf::from(self.journal_path_content.text());
+                        self.preferences_path_picker.update(message);
+
+                        self.working_preferences.paths.preferences_path =
+                            self.preferences_path_picker.path();
+                    }
+                    PathsMessage::SystemDic(message) => {
+                        self.active_content =
+                            matches!(&message, FilePickerMessage::FilepathEdit(_content_action))
+                                .then_some(ActiveContent::SystemDicPath);
+
+                        self.system_dic_path_picker.update(message);
+
+                        self.working_preferences.paths.system_dictionary_dic =
+                            self.system_dic_path_picker.path();
+                    }
+                    PathsMessage::SystemAff(message) => {
+                        self.active_content =
+                            matches!(&message, FilePickerMessage::FilepathEdit(_content_action))
+                                .then_some(ActiveContent::SystemAffPath);
+
+                        self.system_aff_path_picker.update(message);
+
+                        self.working_preferences.paths.system_dictionary_aff =
+                            self.system_aff_path_picker.path();
+                    }
+                    PathsMessage::PersonalDic(message) => {
+                        self.active_content =
+                            matches!(&message, FilePickerMessage::FilepathEdit(_content_action))
+                                .then_some(ActiveContent::PersonalDicPath);
+
+                        self.personal_dic_path_picker.update(message);
+
+                        self.working_preferences.paths.personal_dictionary_dic =
+                            self.personal_dic_path_picker.path();
+                    }
                 }
-                PathsMessage::Preferences(action) => {
-                    self.active_content = Some(ActiveContent::PreferencesPath);
 
-                    self.content_perform(state, ContentAction::Standard(action));
-
-                    self.edited_preferences = true;
-                    self.preference_edit_requires_restart = true;
-
-                    self.working_preferences.paths.preferences_path =
-                        PathBuf::from(self.preferences_path_content.text());
-                }
-                PathsMessage::SystemDic(action) => {
-                    self.active_content = Some(ActiveContent::SystemDicPath);
-
-                    self.content_perform(state, ContentAction::Standard(action));
-
-                    self.edited_preferences = true;
-                    self.preference_edit_requires_restart = true;
-
-                    self.working_preferences.paths.system_dictionary_dic =
-                        PathBuf::from(self.system_dic_path_content.text());
-                }
-                PathsMessage::SystemAff(action) => {
-                    self.active_content = Some(ActiveContent::SystemAffPath);
-
-                    self.content_perform(state, ContentAction::Standard(action));
-
-                    self.edited_preferences = true;
-                    self.preference_edit_requires_restart = true;
-
-                    self.working_preferences.paths.system_dictionary_aff =
-                        PathBuf::from(self.system_aff_path_content.text());
-                }
-                PathsMessage::PersonalDic(action) => {
-                    self.active_content = Some(ActiveContent::PersonalDicPath);
-
-                    self.content_perform(state, ContentAction::Standard(action));
-
-                    self.edited_preferences = true;
-                    self.preference_edit_requires_restart = true;
-
-                    self.working_preferences.paths.personal_dictionary_dic =
-                        PathBuf::from(self.personal_dic_path_content.text());
-                }
-            },
+                self.edited_preferences = true;
+                self.preference_edit_requires_restart = true;
+            }
 
             PreferencesMessage::Cancel => {
                 state
@@ -473,11 +462,21 @@ impl Windowable<PreferencesMessage> for Preferences {
             match active_content {
                 ActiveContent::AutosaveMinute => self.autosave_minute_content.perform(action),
                 ActiveContent::AutosaveSecond => self.autosave_second_content.perform(action),
-                ActiveContent::JournalPath => self.journal_path_content.perform(action),
-                ActiveContent::PreferencesPath => self.preferences_path_content.perform(action),
-                ActiveContent::SystemDicPath => self.system_dic_path_content.perform(action),
-                ActiveContent::SystemAffPath => self.system_aff_path_content.perform(action),
-                ActiveContent::PersonalDicPath => self.personal_dic_path_content.perform(action),
+                ActiveContent::JournalPath => self
+                    .journal_path_picker
+                    .update(FilePickerMessage::FilepathEdit(action)),
+                ActiveContent::PreferencesPath => self
+                    .preferences_path_picker
+                    .update(FilePickerMessage::FilepathEdit(action)),
+                ActiveContent::SystemDicPath => self
+                    .system_dic_path_picker
+                    .update(FilePickerMessage::FilepathEdit(action)),
+                ActiveContent::SystemAffPath => self
+                    .system_aff_path_picker
+                    .update(FilePickerMessage::FilepathEdit(action)),
+                ActiveContent::PersonalDicPath => self
+                    .personal_dic_path_picker
+                    .update(FilePickerMessage::FilepathEdit(action)),
             }
         }
     }

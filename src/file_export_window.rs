@@ -1,15 +1,16 @@
 use crate::{
     SharedAppState, UpstreamAction,
+    file_extensions::{TEXT_EXT_LIST, build_extensions},
+    file_picker::{FilePicker, FilePickerMessage},
     keyboard_manager::KeyboardAction,
-    upgraded_content::{ContentAction, UpgradedContent},
+    upgraded_content::ContentAction,
     window_manager::{WindowType, Windowable},
 };
 use chrono::{Datelike, Days};
 use iced::{
     Task,
-    widget::{self, Text, button, column, radio, row, text_editor::Action},
+    widget::{Text, button, column, radio, row},
 };
-use rfd::FileDialog;
 use std::{fs, path::PathBuf};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -23,18 +24,32 @@ pub enum FileExportStrategy {
 pub enum FileExportMessage {
     KeyEvent(KeyboardAction),
 
-    FilepathEdit(Action),
-    OpenFileDialog,
+    FilePicker(FilePickerMessage),
     SelectedStrategy(FileExportStrategy),
     Cancel,
     Export,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct FileExport {
-    filepath_content: UpgradedContent,
-    file_path: PathBuf,
+    individial_file_picker: FilePicker,
+    bulk_directory_picker: FilePicker,
+    filepicker_content_is_active: bool,
     export_strategy: FileExportStrategy,
+}
+
+impl Default for FileExport {
+    fn default() -> Self {
+        Self {
+            individial_file_picker: FilePicker::file(
+                PathBuf::new(),
+                &build_extensions(TEXT_EXT_LIST),
+            ),
+            bulk_directory_picker: FilePicker::directory(PathBuf::new()),
+            filepicker_content_is_active: false,
+            export_strategy: Default::default(),
+        }
+    }
 }
 
 impl Windowable<FileExportMessage> for FileExport {
@@ -59,12 +74,16 @@ impl Windowable<FileExportMessage> for FileExport {
             FileExportMessage::SelectedStrategy,
         );
 
-        let filepath_text = widget::text_editor(self.filepath_content.raw_content())
-            .on_action(FileExportMessage::FilepathEdit);
-
-        let filepath_picker = widget::button("open").on_press(FileExportMessage::OpenFileDialog);
-
-        let filepath = row![filepath_text, filepath_picker];
+        let file_picker = match self.export_strategy {
+            FileExportStrategy::SingleDay => self
+                .individial_file_picker
+                .view()
+                .map(FileExportMessage::FilePicker),
+            FileExportStrategy::AllSingle => self
+                .bulk_directory_picker
+                .view()
+                .map(FileExportMessage::FilePicker),
+        };
 
         let cancel_button = button(Text::new("Cancel")).on_press(FileExportMessage::Cancel);
 
@@ -76,7 +95,7 @@ impl Windowable<FileExportMessage> for FileExport {
             Text::new("Export File"),
             radio_single_day,
             radio_all_single,
-            filepath,
+            file_picker,
             bottom_buttons
         ]
         .into()
@@ -98,81 +117,85 @@ impl Windowable<FileExportMessage> for FileExport {
                     KeyboardAction::Unbound(_unbound_key) => {}
                 };
             }
-            FileExportMessage::FilepathEdit(action) => {
-                self.filepath_content
-                    .perform(ContentAction::Standard(action));
+            FileExportMessage::FilePicker(message) => {
+                self.filepicker_content_is_active =
+                    matches!(&message, FilePickerMessage::FilepathEdit(_content_action));
 
-                self.file_path = self.filepath_content.text().into();
-            }
-            FileExportMessage::OpenFileDialog => {
-                let file_path = match self.export_strategy {
-                    FileExportStrategy::SingleDay => FileDialog::new()
-                        .set_title("Export File")
-                        .add_filter("Text", &["txt", "text", "md"])
-                        .add_filter("All formats", &[""])
-                        .save_file(),
-                    FileExportStrategy::AllSingle => FileDialog::new()
-                        .set_title("Export All to Directory")
-                        .pick_folder(),
-                };
-
-                if let Some(path) = file_path {
-                    self.file_path = path.clone();
-                    self.filepath_content =
-                        UpgradedContent::with_text(path.to_str().expect("path is not valid utf-8"));
+                match self.export_strategy {
+                    FileExportStrategy::SingleDay => self.individial_file_picker.update(message),
+                    FileExportStrategy::AllSingle => self.bulk_directory_picker.update(message),
                 }
             }
             FileExportMessage::SelectedStrategy(strategy) => {
+                self.filepicker_content_is_active = false;
+
                 self.export_strategy = strategy;
             }
             FileExportMessage::Cancel => {
+                self.filepicker_content_is_active = false;
+
                 state
                     .upstream_actions
                     .push(UpstreamAction::CloseWindow(WindowType::FileExport));
             }
-            FileExportMessage::Export => match self.export_strategy {
-                FileExportStrategy::SingleDay => {
-                    let day_text = state.global_store.day().get_day_text();
+            FileExportMessage::Export => {
+                self.filepicker_content_is_active = false;
 
-                    if let Err(_error) = fs::write(self.file_path.clone(), day_text) {}
-                }
-                FileExportStrategy::AllSingle => {
-                    if let Some(first_edited_day) = state.global_store.first_edited_day()
-                        && let Some(last_edited_day) = state.global_store.last_edited_day()
-                    {
-                        let mut iterative_day = first_edited_day;
+                match self.export_strategy {
+                    FileExportStrategy::SingleDay => {
+                        let day_text = state.global_store.day().get_day_text();
 
-                        while iterative_day <= last_edited_day {
-                            if let Some(day_store) = state.global_store.get_day(iterative_day)
-                                && day_store.contains_entry()
-                            {
-                                let year = iterative_day.year().to_string();
-                                let filename = iterative_day.date_naive().to_string();
+                        if let Err(_error) = fs::write(self.individial_file_picker.path(), day_text)
+                        {
+                        }
+                    }
+                    FileExportStrategy::AllSingle => {
+                        if let Some(first_edited_day) = state.global_store.first_edited_day()
+                            && let Some(last_edited_day) = state.global_store.last_edited_day()
+                        {
+                            let mut iterative_day = first_edited_day;
 
-                                let mut root_path = self.file_path.clone();
-                                root_path.push(year);
-                                if let Err(_error) = fs::create_dir_all(&root_path) {}
+                            while iterative_day <= last_edited_day {
+                                if let Some(day_store) = state.global_store.get_day(iterative_day)
+                                    && day_store.contains_entry()
+                                {
+                                    let year = iterative_day.year().to_string();
+                                    let filename = iterative_day.date_naive().to_string();
 
-                                root_path.push(filename);
+                                    let mut root_path = self.bulk_directory_picker.path();
+                                    root_path.push(year);
+                                    if let Err(_error) = fs::create_dir_all(&root_path) {}
 
-                                let day_text = day_store.get_day_text();
+                                    root_path.push(filename);
 
-                                if let Err(_error) = fs::write(root_path, day_text) {}
+                                    let day_text = day_store.get_day_text();
+
+                                    if let Err(_error) = fs::write(root_path, day_text) {}
+                                }
+
+                                iterative_day = iterative_day
+                                    .checked_add_days(Days::new(1))
+                                    .expect("couldn't add day");
                             }
-
-                            iterative_day = iterative_day
-                                .checked_add_days(Days::new(1))
-                                .expect("couldn't add day");
                         }
                     }
                 }
-            },
+            }
         }
 
         Task::none()
     }
 
     fn content_perform(&mut self, _state: &mut SharedAppState, action: ContentAction) {
-        self.filepath_content.perform(action);
+        if self.filepicker_content_is_active {
+            match self.export_strategy {
+                FileExportStrategy::SingleDay => self
+                    .individial_file_picker
+                    .update(FilePickerMessage::FilepathEdit(action)),
+                FileExportStrategy::AllSingle => self
+                    .bulk_directory_picker
+                    .update(FilePickerMessage::FilepathEdit(action)),
+            }
+        }
     }
 }
