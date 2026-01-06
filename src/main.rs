@@ -1,4 +1,5 @@
 use crate::{
+    dictionary::reload_dictionary,
     file_export_window::{FileExport, FileExportMessage},
     file_import_window::{FileImport, FileImportMessage},
     global_store::GlobalStore,
@@ -8,7 +9,7 @@ use crate::{
     task_creator_window::{TaskCreator, TaskCreatorMessage},
     tasks::Tasks,
     upgraded_content::UpgradedContent,
-    user_preferences::preferences,
+    user_preferences::{UserPreferences, overwrite_preferences, preferences},
     window_manager::{WindowType, Windowable},
     word_count::WordCount,
 };
@@ -27,6 +28,7 @@ mod file_import_window;
 mod global_store;
 mod highlighter;
 mod history_stack;
+mod journal_pointer;
 mod keyboard_manager;
 mod logbox;
 mod main_window;
@@ -140,6 +142,10 @@ impl App {
         let (new_app, init_message) = App::new();
 
         *self = new_app;
+
+        // deal with the statics whose initalization is dependent on data from the disk
+        overwrite_preferences(UserPreferences::load_from_disk_or_default());
+        reload_dictionary();
 
         batch_close_windows.chain(init_message)
     }

@@ -10,6 +10,13 @@ use std::{
 pub static DICTIONARY: LazyLock<RwLock<Dictionary>> =
     LazyLock::new(|| RwLock::new(composite_dictionary()));
 
+/// reloads the composite user/system dictionary from disk
+pub fn reload_dictionary() {
+    let mut dictionary = DICTIONARY.write().expect("unable to get DICTIONARY write");
+
+    *dictionary = composite_dictionary();
+}
+
 /// regex that seperates out words. allows ' and - to show up in the middle of words
 pub static WORD_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\b[\w'-]+\b").expect("couldn't create regex"));

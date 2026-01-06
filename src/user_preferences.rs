@@ -1,3 +1,5 @@
+use crate::journal_pointer::JournalPointer;
+use serde::{Deserialize, Serialize};
 use std::{
     fs, io,
     path::PathBuf,
@@ -5,7 +7,7 @@ use std::{
     time::Duration,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 /// general settings
 pub struct GeneralPreferences {
     /// if true, the editor will perform the Autosave action at the autosave_interval
@@ -23,18 +25,22 @@ impl Default for GeneralPreferences {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 /// preferences that involve configurable files and directories
 pub struct PathPreferences {
     pub(crate) journal_path: PathBuf,
     pub(crate) system_dictionary_dic: PathBuf,
     pub(crate) system_dictionary_aff: PathBuf,
     pub(crate) personal_dictionary_dic: PathBuf,
+    pub(crate) preferences_path: PathBuf,
 }
 
 impl Default for PathPreferences {
     fn default() -> Self {
-        let journal_path = Self::get_journal_path();
+        let journal_pointer = JournalPointer::load_from_disk_or_default();
+
+        let journal_path = journal_pointer.journal_path();
+        let preferences_path = journal_pointer.preferences_path();
 
         let (aff_path, dic_path) = if cfg!(target_os = "linux") {
             (
@@ -59,45 +65,12 @@ impl Default for PathPreferences {
             system_dictionary_aff: PathBuf::from(aff_path),
             system_dictionary_dic: PathBuf::from(dic_path),
             personal_dictionary_dic,
+            preferences_path,
         }
     }
 }
 
 impl PathPreferences {
-    /// the path to the file that contains the location of the top level /ironnote folder
-    fn journal_path_file() -> PathBuf {
-        let mut journal_path_file =
-            dirs::config_local_dir().expect("couldn't open local config dir");
-        journal_path_file.push("ironnote");
-        journal_path_file.push("journal_path.json");
-
-        journal_path_file
-    }
-
-    /// retreives the path of the journal from the journal_path.json pointer file. if the pointer file does not exist
-    /// or cannot be parsed, it is created and set to dirs::data_local_dir()/ironnote
-    fn get_journal_path() -> PathBuf {
-        let journal_path_file_path = Self::journal_path_file();
-
-        if let Ok(existing_journal_path_json) = fs::read_to_string(journal_path_file_path)
-            && let Ok(existing_path) = serde_json::from_str(&existing_journal_path_json)
-        {
-            return existing_path;
-        }
-
-        let mut default_journal_path =
-            dirs::data_local_dir().expect("local data dir does not exist");
-        default_journal_path.push("ironnote");
-
-        let default_journal_path_json = serde_json::to_string_pretty(&default_journal_path)
-            .expect("couldn't convert path to json");
-
-        fs::write(Self::journal_path_file(), &default_journal_path_json)
-            .expect("unable to write journal path pointer");
-
-        default_journal_path
-    }
-
     /// the /ironnote/data directory
     pub fn savedata_dir(&self) -> PathBuf {
         let mut savedata_dir = self.journal_path.clone();
@@ -126,13 +99,17 @@ impl PathPreferences {
     fn create_all_missing_dirs(&self) -> io::Result<()> {
         fs::create_dir_all(self.savedata_dir())?;
 
-        let personal_dic_parent = self
-            .personal_dictionary_dic
-            .parent()
-            .ok_or_else(|| io::Error::other("no parent directory"))?;
-        fs::create_dir_all(personal_dic_parent)?;
+        let mut personal_dic_parent = self.personal_dictionary_dic.clone();
+        if personal_dic_parent.pop() {
+            fs::create_dir_all(personal_dic_parent)?;
+        }
 
         fs::create_dir_all(self.template_tasks_dir())?;
+
+        let mut preferences_parent = self.preferences_path.clone();
+        if preferences_parent.pop() {
+            fs::create_dir_all(preferences_parent)?;
+        }
 
         Ok(())
     }
@@ -141,14 +118,14 @@ impl PathPreferences {
     /// directories already exist
     fn create_missing_files(&self) -> io::Result<()> {
         if !self.personal_dictionary_dic.exists() {
-            fs::write(&self.personal_dictionary_dic, "\n")
-        } else {
-            Ok(())
+            fs::write(&self.personal_dictionary_dic, "")?;
         }
+
+        Ok(())
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 /// settings specific to the search functionality
 pub struct SearchPreferences {
     /// if true, the text typed in the search bar will ignore the capitalization the search
@@ -170,7 +147,7 @@ impl SearchPreferences {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 /// stores all of the settings of the application
 pub struct UserPreferences {
     pub(crate) general: GeneralPreferences,
@@ -178,24 +155,69 @@ pub struct UserPreferences {
     pub(crate) search: SearchPreferences,
 }
 
+impl From<&UserPreferences> for JournalPointer {
+    fn from(preferences: &UserPreferences) -> Self {
+        JournalPointer::new(
+            preferences.paths.journal_path.clone(),
+            preferences.paths.preferences_path.clone(),
+        )
+    }
+}
+
 impl UserPreferences {
     /// ensures that all paths and files that are expected to be present are created
-    pub fn initalize_paths_and_files(&self) {
-        self.paths
-            .create_all_missing_dirs()
-            .expect("unable to initalize preference dirs");
+    pub fn initalize_paths_and_files(&self) -> io::Result<()> {
+        self.paths.create_all_missing_dirs()?;
 
-        self.paths
-            .create_missing_files()
-            .expect("unable to initalize preference dirs");
+        self.paths.create_missing_files()?;
+
+        if !self.paths.preferences_path.exists() {
+            let preferences_json = serde_json::to_string_pretty(self)?;
+
+            fs::write(&self.paths.preferences_path, preferences_json)?
+        }
+
+        Ok(())
+    }
+
+    /// writes the preferences to the location specified by the paths.preferences_path preference
+    pub fn write_to_disk(&self) {
+        let preferernces_json =
+            serde_json::to_string_pretty(self).expect("serializing preferences failed");
+
+        let preferences_path = self.paths.preferences_path.clone();
+
+        fs::write(preferences_path, preferernces_json).expect("unable to write preferences file");
+
+        let journal_pointer: JournalPointer = self.into();
+
+        journal_pointer.save_to_disk();
+    }
+
+    /// returns the preferences loaded from the location of the JournalPointer's preference path. if the specified
+    /// path does not exist or contains and invald perferences file, the default preferences are returned
+    pub fn load_from_disk_or_default() -> Self {
+        let journal_pointer = JournalPointer::load_from_disk_or_default();
+
+        let preferences_path = journal_pointer.preferences_path();
+
+        if let Ok(preferences_json) = fs::read_to_string(preferences_path)
+            && let Ok(preferences) = serde_json::from_str(&preferences_json)
+        {
+            preferences
+        } else {
+            Self::default()
+        }
     }
 }
 
 /// global preferences object that stores all of the settings of the application
 static PREFERENCES: LazyLock<RwLock<UserPreferences>> = LazyLock::new(|| {
-    let default_preferences = UserPreferences::default();
+    let default_preferences = UserPreferences::load_from_disk_or_default();
 
-    default_preferences.initalize_paths_and_files();
+    default_preferences
+        .initalize_paths_and_files()
+        .expect("unable to initalize preferences files/paths");
 
     RwLock::new(default_preferences)
 });
@@ -212,9 +234,13 @@ pub fn preferences_mut() -> RwLockWriteGuard<'static, UserPreferences> {
         .expect("unable to get PREFERENCES write")
 }
 
-/// sets PREFERENCES to the provided new preferences
+/// sets PREFERENCES to the provided new preferences, writing new preferences to disk
 pub fn overwrite_preferences(new_preferences: UserPreferences) {
-    new_preferences.initalize_paths_and_files();
+    new_preferences
+        .initalize_paths_and_files()
+        .expect("unable to initalize paths/files of new preferences");
+
+    new_preferences.write_to_disk();
 
     *preferences_mut() = new_preferences;
 }
