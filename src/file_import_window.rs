@@ -1,14 +1,15 @@
 use crate::{
     SharedAppState, UpstreamAction,
+    file_extensions::{TEXT_EXT_LIST, build_extensions},
+    file_picker::{FilePicker, FilePickerMessage},
     keyboard_manager::KeyboardAction,
     upgraded_content::{ContentAction, UpgradedContent},
     window_manager::{WindowType, Windowable},
 };
 use iced::{
     Task,
-    widget::{self, Text, button, column, radio, row, text_editor::Action},
+    widget::{Text, button, column, radio, row},
 };
-use rfd::FileDialog;
 use std::{fs, path::PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -22,18 +23,27 @@ pub enum FileImportStrategy {
 pub enum FileImportMessage {
     KeyEvent(KeyboardAction),
 
-    FilepathEdit(Action),
-    OpenFileDialog,
+    FilePicker(FilePickerMessage),
     SelectedStrategy(FileImportStrategy),
     Cancel,
     Import(FileImportStrategy),
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct FileImport {
-    filepath_content: UpgradedContent,
-    file_path: PathBuf,
+    filepicker: FilePicker,
+    filepicker_content_is_active: bool,
     import_strategy: Option<FileImportStrategy>,
+}
+
+impl Default for FileImport {
+    fn default() -> Self {
+        Self {
+            filepicker: FilePicker::file(PathBuf::new(), &build_extensions(TEXT_EXT_LIST)),
+            filepicker_content_is_active: false,
+            import_strategy: None,
+        }
+    }
 }
 
 impl Windowable<FileImportMessage> for FileImport {
@@ -42,13 +52,7 @@ impl Windowable<FileImportMessage> for FileImport {
     }
 
     fn view<'a>(&'a self, _state: &SharedAppState) -> iced::Element<'a, FileImportMessage> {
-        let filepath_text = widget::text_editor(self.filepath_content.raw_content())
-            .on_action(FileImportMessage::FilepathEdit);
-
-        let filepath_picker =
-            widget::button("open file").on_press(FileImportMessage::OpenFileDialog);
-
-        let filepath = row![filepath_text, filepath_picker];
+        let filepicker = self.filepicker.view().map(FileImportMessage::FilePicker);
 
         let radio_append_end = radio(
             "Append to end of current day",
@@ -80,7 +84,7 @@ impl Windowable<FileImportMessage> for FileImport {
 
         column![
             Text::new("Import File"),
-            filepath,
+            filepicker,
             radio_append_end,
             radio_append_start,
             radio_overwrite,
@@ -105,35 +109,28 @@ impl Windowable<FileImportMessage> for FileImport {
                     KeyboardAction::Unbound(_unbound_key) => {}
                 };
             }
-            FileImportMessage::FilepathEdit(action) => {
-                self.filepath_content
-                    .perform(ContentAction::Standard(action));
+            FileImportMessage::FilePicker(message) => {
+                self.filepicker_content_is_active =
+                    matches!(&message, FilePickerMessage::FilepathEdit(_content_action));
 
-                self.file_path = self.filepath_content.text().into();
-            }
-            FileImportMessage::OpenFileDialog => {
-                let file_path = FileDialog::new()
-                    .set_title("Import File")
-                    .add_filter("Text", &["txt", "text", "md"])
-                    .add_filter("All formats", &[""])
-                    .pick_file();
-
-                if let Some(path) = file_path {
-                    self.file_path = path.clone();
-                    self.filepath_content =
-                        UpgradedContent::with_text(path.to_str().expect("path is not valid utf-8"));
-                }
+                self.filepicker.update(message);
             }
             FileImportMessage::SelectedStrategy(strategy) => {
+                self.filepicker_content_is_active = false;
+
                 self.import_strategy = Some(strategy);
             }
             FileImportMessage::Cancel => {
+                self.filepicker_content_is_active = false;
+
                 state
                     .upstream_actions
                     .push(UpstreamAction::CloseWindow(WindowType::FileImport));
             }
             FileImportMessage::Import(strategy) => {
-                if let Ok(imported_string) = fs::read_to_string(self.file_path.clone()) {
+                self.filepicker_content_is_active = false;
+
+                if let Ok(imported_string) = fs::read_to_string(self.filepicker.path()) {
                     let new_text = match strategy {
                         FileImportStrategy::AppendEnd => state.content.text() + &imported_string,
                         FileImportStrategy::AppendStart => imported_string + &state.content.text(),
@@ -155,6 +152,9 @@ impl Windowable<FileImportMessage> for FileImport {
     }
 
     fn content_perform(&mut self, _state: &mut SharedAppState, action: ContentAction) {
-        self.filepath_content.perform(action);
+        if self.filepicker_content_is_active {
+            self.filepicker
+                .update(FilePickerMessage::FilepathEdit(action));
+        }
     }
 }
