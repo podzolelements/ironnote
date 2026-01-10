@@ -1,6 +1,7 @@
 use crate::calender::{self, Calender, CalenderMessage};
 use crate::clipboard::{read_clipboard, write_clipboard};
 use crate::context_menu::context_menu;
+use crate::dialog_manager::DialogType;
 use crate::dictionary::{self, DICTIONARY};
 use crate::highlighter::{self, HighlightSettings, SpellHighlighter};
 use crate::keyboard_manager::{KeyboardAction, TextEdit, UnboundKey};
@@ -743,7 +744,11 @@ impl Windowable<MainMessage> for Main {
                         logbox_mut().log("Saved");
                     }
                     KeyboardAction::Debug => {
-                        println!("debug!");
+                        let dialog_text = "debug!".to_string();
+
+                        state
+                            .upstream_actions
+                            .push(UpstreamAction::OpenDialog(DialogType::Warning, dialog_text));
                     }
                     KeyboardAction::Unbound(unbounded_action) => match unbounded_action {
                         UnboundKey::Cut => {

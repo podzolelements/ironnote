@@ -752,6 +752,7 @@ impl TemplateTask {
                     }
                 },
                 _ => {
+                    // TODO: fix this mess with a similar strategy to the id system used in dialog_manager.rs
                     unreachable!("malformed template task");
                 }
             }

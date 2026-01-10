@@ -11,15 +11,15 @@ pub enum WindowType {
     Preferences,
 }
 
-impl WindowType {
-    const WINDOW_WIDTH: f32 = 1024.0;
-    const WINDOW_HEIGHT: f32 = 768.0;
+pub const WINDOW_WIDTH: f32 = 1024.0;
+pub const WINDOW_HEIGHT: f32 = 768.0;
 
-    const SMALL_WINDOW_SIZE: Size<f32> =
-        Size::new(Self::WINDOW_WIDTH / 2.0, Self::WINDOW_HEIGHT / 2.0);
-    const MEDIUM_WINDOW_SIZE: Size<f32> =
-        Size::new(Self::WINDOW_WIDTH / 1.5, Self::WINDOW_HEIGHT / 1.5);
-    const WINDOW_SIZE: Size<f32> = Size::new(Self::WINDOW_WIDTH, Self::WINDOW_HEIGHT);
+impl WindowType {
+    const WINDOW_SIZE: Size<f32> = Size::new(WINDOW_WIDTH, WINDOW_HEIGHT);
+
+    const SMALL_WINDOW_SIZE: Size<f32> = Size::new(WINDOW_WIDTH / 2.0, WINDOW_HEIGHT / 2.0);
+
+    const MEDIUM_WINDOW_SIZE: Size<f32> = Size::new(WINDOW_WIDTH / 1.5, WINDOW_HEIGHT / 1.5);
 
     /// window settings based on the type of window
     pub fn settings(&self) -> window::Settings {
