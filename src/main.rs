@@ -1,4 +1,5 @@
 use crate::{
+    dialog_manager::{DialogManager, DialogMessage, DialogType},
     dictionary::reload_dictionary,
     file_export_window::{FileExport, FileExportMessage},
     file_import_window::{FileImport, FileImportMessage},
@@ -22,6 +23,7 @@ mod calender;
 mod clipboard;
 mod context_menu;
 mod day_store;
+mod dialog_manager;
 mod dictionary;
 mod file_export_window;
 mod file_extensions;
@@ -47,6 +49,7 @@ mod tasks;
 mod template_tasks;
 mod upgraded_content;
 mod user_preferences;
+mod warning_dialog;
 mod window_manager;
 mod word_count;
 
@@ -81,12 +84,15 @@ impl Default for SharedAppState {
 struct App {
     shared_state: SharedAppState,
     keybinds: Keybinds<KeyboardAction>,
+
     windows: BTreeMap<window::Id, WindowType>,
     main_window: Main,
     file_import_window: FileImport,
     file_export_window: FileExport,
     task_creator_window: TaskCreator,
     preferences_window: Preferences,
+
+    dialog_manager: DialogManager,
 }
 
 #[derive(Debug, Clone)]
@@ -103,6 +109,10 @@ pub enum Message {
     FileExportWindow(FileExportMessage),
     TaskCreatorWindow(TaskCreatorMessage),
     PreferencesWindow(PreferencesMessage),
+
+    DialogOpened(window::Id, DialogType, String),
+    DialogClosed(window::Id, DialogType),
+    DialogUpdate(window::Id, DialogMessage),
 }
 
 #[derive(Debug, Clone)]
@@ -113,6 +123,9 @@ pub enum UpstreamAction {
     CloseWindow(WindowType),
     Autosave,
     RestartApplication,
+
+    OpenDialog(DialogType, String),
+    CloseDialog(window::Id, DialogType),
 }
 
 impl App {
@@ -162,6 +175,8 @@ impl App {
                 WindowType::TaskCreator => self.task_creator_window.title(),
                 WindowType::Preferences => self.preferences_window.title(),
             }
+        } else if let Some(dialog_title) = self.dialog_manager.get_title(id) {
+            dialog_title
         } else {
             "orphaned window".to_string()
         }
@@ -191,6 +206,8 @@ impl App {
                     .view(&self.shared_state)
                     .map(Message::PreferencesWindow),
             }
+        } else if let Some(dialog_view) = self.dialog_manager.get_view(id, &self.shared_state) {
+            dialog_view.map(move |dialog_message| Message::DialogUpdate(id, dialog_message))
         } else {
             column![].into()
         }
@@ -309,9 +326,26 @@ impl App {
 
                 tasks.push(preferences_task);
             }
+            Message::DialogOpened(window_id, dialog_type, dialog_text) => {
+                self.dialog_manager
+                    .insert_dialog(window_id, dialog_type, dialog_text);
+            }
+            Message::DialogUpdate(window_id, dialog_message) => {
+                let dialog_task = self
+                    .dialog_manager
+                    .update(&mut self.shared_state, window_id, dialog_message)
+                    .map(move |dialog_message_mapped| {
+                        Message::DialogUpdate(window_id, dialog_message_mapped)
+                    });
+
+                tasks.push(dialog_task);
+            }
+            Message::DialogClosed(window_id, dialog_type) => {
+                self.dialog_manager.remove_dialog(window_id, dialog_type);
+            }
         }
 
-        for upstream_action in &self.shared_state.upstream_actions.clone() {
+        for upstream_action in self.shared_state.upstream_actions.clone() {
             match upstream_action {
                 UpstreamAction::CreateWindow(window_type) => {
                     let new_window_type = window_type.clone();
@@ -335,7 +369,7 @@ impl App {
                 }
                 UpstreamAction::CloseWindow(closing_window_type) => {
                     for (window_id, window_type) in &self.windows {
-                        if *window_type == *closing_window_type {
+                        if *window_type == closing_window_type {
                             tasks.push(window::close(*window_id));
                         }
                     }
@@ -353,6 +387,26 @@ impl App {
 
                     tasks.push(restart_task);
                 }
+                UpstreamAction::OpenDialog(dialog_type, dialog_text) => {
+                    let (_window_id, task) = window::open(DialogManager::dialog_window_settings());
+
+                    let open_dialog_task = task.map(move |window_id_mapped| {
+                        Message::DialogOpened(
+                            window_id_mapped,
+                            dialog_type.clone(),
+                            dialog_text.clone(),
+                        )
+                    });
+
+                    tasks.push(open_dialog_task);
+                }
+                UpstreamAction::CloseDialog(window_id, dialog_type) => match dialog_type {
+                    DialogType::Warning => {
+                        let close_task = window::close(window_id);
+
+                        tasks.push(close_task);
+                    }
+                },
             }
         }
 
@@ -395,11 +449,14 @@ impl Default for App {
             shared_state: SharedAppState::default(),
             keybinds: bind_keybinds(),
             windows: BTreeMap::new(),
+
             main_window: Main::default(),
             file_import_window: FileImport::default(),
             file_export_window: FileExport::default(),
             task_creator_window: TaskCreator::default(),
             preferences_window: Preferences::default(),
+
+            dialog_manager: DialogManager::default(),
         }
     }
 }
