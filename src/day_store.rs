@@ -2,20 +2,31 @@ use crate::{
     dictionary::WORD_REGEX,
     word_count::{WordCount, WordCounts},
 };
+use chrono::NaiveDate;
 
 #[derive(Debug, Default, Clone)]
 pub struct DayStore {
-    date: String,
+    date: NaiveDate,
     entry_text: String,
     modified: bool,
     word_counts: WordCounts,
 }
 
 impl DayStore {
-    pub fn new(date: &str) -> Self {
+    pub fn new(date: NaiveDate) -> Self {
         Self {
-            date: date.to_string(),
+            date,
             entry_text: String::default(),
+            modified: false,
+            word_counts: WordCounts::default(),
+        }
+    }
+
+    /// creates a new day store with text already present
+    pub fn with_day_text(date: NaiveDate, inital_text: String) -> Self {
+        Self {
+            date,
+            entry_text: inital_text,
             modified: false,
             word_counts: WordCounts::default(),
         }
@@ -32,8 +43,8 @@ impl DayStore {
         self.word_counts.set_sync(false);
     }
 
-    pub fn date(&self) -> String {
-        self.date.clone()
+    pub fn date(&self) -> NaiveDate {
+        self.date
     }
 
     pub fn contains_entry(&self) -> bool {

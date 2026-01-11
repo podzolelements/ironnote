@@ -1,4 +1,4 @@
-use chrono::{DateTime, Local};
+use chrono::NaiveDate;
 use iced::{
     Element, Font, Length,
     font::Weight,
@@ -12,7 +12,7 @@ use iced::{
 
 #[derive(Debug, Clone)]
 pub enum SearchTableMessage {
-    EntryClicked(DateTime<Local>),
+    EntryClicked(NaiveDate),
 }
 
 #[derive(Debug, Default)]
@@ -20,7 +20,7 @@ struct SearchEntry {
     start_text: String,
     bolded_text: String,
     end_text: String,
-    date: DateTime<Local>,
+    date: NaiveDate,
 }
 
 #[derive(Debug, Default)]
@@ -66,7 +66,7 @@ impl SearchTable {
         start_text: String,
         bolded_text: String,
         end_text: String,
-        date: DateTime<Local>,
+        date: NaiveDate,
     ) {
         let new_entry = SearchEntry {
             start_text,

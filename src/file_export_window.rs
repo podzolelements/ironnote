@@ -160,7 +160,7 @@ impl Windowable<FileExportMessage> for FileExport {
                                     && day_store.contains_entry()
                                 {
                                     let year = iterative_day.year().to_string();
-                                    let filename = iterative_day.date_naive().to_string();
+                                    let filename = iterative_day.to_string();
 
                                     let mut root_path = self.bulk_directory_picker.path();
                                     root_path.push(year);

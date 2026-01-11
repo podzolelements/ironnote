@@ -1,18 +1,18 @@
 use crate::{
     day_store::DayStore,
-    misc_tools::{self, string_to_datetime},
+    misc_tools::{self},
     month_store::MonthStore,
     user_preferences::preferences,
     word_count::{TimedWordCount, WordCount, WordCounts},
 };
-use chrono::{DateTime, Datelike, Days, Local, Months, NaiveDate};
+use chrono::{Datelike, Days, Local, Months, NaiveDate};
 use regex::Regex;
 use std::sync::LazyLock;
 
 #[derive(Debug)]
 pub struct GlobalStore {
     entries: Vec<MonthStore>,
-    date_time: DateTime<Local>,
+    current_date: NaiveDate,
     word_counts: WordCounts,
 }
 
@@ -20,71 +20,76 @@ impl Default for GlobalStore {
     fn default() -> Self {
         let mut global_store = Self {
             entries: Vec::default(),
-            date_time: DateTime::default(),
+            current_date: NaiveDate::default(),
             word_counts: WordCounts::default(),
         };
 
-        global_store.set_current_store_date(Local::now());
+        global_store.set_current_store_date(Local::now().date_naive());
 
         global_store
     }
 }
 
 impl GlobalStore {
-    /// changes the active date_time, adding the month if it doesn't exist
-    pub fn set_current_store_date(&mut self, new_date_time: DateTime<Local>) {
-        self.date_time = new_date_time;
+    /// changes the current date, adding the month if it doesn't exist
+    pub fn set_current_store_date(&mut self, new_date: NaiveDate) {
+        self.current_date = new_date;
 
         if !self.entries.iter().any(|month_store| {
-            month_store.get_yyyy_mm() == self.date_time.format("%Y-%m").to_string()
+            month_store.get_yyyy_mm() == self.current_date.format("%Y-%m").to_string()
         }) {
-            self.push_month_store(MonthStore::new(self.date_time));
+            let first_of_month = self
+                .current_date
+                .with_day(1)
+                .expect("invalid first of month");
+
+            self.push_month_store(MonthStore::new(first_of_month));
         }
     }
 
-    /// mutable reference to the current month store based on the active date_time
+    /// mutable access to the current month store based on the current date in the GlobalStore
     pub fn month_mut(&mut self) -> &mut MonthStore {
         let month_index = self
             .entries
             .iter()
             .position(|month_store| {
-                month_store.get_yyyy_mm() == self.date_time.format("%Y-%m").to_string()
+                month_store.get_yyyy_mm() == self.current_date.format("%Y-%m").to_string()
             })
             .expect("month doesn't exist");
 
         &mut self.entries[month_index]
     }
 
-    /// mutable reference to the current day store based on the active date_time
+    /// mutable access to the current day store based on the current date in the global store
     pub fn day_mut(&mut self) -> &mut DayStore {
-        let day_index = self.date_time.day0() as usize;
+        let day_index = self.current_date.day0() as usize;
 
         self.month_mut().day_mut(day_index)
     }
 
-    /// reference to the current month store based on the active date_time
+    /// reference to the current month store based on the current date in the global store
     pub fn month(&self) -> &MonthStore {
         let month_index = self
             .entries
             .iter()
             .position(|month_store| {
-                month_store.get_yyyy_mm() == self.date_time.format("%Y-%m").to_string()
+                month_store.get_yyyy_mm() == self.current_date.format("%Y-%m").to_string()
             })
             .expect("month doesn't exist");
 
         &self.entries[month_index]
     }
 
-    /// reference to the current day store based on the active date_time
+    /// reference to the current day store based on the current date in the global store
     pub fn day(&self) -> &DayStore {
-        let day_index = self.date_time.day0() as usize;
+        let day_index = self.current_date.day0() as usize;
 
         self.month().day(day_index)
     }
 
-    /// returns the active date_time of the global store
-    pub fn date_time(&self) -> DateTime<Local> {
-        self.date_time
+    /// returns the current date of the global store
+    pub fn current_date(&self) -> NaiveDate {
+        self.current_date
     }
 
     /// loads all entries from disk, overwriting any existing data in the store
@@ -109,11 +114,11 @@ impl GlobalStore {
                     continue;
                 }
 
-                let file_date = filename[0..7].to_string() + "-01";
-                let date_time = misc_tools::string_to_datetime(&file_date);
+                let file_date_first = filename[0..7].to_string() + "-01";
+                let first_of_month = misc_tools::yyyy_mm_dd_string_to_date(&file_date_first);
 
-                let mut month_store = MonthStore::new(date_time);
-                month_store.load_month(date_time);
+                let mut month_store = MonthStore::new(first_of_month);
+                month_store.load_month(first_of_month);
 
                 self.add_month_to_store(month_store);
             }
@@ -136,9 +141,7 @@ impl GlobalStore {
         let current_months: Vec<NaiveDate> = self
             .entries
             .iter()
-            .map(|month_store| {
-                string_to_datetime(&(month_store.get_yyyy_mm() + "-01")).date_naive()
-            })
+            .map(|month_store| month_store.first_of_month())
             .collect();
 
         if current_months.len() < 2 {
@@ -162,8 +165,8 @@ impl GlobalStore {
         }
 
         for month_date in missing_months {
-            let month_datetime = string_to_datetime(&month_date.to_string());
-            self.add_month_to_store(MonthStore::new(month_datetime));
+            let first_of_month = month_date.with_day(1).expect("invalid first of month");
+            self.add_month_to_store(MonthStore::new(first_of_month));
         }
 
         self.sort_month_stores();
@@ -195,9 +198,9 @@ impl GlobalStore {
     }
 
     /// retrieves the day store at the given date, if it exists
-    pub fn get_day(&self, datetime: DateTime<Local>) -> Option<DayStore> {
-        let year_month = datetime.format("%Y-%m").to_string();
-        let day = datetime.day0() as usize;
+    pub fn get_day(&self, date: NaiveDate) -> Option<DayStore> {
+        let year_month = date.format("%Y-%m").to_string();
+        let day = date.day0() as usize;
 
         for month_store in self.month_stores() {
             if month_store.get_yyyy_mm() == year_month {
@@ -212,12 +215,12 @@ impl GlobalStore {
         self.month_stores().map(|ms| ms.edited_day_count()).sum()
     }
 
-    /// returns the datetime of the first edited day in the store, if it exists
-    pub fn first_edited_day(&self) -> Option<DateTime<Local>> {
+    /// returns the date of the first edited day in the store, if it exists
+    pub fn first_edited_day(&self) -> Option<NaiveDate> {
         for month in self.month_stores() {
             for day in month.days() {
                 if day.contains_entry() {
-                    return Some(string_to_datetime(&day.date()));
+                    return Some(day.date());
                 }
             }
         }
@@ -225,12 +228,12 @@ impl GlobalStore {
         None
     }
 
-    /// returns the datetime of the last edited day in the store, if it exists
-    pub fn last_edited_day(&self) -> Option<DateTime<Local>> {
+    /// returns the date of the last edited day in the store, if it exists
+    pub fn last_edited_day(&self) -> Option<NaiveDate> {
         for month in self.month_stores().rev() {
             for day in month.days().rev() {
                 if day.contains_entry() {
-                    return Some(string_to_datetime(&day.date()));
+                    return Some(day.date());
                 }
             }
         }
@@ -238,63 +241,60 @@ impl GlobalStore {
         None
     }
 
-    /// returns the previously edited day relative to the given datetime, if it exists
-    pub fn get_previous_edited_day(
-        &self,
-        active_entry: DateTime<Local>,
-    ) -> Option<DateTime<Local>> {
+    /// returns the previously edited day relative to the given date, if it exists
+    pub fn get_previous_edited_day(&self, active_entry: NaiveDate) -> Option<NaiveDate> {
         let earliest_entry = self.first_edited_day()?;
 
-        if active_entry.date_naive() <= earliest_entry.date_naive() {
+        if active_entry <= earliest_entry {
             return None;
         }
 
-        let mut test_datetime = active_entry
+        let mut test_date = active_entry
             .checked_sub_days(Days::new(1))
             .expect("couldn't subtract day");
 
-        while test_datetime.date_naive() >= earliest_entry.date_naive() {
+        while test_date >= earliest_entry {
             if !self
-                .get_day(test_datetime)
+                .get_day(test_date)
                 .is_some_and(|ds| ds.contains_entry())
             {
-                test_datetime = test_datetime
+                test_date = test_date
                     .checked_sub_days(Days::new(1))
                     .expect("couldn't subtract day");
                 continue;
             }
 
-            return Some(test_datetime);
+            return Some(test_date);
         }
 
         None
     }
 
-    /// returns the next edited day relative to the given datetime, if it exists
-    pub fn get_next_edited_day(&self, active_entry: DateTime<Local>) -> Option<DateTime<Local>> {
+    /// returns the next edited day relative to the given date, if it exists
+    pub fn get_next_edited_day(&self, active_entry: NaiveDate) -> Option<NaiveDate> {
         let latest_entry = self.last_edited_day()?;
 
-        if active_entry.date_naive() >= latest_entry.date_naive() {
+        if active_entry >= latest_entry {
             return None;
         }
 
-        let mut test_datetime = active_entry
+        let mut test_date = active_entry
             .checked_add_days(Days::new(1))
             .expect("couldn't add day");
 
-        while test_datetime.date_naive() <= latest_entry.date_naive() {
+        while test_date <= latest_entry {
             if !self
-                .get_day(test_datetime)
+                .get_day(test_date)
                 .is_some_and(|ds| ds.contains_entry())
             {
-                test_datetime = test_datetime
+                test_date = test_date
                     .checked_add_days(Days::new(1))
                     .expect("couldn't add day");
 
                 continue;
             }
 
-            return Some(test_datetime);
+            return Some(test_date);
         }
 
         None

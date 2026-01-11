@@ -439,7 +439,7 @@ impl Windowable<TaskCreatorMessage> for TaskCreator {
 
                 let name_text = self.name_content.text();
 
-                let active_date = state.global_store.date_time().date_naive();
+                let active_date = state.global_store.current_date();
 
                 let (common_data, task_type) = match self.selected_task_type {
                     TaskType::Standard => (TaskCommonDataFormat::Standard, TaskType::Standard),

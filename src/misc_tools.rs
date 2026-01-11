@@ -1,6 +1,6 @@
 // random tools and utilities that don't really fit anywhere in specific
 
-use chrono::{DateTime, Local, NaiveDate, TimeZone};
+use chrono::NaiveDate;
 
 /// returns true if all of the characters in the input string are the same character. returns true on an empty string
 pub fn chars_all_same_in_string(input: &str) -> bool {
@@ -17,12 +17,9 @@ pub fn chars_all_same_in_string(input: &str) -> bool {
     }
 }
 
-/// converts a string in the form of "YYYY-MM-DD" into a DateTime<Local>
-pub fn string_to_datetime(input: &str) -> DateTime<Local> {
-    let nd = NaiveDate::parse_from_str(input, "%Y-%m-%d").expect("couldn't parse date");
-    let ndt = nd.and_hms_opt(0, 0, 0).expect("couldn't create ndt");
-
-    Local.from_local_datetime(&ndt).unwrap()
+/// converts a string in the form of "YYYY-MM-DD" into a NaiveDate
+pub fn yyyy_mm_dd_string_to_date(input: &str) -> NaiveDate {
+    NaiveDate::parse_from_str(input, "%Y-%m-%d").expect("couldn't parse date")
 }
 
 /// computes the number of characters to get to a (char, line) coordinate point in a string
