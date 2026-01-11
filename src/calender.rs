@@ -1,48 +1,36 @@
-use chrono::{Datelike, Local, NaiveDate};
+use chrono::{Datelike, Days, Local, NaiveDate};
 use iced::{
     Alignment::Center,
     Element, Font,
     Length::FillPortion,
     font::Weight,
     never,
-    widget::{Button, Column, Row, Text, rich_text, row, span},
+    widget::{Button, Row, Text, button, column, rich_text, row, span},
 };
 
 #[derive(Debug, Clone)]
 pub enum CalenderMessage {
-    DayButton(u32, Month),
+    DayClicked(NaiveDate),
     BackMonth,
     ForwardMonth,
     BackYear,
     ForwardYear,
 }
 
-#[derive(Clone, Copy, Debug)]
-pub enum Month {
-    Last,
-    Current,
-    Next,
-}
-
 #[derive(Debug)]
 pub struct Calender {
-    day_list: [u32; 42],
-    month_mapping: [Month; 42],
+    day_mapping: [NaiveDate; 42],
     edited_days: [bool; 42],
     current_date: NaiveDate,
-    month_text: String,
-    year_text: String,
 }
 
 impl Calender {
-    pub fn view<'a>(&self) -> Element<'a, CalenderMessage> {
-        let mut cal = Column::new();
-
+    pub fn build_calender<'a>(&self) -> Element<'a, CalenderMessage> {
         let month_back_btn = Button::new("<")
             .on_press(CalenderMessage::BackMonth)
             .width(30)
             .height(30);
-        let month_text = Text::new(self.month_text.clone())
+        let month_text = Text::new(self.current_date.format("%B").to_string())
             .center()
             .size(14)
             .width(75)
@@ -58,7 +46,7 @@ impl Calender {
             .on_press(CalenderMessage::BackYear)
             .width(30)
             .height(30);
-        let year_text = Text::new(self.year_text.clone())
+        let year_text = Text::new(self.current_date.format("%Y").to_string())
             .center()
             .size(14)
             .width(40)
@@ -86,46 +74,47 @@ impl Calender {
             )
         }
 
-        cal = cal.push(month_year_bar);
-        cal = cal.push(day_bar);
+        let mut calender = column![month_year_bar, day_bar];
 
-        for y in 0..6 {
-            let mut row = Row::new();
-            for x in 0..7 {
-                let pos = y * 7 + x;
-                let day_string = (self.day_list[pos]).to_string();
+        let mut day_count = 0;
+        let mut week_row = row![];
+        for (day_index, date) in self.day_mapping.iter().enumerate() {
+            let font = Font {
+                weight: if self.edited_days[day_index] {
+                    Weight::Bold
+                } else {
+                    Weight::Normal
+                },
+                ..Font::DEFAULT
+            };
 
-                let button_content = rich_text![span(day_string).font(Font {
-                    weight: if self.edited_days[pos] {
-                        Weight::Bold
-                    } else {
-                        Weight::Normal
-                    },
-                    ..Font::DEFAULT
-                })]
+            let day_button_content = rich_text![span(date.day().to_string()).font(font)]
                 .size(11)
                 .on_link_click(never)
                 .center();
 
-                let day_button = Button::new(button_content)
-                    .on_press(CalenderMessage::DayButton(
-                        self.day_list[pos],
-                        self.month_mapping[pos],
-                    ))
-                    .width(36)
-                    .height(24);
-                row = row.push(day_button);
+            let day_button = button(day_button_content)
+                .on_press(CalenderMessage::DayClicked(*date))
+                .width(36)
+                .height(24);
+
+            week_row = week_row.push(day_button);
+            day_count += 1;
+
+            if day_count == 7 {
+                calender = calender.push(week_row);
+                week_row = row![];
+                day_count = 0;
             }
-            cal = cal.push(row);
         }
 
-        cal.into()
+        calender.into()
     }
 
-    fn start_day_offset(active_date: NaiveDate) -> u32 {
-        let active_first = active_date.with_day(1).expect("1st doesn't exist");
+    fn start_day_offset(&self) -> u32 {
+        let current_month_first = self.current_date.with_day(1).expect("1st doesn't exist");
 
-        let start_offset = active_first.weekday().num_days_from_sunday();
+        let start_offset = current_month_first.weekday().num_days_from_sunday();
 
         if start_offset == 0 { 7 } else { start_offset }
     }
@@ -133,82 +122,40 @@ impl Calender {
     pub fn set_edited_days(&mut self, edited_days: [bool; 31]) {
         self.edited_days = [false; 42];
 
-        let start_offset = Self::start_day_offset(self.current_date) as usize;
+        let start_offset = self.start_day_offset() as usize;
 
         self.edited_days[start_offset..(start_offset + 31)].copy_from_slice(&edited_days);
     }
 
-    fn days_in_previous_month(current_date: NaiveDate) -> u32 {
-        match current_date.month() {
-            1 => 31,
-            2 => 31,
-            3 => {
-                if current_date.leap_year() {
-                    29
-                } else {
-                    28
-                }
-            }
-            4 => 31,
-            5 => 30,
-            6 => 31,
-            7 => 30,
-            8 => 31,
-            9 => 31,
-            10 => 30,
-            11 => 31,
-            12 => 30,
-            _ => unreachable!("invalid month"),
-        }
-    }
-
-    pub fn update_calender_dates(&mut self, current_date: NaiveDate) {
+    pub fn set_current_date(&mut self, current_date: NaiveDate) {
         self.current_date = current_date;
 
-        let start_offset = Self::start_day_offset(self.current_date);
+        let days_before_first = Days::new(self.start_day_offset() as u64);
 
-        let days_in_last_month = Self::days_in_previous_month(self.current_date);
+        let month_first = self.current_date.with_day(1).expect("first doesn't exist");
 
-        let mut cal_first_date = (days_in_last_month - start_offset) + 1;
+        let calender_start_date = month_first
+            .checked_sub_days(days_before_first)
+            .expect("unable to sub days");
 
-        let mut current_day_addr = 0;
+        let mut iterative_date = calender_start_date;
 
-        for _day_last_month in 0..start_offset {
-            self.day_list[current_day_addr] = cal_first_date;
-            self.month_mapping[current_day_addr] = Month::Last;
-            current_day_addr += 1;
-            cal_first_date += 1;
+        for day in self.day_mapping.iter_mut() {
+            *day = iterative_date;
+
+            iterative_date = iterative_date
+                .checked_add_days(Days::new(1))
+                .expect("couldn't add day");
         }
-
-        for day_in_month in 1..=(self.current_date.num_days_in_month() as u32) {
-            self.day_list[current_day_addr] = day_in_month;
-            self.month_mapping[current_day_addr] = Month::Current;
-            current_day_addr += 1;
-        }
-
-        let eom = current_day_addr;
-        let mut next_month_count = 1;
-        for _day_next_month in eom..42 {
-            self.day_list[current_day_addr] = next_month_count;
-            self.month_mapping[current_day_addr] = Month::Next;
-            next_month_count += 1;
-            current_day_addr += 1;
-        }
-
-        self.month_text = self.current_date.format("%B").to_string();
-        self.year_text = self.current_date.format("%Y").to_string();
     }
 }
 
 impl Default for Calender {
     fn default() -> Self {
         Self {
-            day_list: [0; 42],
-            month_mapping: [Month::Last; 42],
+            day_mapping: [NaiveDate::default(); 42],
             edited_days: [false; 42],
             current_date: Local::now().date_naive(),
-            month_text: String::new(),
-            year_text: String::new(),
         }
     }
 }

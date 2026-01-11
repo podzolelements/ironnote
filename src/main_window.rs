@@ -1,4 +1,4 @@
-use crate::calender::{self, Calender, CalenderMessage};
+use crate::calender::{Calender, CalenderMessage};
 use crate::clipboard::{read_clipboard, write_clipboard};
 use crate::context_menu::context_menu;
 use crate::dialog_manager::DialogType;
@@ -21,7 +21,7 @@ use crate::user_preferences::{preferences, preferences_mut};
 use crate::window_manager::{WindowType, Windowable};
 use crate::word_count::{TimedWordCount, WordCount};
 use crate::{SharedAppState, UpstreamAction};
-use chrono::{DateTime, Datelike, Days, Local, Months, NaiveDate};
+use chrono::{DateTime, Days, Local, Months, NaiveDate};
 use iced::Length::Fill;
 use iced::widget::operation::snap_to;
 use iced::widget::scrollable::{AbsoluteOffset, RelativeOffset, Viewport};
@@ -158,8 +158,7 @@ impl Windowable<MainMessage> for Main {
 
         let daily_nav_bar = row![back_button, today_button, forward_button].width(7 * 36);
 
-        let cal = Calender::view(&self.calender).map(MainMessage::Calender);
-        let temp_calender_bar = row![cal];
+        let calender = self.calender.build_calender().map(MainMessage::Calender);
 
         let tasks_tab_content = {
             let tasks = column![
@@ -297,7 +296,7 @@ impl Windowable<MainMessage> for Main {
             Length::Fill,
         );
 
-        let left_ui = column![daily_nav_bar, temp_calender_bar, tab_view];
+        let left_ui = column![daily_nav_bar, calender, tab_view];
 
         let right_top_bar = row![
             widget::button("test button 0")
@@ -623,69 +622,7 @@ impl Windowable<MainMessage> for Main {
                 self.active_content = None;
 
                 match calender_message {
-                    CalenderMessage::DayButton(new_day, month) => {
-                        let new_date = match month {
-                            calender::Month::Last => {
-                                let days_in_last_month =
-                                    if state.global_store.current_date().month() == 1 {
-                                        31
-                                    } else {
-                                        let nd = NaiveDate::from_ymd_opt(
-                                            state.global_store.current_date().year(),
-                                            state.global_store.current_date().month() - 1,
-                                            1,
-                                        )
-                                        .expect("bad date");
-
-                                        nd.num_days_in_month() as u32
-                                    };
-
-                                let days_to_go_back = (days_in_last_month - new_day)
-                                    + state.global_store.current_date().day();
-
-                                state
-                                    .global_store
-                                    .current_date()
-                                    .checked_sub_days(Days::new(days_to_go_back as u64))
-                                    .expect("couldn't go into the past")
-                            }
-                            calender::Month::Current => {
-                                let delta_day = (new_day as i32)
-                                    - (state.global_store.current_date().day() as i32);
-
-                                let mag_delta_day = delta_day.unsigned_abs() as u64;
-
-                                if delta_day == 0 {
-                                    return Task::none();
-                                }
-                                if delta_day < 0 {
-                                    state
-                                        .global_store
-                                        .current_date()
-                                        .checked_sub_days(Days::new(mag_delta_day))
-                                        .expect("couldn't jump into the past")
-                                } else {
-                                    state
-                                        .global_store
-                                        .current_date()
-                                        .checked_add_days(Days::new(mag_delta_day))
-                                        .expect("couldn't jump into the future")
-                                }
-                            }
-                            calender::Month::Next => {
-                                let days_to_go_forward =
-                                    (state.global_store.current_date().num_days_in_month() as u64
-                                        - state.global_store.current_date().day() as u64)
-                                        + new_day as u64;
-
-                                state
-                                    .global_store
-                                    .current_date()
-                                    .checked_add_days(Days::new(days_to_go_forward))
-                                    .expect("couldn't go into the future")
-                            }
-                        };
-
+                    CalenderMessage::DayClicked(new_date) => {
                         self.reload_date(state, new_date);
                     }
                     CalenderMessage::BackMonth => {
@@ -1117,7 +1054,7 @@ impl Main {
 
         self.update_window_title(state);
         self.calender
-            .update_calender_dates(state.global_store.current_date());
+            .set_current_date(state.global_store.current_date());
         self.load_active_entry(state);
 
         self.calender
