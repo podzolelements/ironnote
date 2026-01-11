@@ -20,7 +20,7 @@ use crate::upgraded_content::{ContentAction, UpgradedContent};
 use crate::user_preferences::{preferences, preferences_mut};
 use crate::window_manager::{WindowType, Windowable};
 use crate::word_count::{TimedWordCount, WordCount};
-use crate::{SharedAppState, UpstreamAction, misc_tools};
+use crate::{SharedAppState, UpstreamAction};
 use chrono::{DateTime, Datelike, Days, Local, Months, NaiveDate};
 use iced::Length::Fill;
 use iced::widget::operation::snap_to;
@@ -165,7 +165,7 @@ impl Windowable<MainMessage> for Main {
             let tasks = column![
                 state
                     .all_tasks
-                    .build_tasks(state.global_store.date_time().date_naive())
+                    .build_tasks(state.global_store.current_date())
                     .map(MainMessage::TaskAction),
             ];
 
@@ -506,20 +506,20 @@ impl Windowable<MainMessage> for Main {
 
                 let previous_day = state
                     .global_store
-                    .date_time()
+                    .current_date()
                     .checked_sub_days(Days::new(1))
                     .expect("failed to go to previous day");
 
-                let new_datetime = if state.global_store.day().contains_entry() {
+                let new_date = if state.global_store.day().contains_entry() {
                     previous_day
                 } else {
                     state
                         .global_store
-                        .get_previous_edited_day(state.global_store.date_time())
+                        .get_previous_edited_day(state.global_store.current_date())
                         .unwrap_or(previous_day)
                 };
 
-                self.reload_date(state, new_datetime);
+                self.reload_date(state, new_date);
 
                 snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::START)
             }
@@ -528,28 +528,27 @@ impl Windowable<MainMessage> for Main {
 
                 let next_day = state
                     .global_store
-                    .date_time()
+                    .current_date()
                     .checked_add_days(Days::new(1))
                     .expect("failed to go to next day");
 
-                let new_datetime = if state.global_store.day().contains_entry() {
+                let new_date = if state.global_store.day().contains_entry() {
                     next_day
                 } else {
                     state
                         .global_store
-                        .get_next_edited_day(state.global_store.date_time())
+                        .get_next_edited_day(state.global_store.current_date())
                         .unwrap_or(next_day)
                 };
 
-                self.reload_date(state, new_datetime);
+                self.reload_date(state, new_date);
 
                 snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::START)
             }
             MainMessage::JumpToToday => {
                 self.active_content = None;
 
-                let new_datetime = Local::now();
-                self.reload_date(state, new_datetime);
+                self.reload_date(state, Local::now().date_naive());
 
                 snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::START)
             }
@@ -625,15 +624,15 @@ impl Windowable<MainMessage> for Main {
 
                 match calender_message {
                     CalenderMessage::DayButton(new_day, month) => {
-                        let new_datetime = match month {
+                        let new_date = match month {
                             calender::Month::Last => {
                                 let days_in_last_month =
-                                    if state.global_store.date_time().month() == 1 {
+                                    if state.global_store.current_date().month() == 1 {
                                         31
                                     } else {
                                         let nd = NaiveDate::from_ymd_opt(
-                                            state.global_store.date_time().year(),
-                                            state.global_store.date_time().month() - 1,
+                                            state.global_store.current_date().year(),
+                                            state.global_store.current_date().month() - 1,
                                             1,
                                         )
                                         .expect("bad date");
@@ -642,17 +641,17 @@ impl Windowable<MainMessage> for Main {
                                     };
 
                                 let days_to_go_back = (days_in_last_month - new_day)
-                                    + state.global_store.date_time().day();
+                                    + state.global_store.current_date().day();
 
                                 state
                                     .global_store
-                                    .date_time()
+                                    .current_date()
                                     .checked_sub_days(Days::new(days_to_go_back as u64))
                                     .expect("couldn't go into the past")
                             }
                             calender::Month::Current => {
                                 let delta_day = (new_day as i32)
-                                    - (state.global_store.date_time().day() as i32);
+                                    - (state.global_store.current_date().day() as i32);
 
                                 let mag_delta_day = delta_day.unsigned_abs() as u64;
 
@@ -662,68 +661,68 @@ impl Windowable<MainMessage> for Main {
                                 if delta_day < 0 {
                                     state
                                         .global_store
-                                        .date_time()
+                                        .current_date()
                                         .checked_sub_days(Days::new(mag_delta_day))
                                         .expect("couldn't jump into the past")
                                 } else {
                                     state
                                         .global_store
-                                        .date_time()
+                                        .current_date()
                                         .checked_add_days(Days::new(mag_delta_day))
                                         .expect("couldn't jump into the future")
                                 }
                             }
                             calender::Month::Next => {
                                 let days_to_go_forward =
-                                    (state.global_store.date_time().num_days_in_month() as u64
-                                        - state.global_store.date_time().day() as u64)
+                                    (state.global_store.current_date().num_days_in_month() as u64
+                                        - state.global_store.current_date().day() as u64)
                                         + new_day as u64;
 
                                 state
                                     .global_store
-                                    .date_time()
+                                    .current_date()
                                     .checked_add_days(Days::new(days_to_go_forward))
                                     .expect("couldn't go into the future")
                             }
                         };
 
-                        self.reload_date(state, new_datetime);
+                        self.reload_date(state, new_date);
                     }
                     CalenderMessage::BackMonth => {
-                        let new_datetime = state
+                        let new_date = state
                             .global_store
-                            .date_time()
+                            .current_date()
                             .checked_sub_months(Months::new(1))
                             .expect("couldn't go back a month");
 
-                        self.reload_date(state, new_datetime);
+                        self.reload_date(state, new_date);
                     }
                     CalenderMessage::ForwardMonth => {
-                        let new_datetime = state
+                        let new_date = state
                             .global_store
-                            .date_time()
+                            .current_date()
                             .checked_add_months(Months::new(1))
                             .expect("couldn't go forward a month");
 
-                        self.reload_date(state, new_datetime);
+                        self.reload_date(state, new_date);
                     }
                     CalenderMessage::BackYear => {
-                        let new_datetime = state
+                        let new_date = state
                             .global_store
-                            .date_time()
+                            .current_date()
                             .checked_sub_months(Months::new(12))
                             .expect("couldn't go back a year");
 
-                        self.reload_date(state, new_datetime);
+                        self.reload_date(state, new_date);
                     }
                     CalenderMessage::ForwardYear => {
-                        let new_datetime = state
+                        let new_date = state
                             .global_store
-                            .date_time()
+                            .current_date()
                             .checked_add_months(Months::new(12))
                             .expect("couldn't go forward a year");
 
-                        self.reload_date(state, new_datetime);
+                        self.reload_date(state, new_date);
                     }
                 }
 
@@ -784,9 +783,9 @@ impl Windowable<MainMessage> for Main {
             MainMessage::TableSearch(table_message) => {
                 self.active_content = None;
 
-                let SearchTableMessage::EntryClicked(table_time) = table_message;
+                let SearchTableMessage::EntryClicked(table_date) = table_message;
 
-                self.reload_date(state, table_time);
+                self.reload_date(state, table_date);
 
                 snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::START)
             }
@@ -1102,7 +1101,7 @@ impl Main {
     fn update_window_title(&mut self, state: &mut SharedAppState) {
         let formated_date = state
             .global_store
-            .date_time()
+            .current_date()
             .format("%A, %B %d, %Y")
             .to_string();
         let new_title = "ironnote - ".to_string() + &formated_date;
@@ -1111,14 +1110,14 @@ impl Main {
     }
 
     /// writes the current entry into the store and changes the date of the current entry
-    fn reload_date(&mut self, state: &mut SharedAppState, new_datetime: DateTime<Local>) {
+    fn reload_date(&mut self, state: &mut SharedAppState, new_date: NaiveDate) {
         self.write_active_entry_to_store(state);
 
-        state.global_store.set_current_store_date(new_datetime);
+        state.global_store.set_current_store_date(new_date);
 
         self.update_window_title(state);
         self.calender
-            .update_calender_dates(state.global_store.date_time());
+            .update_calender_dates(state.global_store.current_date());
         self.load_active_entry(state);
 
         self.calender
@@ -1127,7 +1126,7 @@ impl Main {
         state
             .all_tasks
             .template_tasks
-            .generate_template_entries(state.global_store.date_time().date_naive());
+            .generate_template_entries(state.global_store.current_date());
 
         self.last_edit_time = Local::now();
 
@@ -1219,7 +1218,7 @@ impl Main {
                         subtext_idx + 50
                     };
 
-                    let start_text = (day_store.date()
+                    let start_text = (day_store.date().to_string()
                         + " ... "
                         + original_content_text
                             .get(start_idx..subtext_idx)
@@ -1238,12 +1237,14 @@ impl Main {
                         + " ...")
                         .replace("\n", " ");
 
-                    let date = misc_tools::string_to_datetime(&day_store.date());
-
                     self.search_text = bolded_text.clone();
 
-                    self.search_table
-                        .insert_element(start_text, bolded_text, end_text, date);
+                    self.search_table.insert_element(
+                        start_text,
+                        bolded_text,
+                        end_text,
+                        day_store.date(),
+                    );
                 }
             }
         }
