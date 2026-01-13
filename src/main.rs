@@ -19,6 +19,7 @@ use iced::{Element, Event, Subscription, Task, event::listen_with, keyboard, wid
 use keybinds::Keybinds;
 use std::collections::BTreeMap;
 
+mod button_themes;
 mod calender;
 mod clipboard;
 mod context_menu;
@@ -33,6 +34,7 @@ mod global_store;
 mod highlighter;
 mod history_stack;
 mod journal_pointer;
+mod journal_theme;
 mod keyboard_manager;
 mod logbox;
 mod main_window;
