@@ -1,9 +1,10 @@
-use crate::calender::{Calender, CalenderMessage};
+use crate::calender::{Calender, CalenderColormap, CalenderMessage, TOTAL_CALENDER_WIDTH};
 use crate::clipboard::{read_clipboard, write_clipboard};
 use crate::context_menu::context_menu;
 use crate::dialog_manager::DialogType;
 use crate::dictionary::{self, DICTIONARY};
 use crate::highlighter::{self, HighlightSettings, SpellHighlighter};
+use crate::journal_theme::LIGHT;
 use crate::keyboard_manager::{KeyboardAction, TextEdit, UnboundKey};
 use crate::logbox::{logbox, logbox_mut};
 use crate::menu_bar::{MenuBar, menu_bar};
@@ -40,7 +41,7 @@ use iced::{
         text_editor::{self},
     },
 };
-use std::time;
+use std::{time};
 use strum::Display;
 
 #[derive(Debug, Default, Clone, PartialEq, Display)]
@@ -156,7 +157,8 @@ impl Windowable<MainMessage> for Main {
             .width(FillPortion(1))
             .height(100);
 
-        let daily_nav_bar = row![back_button, today_button, forward_button].width(7 * 36);
+        let daily_nav_bar =
+            row![back_button, today_button, forward_button].width(TOTAL_CALENDER_WIDTH);
 
         let calender = self.calender.build_calender().map(MainMessage::Calender);
 
@@ -292,7 +294,7 @@ impl Windowable<MainMessage> for Main {
         let tab_view = tabview_content_vertical(
             tab_elements,
             self.current_tab.to_index(),
-            Length::Fixed(250.0),
+            Length::Fixed(TOTAL_CALENDER_WIDTH as f32),
             Length::Fill,
         );
 
@@ -733,8 +735,19 @@ impl Windowable<MainMessage> for Main {
 
                 self.current_tab = tab;
 
-                if self.current_tab == Tab::Stats {
-                    state.global_store.update_word_count();
+                match self.current_tab {
+                    Tab::Tasks => {
+                        self.calender.set_colormap(CalenderColormap::default());
+                    }
+                    Tab::Search => {
+                        self.calender.set_colormap(CalenderColormap::default());
+                    }
+                    Tab::Stats => {
+                        state.global_store.update_word_count();
+
+                        self.calender
+                            .set_colormap(self.compute_word_count_colormap(state));
+                    }
                 }
 
                 Task::none()
@@ -1021,9 +1034,14 @@ impl Main {
         state.global_store.day_mut().set_day_text(current_text);
 
         self.calender
-            .set_edited_days(state.global_store.month().edited_days());
+            .set_bolded_days(&state.global_store.month().edited_days());
 
         state.global_store.update_word_count();
+
+        if self.current_tab == Tab::Stats {
+            self.calender
+                .set_colormap(self.compute_word_count_colormap(state));
+        }
     }
 
     /// writes current entry to store, saves the store to disk, and saves task list to disk
@@ -1058,7 +1076,12 @@ impl Main {
         self.load_active_entry(state);
 
         self.calender
-            .set_edited_days(state.global_store.month().edited_days());
+            .set_bolded_days(&state.global_store.month().edited_days());
+
+        if self.current_tab == Tab::Stats {
+            self.calender
+                .set_colormap(self.compute_word_count_colormap(state));
+        }
 
         state
             .all_tasks
@@ -1184,6 +1207,60 @@ impl Main {
                     );
                 }
             }
+        }
+    }
+
+    /// maps the word counts for all days of the calender into the corresponding colormap
+    fn compute_word_count_colormap(&self, state: &SharedAppState) -> CalenderColormap {
+        let mut char_counts = [0; 42];
+
+        let mut iterative_date = self.calender.calender_start_date();
+
+        for char_count in char_counts.iter_mut() {
+            if let Some(day_store) = state.global_store.get_day(iterative_date) {
+                let day_char_count = day_store.total_char_count();
+
+                *char_count = day_char_count;
+            }
+
+            iterative_date = iterative_date
+                .checked_add_days(Days::new(1))
+                .expect("couldn't add day");
+        }
+
+        let mut sorted_char_counts = char_counts;
+        sorted_char_counts.sort();
+
+        let soft_max_char_count = sorted_char_counts
+            .iter()
+            .rev()
+            .take(3)
+            .filter(|top_char_count| **top_char_count > 0)
+            .min()
+            .unwrap_or(&0);
+
+        let mut colormap_weights = [None; 42];
+
+        if *soft_max_char_count > 0 {
+            for (color_index, color) in colormap_weights.iter_mut().enumerate() {
+                if char_counts[color_index] == 0 {
+                    continue;
+                }
+
+                let day_char_count = char_counts[color_index];
+
+                let new_color =
+                    (day_char_count as f32 / *soft_max_char_count as f32).clamp(0.0, 1.0);
+
+                *color = Some(new_color);
+            }
+        }
+
+        CalenderColormap {
+            colormap_weights,
+            color_floor: LIGHT.char_count_floor,
+            color_ceiling: LIGHT.char_count_ceiling,
+            current_day_overwrite: false,
         }
     }
 }
