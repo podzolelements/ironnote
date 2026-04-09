@@ -14,14 +14,14 @@ use crate::menu_bar_builder::{
 use crate::misc_tools::point_on_edge_of_text;
 use crate::search_table::{SearchTable, SearchTableMessage};
 use crate::tabview::{TabviewItem, tabview_content_vertical};
-use crate::template_tasks::{
-    MultiBinaryMessage, StandardMessage, TaskType, TemplateMessage, TemplateTaskMessage,
-};
+use crate::task_id::TaskId;
+use crate::template_tasks::{TaskMut, TemplateTaskMessage};
 use crate::upgraded_content::{ContentAction, UpgradedContent};
 use crate::user_preferences::{preferences, preferences_mut};
 use crate::window_manager::{WindowType, Windowable};
 use crate::word_count::{TimedWordCount, WordCount};
 use crate::{SharedAppState, UpstreamAction};
+
 use chrono::{DateTime, Days, Local, Months, NaiveDate};
 use iced::Length::Fill;
 use iced::widget::operation::snap_to;
@@ -41,7 +41,7 @@ use iced::{
         text_editor::{self},
     },
 };
-use std::{time};
+use std::time;
 use strum::Display;
 
 #[derive(Debug, Default, Clone, PartialEq, Display)]
@@ -68,7 +68,7 @@ pub enum ActiveContent {
     Editor,
     Search,
     /// the TemplateTaskMessage stores which task has the editor, so we don't need to store anything else
-    Task(TemplateTaskMessage),
+    Task(TaskId),
 }
 
 #[derive(Debug)]
@@ -948,11 +948,12 @@ impl Windowable<MainMessage> for Main {
                 Task::none()
             }
             MainMessage::TaskAction(template_message) => {
-                self.active_content = template_message
-                    .message_edits_content()
-                    .then_some(ActiveContent::Task(template_message.clone()));
+                self.active_content = Some(ActiveContent::Task(template_message.task_id));
 
-                state.all_tasks.template_tasks.update(template_message);
+                state
+                    .all_tasks
+                    .template_tasks
+                    .update(state.global_store.current_date(), template_message);
 
                 Task::none()
             }
@@ -971,25 +972,25 @@ impl Windowable<MainMessage> for Main {
             match active_content {
                 ActiveContent::Editor => state.content.perform(action),
                 ActiveContent::Search => self.search_content.perform(action),
-                ActiveContent::Task(template_message) => {
-                    let task_type = template_message.task_type();
-
-                    let new_message = match task_type {
-                        TaskType::Standard => {
-                            TemplateMessage::Standard(StandardMessage::TextEdit(action))
+                ActiveContent::Task(task_id) => {
+                    if let Some(task) = state.all_tasks.template_tasks.get_task_mut(*task_id) {
+                        match task {
+                            TaskMut::Standard(standard_task) => {
+                                if let Some(task_element) =
+                                    standard_task.get_element_mut(state.global_store.current_date())
+                                {
+                                    task_element.text_perform(action);
+                                }
+                            }
+                            TaskMut::MultiBinary(multi_binary_task) => {
+                                if let Some(task_element) = multi_binary_task
+                                    .get_element_mut(state.global_store.current_date())
+                                {
+                                    task_element.text_perform(action);
+                                }
+                            }
                         }
-                        TaskType::MultiBinary => {
-                            TemplateMessage::MultiBinary(MultiBinaryMessage::TextEdit(action))
-                        }
-                    };
-
-                    let mut modified_template_message = template_message.clone();
-                    modified_template_message.change_message(new_message);
-
-                    state
-                        .all_tasks
-                        .template_tasks
-                        .update(modified_template_message);
+                    }
                 }
             }
         }

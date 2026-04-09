@@ -1,16 +1,18 @@
 use crate::{
     month_day::MonthDay,
+    task_id::TaskId,
     upgraded_content::{ContentAction, UpgradedContent},
     user_preferences::preferences,
 };
+
 use chrono::{Datelike, NaiveDate, Weekday};
 use iced::{
     Element,
     Length::Fill,
     widget::{self, Space, Text, button, checkbox, column, row},
 };
-use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fs};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::{collections::BTreeMap, fs};
 use strum::Display;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -21,48 +23,87 @@ pub enum StandardMessage {
 }
 
 #[derive(Debug, Default)]
-/// the standard task with a text box and a single checkbox
-pub struct StandardData {
-    text_content: UpgradedContent,
+/// The standard task with a text box and a single checkbox
+pub struct StandardTaskElement {
     completed: bool,
+    text: UpgradedContent,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-/// StandardData task data as stored on disk
-pub struct StandardDataDisk {
+#[derive(Debug, Default, Serialize, Deserialize)]
+/// StandardTaskElement as stored on disk
+struct StandardTaskElementDisk {
+    completed: bool,
     text: String,
-    completed: bool,
 }
 
-impl From<&StandardDataDisk> for StandardData {
-    fn from(value: &StandardDataDisk) -> Self {
-        StandardData {
-            text_content: UpgradedContent::with_text(&value.text),
-            completed: value.completed,
+impl From<&StandardTaskElement> for StandardTaskElementDisk {
+    fn from(non_disk: &StandardTaskElement) -> Self {
+        StandardTaskElementDisk {
+            completed: non_disk.completed,
+            text: non_disk.text.text(),
         }
     }
 }
 
-impl From<&StandardData> for StandardDataDisk {
-    fn from(value: &StandardData) -> Self {
-        let text = value.text_content.text();
-
-        StandardDataDisk {
-            text,
-            completed: value.completed,
+impl From<&StandardTaskElementDisk> for StandardTaskElement {
+    fn from(disk: &StandardTaskElementDisk) -> Self {
+        StandardTaskElement {
+            completed: disk.completed,
+            text: UpgradedContent::with_text(&disk.text),
         }
     }
 }
 
-impl StandardData {
-    /// creates an empty StandardData
-    pub fn new() -> Self {
-        StandardData::default()
+impl Serialize for StandardTaskElement {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let disk = StandardTaskElementDisk::from(self);
+        disk.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for StandardTaskElement {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let disk_element = StandardTaskElementDisk::deserialize(deserializer)?;
+
+        let standard_element = StandardTaskElement::from(&disk_element);
+
+        Ok(standard_element)
+    }
+}
+
+impl StandardTaskElement {
+    /// A blank StandardTask entry
+    fn new_instance() -> Self {
+        Self::default()
     }
 
     /// set if the task was completed or not
     pub fn set_completion(&mut self, completed: bool) {
         self.completed = completed;
+    }
+
+    /// Performs the action on the underlying UpgradedContent
+    pub fn text_perform(&mut self, content_action: ContentAction) {
+        self.text.perform(content_action);
+    }
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+/// Contains all the individual element entries in a standard task
+pub struct StandardTask {
+    elements: BTreeMap<NaiveDate, StandardTaskElement>,
+}
+
+impl StandardTask {
+    /// Returns mutable access to a element at the given date, if it exists
+    pub fn get_element_mut(&mut self, active_date: NaiveDate) -> Option<&mut StandardTaskElement> {
+        self.elements.get_mut(&active_date)
     }
 }
 
@@ -75,147 +116,128 @@ pub enum MultiBinaryMessage {
 }
 
 #[derive(Debug, Default)]
-/// a task that can have any number of binary subtasks. the names of the subtasks are stored in the common data section
-pub struct MultiBinaryData {
-    text_content: UpgradedContent,
+/// A task with any number of subtask components
+pub struct MultiBinaryTaskElement {
     subtask_completion: Vec<bool>,
     completion_override: bool,
+    text: UpgradedContent,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-/// data that is common to all MultiBinary tasks
-pub struct MultiBinaryCommonData {
-    subtask_names: Vec<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct MultiBinaryDataDisk {
+#[derive(Debug, Default, Serialize, Deserialize)]
+/// The MultiBinaryTaskElement as stored on disk
+struct MultiBinaryTaskElementDisk {
+    subtask_completion: Vec<bool>,
+    completion_override: bool,
     text: String,
-    subtask_completion: Vec<bool>,
-    completion_override: bool,
 }
 
-impl From<&MultiBinaryDataDisk> for MultiBinaryData {
-    fn from(value: &MultiBinaryDataDisk) -> Self {
-        MultiBinaryData {
-            text_content: UpgradedContent::with_text(&value.text),
-            subtask_completion: value.subtask_completion.clone(),
-            completion_override: value.completion_override,
+impl From<&MultiBinaryTaskElement> for MultiBinaryTaskElementDisk {
+    fn from(non_disk: &MultiBinaryTaskElement) -> Self {
+        MultiBinaryTaskElementDisk {
+            subtask_completion: non_disk.subtask_completion.clone(),
+            completion_override: non_disk.completion_override,
+            text: non_disk.text.text(),
         }
     }
 }
 
-impl From<&MultiBinaryData> for MultiBinaryDataDisk {
-    fn from(value: &MultiBinaryData) -> Self {
-        let text = value.text_content.text();
-
-        Self {
-            text,
-            subtask_completion: value.subtask_completion.clone(),
-            completion_override: value.completion_override,
+impl From<&MultiBinaryTaskElementDisk> for MultiBinaryTaskElement {
+    fn from(disk: &MultiBinaryTaskElementDisk) -> Self {
+        MultiBinaryTaskElement {
+            subtask_completion: disk.subtask_completion.clone(),
+            completion_override: disk.completion_override,
+            text: UpgradedContent::with_text(&disk.text),
         }
     }
 }
 
-impl MultiBinaryData {
-    /// creates an empty MultiBinaryData with the given number of subtasks. the number of subtasks must match the
-    /// number in the common data section
-    pub fn new(subtask_count: usize) -> Self {
+impl Serialize for MultiBinaryTaskElement {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let disk = MultiBinaryTaskElementDisk::from(self);
+        disk.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for MultiBinaryTaskElement {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let disk_element = MultiBinaryTaskElementDisk::deserialize(deserializer)?;
+
+        let non_disk_element = MultiBinaryTaskElement::from(&disk_element);
+
+        Ok(non_disk_element)
+    }
+}
+
+impl MultiBinaryTaskElement {
+    /// Creates a new element based on the data in the common structure
+    fn new_instance(common_data: &MultiBinaryCommon) -> Self {
         Self {
-            text_content: UpgradedContent::default(),
-            subtask_completion: vec![false; subtask_count],
+            subtask_completion: vec![false; common_data.subtasks.len()],
             completion_override: false,
+            text: UpgradedContent::default(),
         }
     }
 
-    /// sets the completion state of the subtask at the specified subtask index
-    pub fn set_completion(&mut self, completion_index: usize, completed: bool) {
+    /// Set the completion status of the subtask at the given index
+    pub fn set_subtask_completion(&mut self, completion_index: usize, completed: bool) {
         self.subtask_completion[completion_index] = completed;
     }
 
-    /// set the completion override state of the subtask
-    pub fn set_completion_override(&mut self, completed: bool) {
-        self.completion_override = completed;
-    }
-
-    /// returns true if the checkbox on the minimized task should be checked. the box becomes checked automatically if
-    /// all subtasks are completed, or if it has been manually completed via the override
+    /// Returns if the task as a whole is completed. If all subtasks are complete this returns true. If the completion
+    /// has been manually overriden, this will return true, even if not all subtasks have been completed
     pub fn is_completed(&self) -> bool {
         if self.completion_override {
             return true;
         }
 
-        let all_subtasks_completed = self.subtask_completion.iter().all(|completed| *completed);
-
-        if all_subtasks_completed {
-            return true;
-        }
-
-        false
+        self.subtask_completion
+            .iter()
+            .all(|&subtask_completed| subtask_completed)
     }
-}
 
-impl MultiBinaryCommonData {
-    /// creates the subtask names of the MultiBinary task
-    pub fn new(subtask_names: Vec<String>) -> Self {
-        Self { subtask_names }
-    }
-}
-
-#[derive(Debug)]
-/// types of different data formats used by the template tasks
-pub enum TaskDataFormat {
-    Standard(StandardData),
-    MultiBinary(MultiBinaryData),
-}
-
-impl TaskDataFormat {
-    /// converts the data format into the corresponding TaskType
-    pub fn task_type(&self) -> TaskType {
-        match self {
-            TaskDataFormat::Standard(_) => TaskType::Standard,
-            TaskDataFormat::MultiBinary(_) => TaskType::MultiBinary,
-        }
+    /// Performs the action on the underlying UpgradedContent
+    pub fn text_perform(&mut self, content_action: ContentAction) {
+        self.text.perform(content_action);
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-/// the types of shared data formats used by the template tasks
-pub enum TaskCommonDataFormat {
-    Standard,
-    MultiBinary(MultiBinaryCommonData),
+/// The data that is used for all MultiBinary tasks
+pub struct MultiBinaryCommon {
+    subtasks: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-/// types of data formats stored on disk by the template tasks
-pub enum TaskDataDiskFormat {
-    Standard(StandardDataDisk),
-    MultiBinary(MultiBinaryDataDisk),
+/// Contains all the individual element entries in a MultiBinary task, as well as all of the common data used by the
+/// task
+pub struct MultiBinaryTask {
+    common: MultiBinaryCommon,
+    elements: BTreeMap<NaiveDate, MultiBinaryTaskElement>,
 }
 
-impl From<&TaskDataDiskFormat> for TaskDataFormat {
-    fn from(value: &TaskDataDiskFormat) -> Self {
-        match value {
-            TaskDataDiskFormat::Standard(standard_data_disk) => {
-                TaskDataFormat::Standard(standard_data_disk.into())
-            }
-            TaskDataDiskFormat::MultiBinary(multi_binary_data_disk) => {
-                TaskDataFormat::MultiBinary(multi_binary_data_disk.into())
-            }
+impl MultiBinaryTask {
+    /// Creates a new MultiBinaryTask with the given set of subtasks
+    pub fn new(subtask_names: Vec<String>) -> Self {
+        Self {
+            common: MultiBinaryCommon {
+                subtasks: subtask_names,
+            },
+            elements: BTreeMap::new(),
         }
     }
-}
 
-impl From<&TaskDataFormat> for TaskDataDiskFormat {
-    fn from(value: &TaskDataFormat) -> Self {
-        match value {
-            TaskDataFormat::Standard(standard_data) => {
-                TaskDataDiskFormat::Standard(standard_data.into())
-            }
-            TaskDataFormat::MultiBinary(multi_binary_data) => {
-                TaskDataDiskFormat::MultiBinary(multi_binary_data.into())
-            }
-        }
+    /// Returns mutable access to the task if it exists
+    pub fn get_element_mut(
+        &mut self,
+        active_date: NaiveDate,
+    ) -> Option<&mut MultiBinaryTaskElement> {
+        self.elements.get_mut(&active_date)
     }
 }
 
@@ -301,390 +323,294 @@ pub enum CommonMessage {
     DeleteTemplate,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-/// all types of messages a TemplateTask is able to create. excluding the common messages, the generated message type
-/// must match the template type
+#[derive(Debug)]
+pub enum Task<'a> {
+    Standard(&'a StandardTask),
+    MultiBinary(&'a MultiBinaryTask),
+}
+
+#[derive(Debug)]
+pub enum TaskMut<'a> {
+    Standard(&'a mut StandardTask),
+    MultiBinary(&'a mut MultiBinaryTask),
+}
+
+pub enum OwnedTask {
+    Standard(StandardTask),
+    MultiBinary(MultiBinaryTask),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Data that is used by all TemplateTasks
+pub struct CommonTaskData {
+    name: String,
+    task_type: TaskType,
+    creation_date: NaiveDate,
+    ended_date: Option<NaiveDate>,
+    frequency: Frequency,
+    expanded: bool,
+    options_expanded: bool,
+}
+
+impl CommonTaskData {
+    /// Creates new CommonTaskData instance with the given values
+    pub fn new(
+        name: String,
+        task_type: TaskType,
+        creation_date: NaiveDate,
+        frequency: Frequency,
+    ) -> Self {
+        Self {
+            name,
+            task_type,
+            creation_date,
+            ended_date: None,
+            frequency,
+            expanded: false,
+            options_expanded: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+/// Messages that TemplateTasks can generate, represents some action to perform
 pub enum TemplateMessage {
     Common(CommonMessage),
     Standard(StandardMessage),
     MultiBinary(MultiBinaryMessage),
 }
 
-#[derive(Debug, Clone, PartialEq)]
-/// a TemplateMessage wrapper used to pinpoint which TemplateTask and which entry generated the TemplateMessage. since
-/// we've dropped the generics from the Element builders, always returning our own custom messages, the message is
-/// effectively being generated at the bottom of the update() hierarchy. as such, the information of what and where it
-/// is located in the TemplateTask hierarchy must be stored, since the generic information that would normally contain
-/// this if we were using iced Elements properly with generics is not present. this allows the message to be able to
-/// locate where it originated and find its destination when the message gets passed through the update()
+#[derive(Debug, Clone)]
+/// The actual TemplateTask message. The TaskId is which TemplateTask the message should be performed on
 pub struct TemplateTaskMessage {
-    date: NaiveDate,
-    name: String,
-    task_type: TaskType,
-    message: TemplateMessage,
+    pub(crate) message: TemplateMessage,
+    pub(crate) task_id: TaskId,
 }
 
-impl TemplateTaskMessage {
-    /// create a TemplateTaskMessage from the Template task on the given date with the given message, containing all
-    /// the information required to locate the TemplateTask and entry
-    pub fn snapshot(
-        origin_task: &TemplateTask,
-        entry_date: NaiveDate,
-        message: TemplateMessage,
-    ) -> Self {
-        Self {
-            date: entry_date,
-            name: origin_task.name.clone(),
-            task_type: origin_task.task_type,
-            message,
-        }
-    }
+#[derive(Debug, Default, Serialize, Deserialize)]
+/// Collection of all the loaded templates
+pub struct TemplateTasks {
+    common_data: BTreeMap<TaskId, CommonTaskData>,
 
-    /// returns true if the message would cause an UpgradedContent to be edited as a result of the effects of the
-    /// message
-    pub fn message_edits_content(&self) -> bool {
-        match &self.message {
-            TemplateMessage::Common(common_message) => match common_message {
-                CommonMessage::ExpandToggled => false,
-                CommonMessage::ExpandOptions => false,
-                CommonMessage::EndTask => false,
-                CommonMessage::DeleteTemplate => false,
-            },
-            TemplateMessage::Standard(standard_message) => match standard_message {
-                StandardMessage::CheckedBox(_checked) => false,
-                StandardMessage::TextEdit(_content_action) => true,
-            },
-            TemplateMessage::MultiBinary(multi_binary_message) => match multi_binary_message {
-                MultiBinaryMessage::CheckedNth(_checked) => false,
-                MultiBinaryMessage::CheckedOverride(_checked) => false,
-                MultiBinaryMessage::TextEdit(_content_action) => true,
-            },
-        }
-    }
-
-    pub fn task_type(&self) -> TaskType {
-        self.task_type
-    }
-
-    pub fn change_message(&mut self, new_message: TemplateMessage) {
-        self.message = new_message;
-    }
+    standard_tasks: BTreeMap<TaskId, StandardTask>,
+    multi_binary_tasks: BTreeMap<TaskId, MultiBinaryTask>,
 }
 
-#[derive(Debug)]
-/// the actual template that stores the repeated tasks. for the TemplateTask to operate properly, its TaskType MUST
-/// align with its TaskDataFormat
-pub struct TemplateTask {
-    name: String,
-    task_type: TaskType,
-    creation_date: NaiveDate,
-    ended_date: Option<NaiveDate>,
-    frequency: Frequency,
-    common_entry_format: TaskCommonDataFormat,
-    entries: HashMap<NaiveDate, TaskDataFormat>,
-    expanded: bool,
-    options_expanded: bool,
-}
+impl<'a> TemplateTasks {
+    /// Writes all template tasks to disk, into the template_tasks directory defined in the preferences
+    pub fn save_templates(&self) {
+        let mut template_path = preferences().paths.template_tasks_dir();
+        template_path.push("templates.json");
 
-#[derive(Debug, Serialize, Deserialize)]
-/// disk format of the TemplateTask
-pub struct TemplateTaskDisk {
-    name: String,
-    task_type: TaskType,
-    creation_date: NaiveDate,
-    ended_date: Option<NaiveDate>,
-    frequency: Frequency,
-    common_entry_format: TaskCommonDataFormat,
-    entries: Vec<(NaiveDate, TaskDataDiskFormat)>,
-    expanded: bool,
-}
+        let template_json =
+            serde_json::to_string_pretty(self).expect("couldn't serialize disk templates");
 
-impl From<&TemplateTaskDisk> for TemplateTask {
-    fn from(value: &TemplateTaskDisk) -> Self {
-        let mut entries = HashMap::new();
-
-        for (date, disk_data) in &value.entries {
-            entries.insert(*date, disk_data.into());
-        }
-
-        TemplateTask {
-            name: value.name.clone(),
-            task_type: value.task_type,
-            creation_date: value.creation_date,
-            ended_date: value.ended_date,
-            frequency: value.frequency.clone(),
-            common_entry_format: value.common_entry_format.clone(),
-            entries,
-            expanded: value.expanded,
-            options_expanded: false,
-        }
-    }
-}
-
-impl From<&TemplateTask> for TemplateTaskDisk {
-    fn from(value: &TemplateTask) -> Self {
-        let mut entries = vec![];
-
-        for (date, data) in &value.entries {
-            entries.push((*date, data.into()));
-        }
-
-        entries.sort_by_key(|(date, _disk)| *date);
-
-        TemplateTaskDisk {
-            name: value.name.clone(),
-            task_type: value.task_type,
-            creation_date: value.creation_date,
-            ended_date: value.ended_date,
-            frequency: value.frequency.clone(),
-            common_entry_format: value.common_entry_format.clone(),
-            entries,
-            expanded: value.expanded,
-        }
-    }
-}
-
-impl TemplateTask {
-    /// creates a new template task and automatically creates an entry if the creation date would have an entry
-    pub fn new(
-        name: String,
-        task_type: TaskType,
-        common_entry_format: TaskCommonDataFormat,
-        creation_date: NaiveDate,
-        frequency: Frequency,
-    ) -> Self {
-        let mut new_task = Self {
-            name,
-            task_type,
-            creation_date,
-            ended_date: None,
-            frequency,
-            common_entry_format,
-            entries: HashMap::new(),
-            expanded: false,
-            options_expanded: false,
-        };
-
-        if new_task.is_active(creation_date) {
-            new_task.add_empty_entry(task_type, creation_date);
-        }
-
-        new_task
+        fs::write(template_path, template_json).expect("couldn't save template json");
     }
 
-    /// returns the type of the template
-    pub fn get_type(&self) -> TaskType {
-        self.task_type
-    }
+    /// Loads all template tasks from disk, from the template_tasks directory defined in the preferences. If the
+    /// templates file cannot be read, it returns an empty TemplateTasks
+    pub fn load_templates() -> Self {
+        let mut template_path = preferences().paths.template_tasks_dir();
+        template_path.push("templates.json");
 
-    /// returns the name of the template
-    pub fn get_name(&self) -> String {
-        self.name.clone()
-    }
-
-    /// returns if the template is scheduled for an entry on the given date
-    pub fn is_active(&self, active_date: NaiveDate) -> bool {
-        if active_date < self.creation_date {
-            return false;
-        }
-
-        if let Some(ended_date) = self.ended_date
-            && active_date > ended_date
+        if let Ok(template_string) = fs::read_to_string(template_path)
+            && let Ok(template_disk) = serde_json::from_str::<TemplateTasks>(&template_string)
         {
-            return false;
-        }
-
-        self.frequency.is_active(active_date)
-    }
-
-    /// adds a default entry to the entries list. does not perform validation against the frequency of the template
-    pub fn add_empty_entry(&mut self, entry_type: TaskType, entry_date: NaiveDate) {
-        let empty_entry = match entry_type {
-            TaskType::Standard => TaskDataFormat::Standard(StandardData::new()),
-            TaskType::MultiBinary => {
-                let subtask_count = match &self.common_entry_format {
-                    TaskCommonDataFormat::MultiBinary(multi_binary_common_data) => {
-                        multi_binary_common_data.subtask_names.len()
-                    }
-                    _ => unreachable!("malformed TaskCommonDataFormat"),
-                };
-
-                TaskDataFormat::MultiBinary(MultiBinaryData::new(subtask_count))
+            if let Some(max_id) = template_disk.common_data.keys().max() {
+                TaskId::set_if_greater(max_id.as_u32() + 1);
             }
-        };
 
-        self.entries.insert(entry_date, empty_entry);
-    }
-
-    /// returns the entry for the template on the given date, returning None if entry is nonexistent
-    pub fn get_entry(&self, entry_date: NaiveDate) -> Option<&TaskDataFormat> {
-        self.entries.get(&entry_date)
-    }
-
-    /// returns mutable access to the entry on the given date, returning None if entry is nonexistent
-    pub fn get_entry_mut(&mut self, entry_date: NaiveDate) -> Option<&mut TaskDataFormat> {
-        self.entries.get_mut(&entry_date)
-    }
-
-    /// sets if the entry is expanded (true) or collapsed (false) when rendered
-    pub fn set_expansion(&mut self, expanded: bool) {
-        self.expanded = expanded;
-    }
-
-    /// builds the template to an element for the given date. if the entry doesn't exist, a zero width space is
-    /// returned. note the builder does not contain the input generics as normally used by iced view() calls. this
-    /// allows us to control which messages get generated without the need to pass them in from upstream, which is
-    /// useful in this case since we already know what messages should correspond to the task Elements. as long as the
-    /// caller contains a message with a TemplateTaskMessage parameter, the Element can be map()ed to the upstream
-    /// message, and everything works as expected
-    pub fn build_template<'a>(&'a self, entry_date: NaiveDate) -> Element<'a, TemplateTaskMessage> {
-        let name = Text::new(self.name.clone());
-
-        let expand_button_text = if self.expanded { "\\/" } else { "<" };
-
-        let expand_button = button(Text::new(expand_button_text)).on_press(TemplateTaskMessage {
-            date: entry_date,
-            name: self.name.clone(),
-            task_type: self.task_type,
-            message: TemplateMessage::Common(CommonMessage::ExpandToggled),
-        });
-
-        let options_button = button("...").on_press(TemplateTaskMessage {
-            date: entry_date,
-            name: self.name.clone(),
-            task_type: self.task_type,
-            message: TemplateMessage::Common(CommonMessage::ExpandOptions),
-        });
-
-        if let Some(entry) = self.entries.get(&entry_date) {
-            let task_element = match entry {
-                TaskDataFormat::Standard(standard_data) => {
-                    let checkbox = checkbox(standard_data.completed).on_toggle(move |ticked| {
-                        TemplateTaskMessage::snapshot(
-                            self,
-                            entry_date,
-                            TemplateMessage::Standard(StandardMessage::CheckedBox(ticked)),
-                        )
-                    });
-
-                    let minimized_task = Self::minimized_task(
-                        checkbox.into(),
-                        name.into(),
-                        expand_button.into(),
-                        options_button.into(),
-                    );
-
-                    let text = widget::text_editor(standard_data.text_content.raw_content())
-                        .on_action(move |action| {
-                            TemplateTaskMessage::snapshot(
-                                self,
-                                entry_date,
-                                TemplateMessage::Standard(StandardMessage::TextEdit(
-                                    ContentAction::Standard(action),
-                                )),
-                            )
-                        });
-
-                    if !self.expanded {
-                        minimized_task
-                    } else {
-                        column![minimized_task, text].into()
-                    }
-                }
-                TaskDataFormat::MultiBinary(multi_binary_data) => {
-                    let completed_checkbox =
-                        checkbox(multi_binary_data.is_completed()).on_toggle(move |ticked| {
-                            TemplateTaskMessage::snapshot(
-                                self,
-                                entry_date,
-                                TemplateMessage::MultiBinary(MultiBinaryMessage::CheckedOverride(
-                                    ticked,
-                                )),
-                            )
-                        });
-
-                    let minimized_task = Self::minimized_task(
-                        completed_checkbox.into(),
-                        name.into(),
-                        expand_button.into(),
-                        options_button.into(),
-                    );
-
-                    let mut subtask_checkboxes = column![];
-
-                    for (i, completion) in multi_binary_data.subtask_completion.iter().enumerate() {
-                        let checkbox = checkbox(*completion).on_toggle(move |ticked| {
-                            TemplateTaskMessage::snapshot(
-                                self,
-                                entry_date,
-                                TemplateMessage::MultiBinary(MultiBinaryMessage::CheckedNth((
-                                    i, ticked,
-                                ))),
-                            )
-                        });
-
-                        let subtask_name = match &self.common_entry_format {
-                            TaskCommonDataFormat::MultiBinary(multi_binary_common_data) => {
-                                multi_binary_common_data.subtask_names[i].clone()
-                            }
-                            _ => unreachable!("malformed CommonDataFormat"),
-                        };
-
-                        let name_text = Text::new(subtask_name);
-
-                        subtask_checkboxes = subtask_checkboxes.push(row![
-                            Space::new().width(15),
-                            checkbox,
-                            Space::new().width(5),
-                            name_text
-                        ]);
-                    }
-
-                    let text = widget::text_editor(multi_binary_data.text_content.raw_content())
-                        .on_action(move |action| {
-                            TemplateTaskMessage::snapshot(
-                                self,
-                                entry_date,
-                                TemplateMessage::MultiBinary(MultiBinaryMessage::TextEdit(
-                                    ContentAction::Standard(action),
-                                )),
-                            )
-                        });
-
-                    if !self.expanded {
-                        minimized_task
-                    } else {
-                        column![minimized_task, subtask_checkboxes, text].into()
-                    }
-                }
-            };
-
-            if self.options_expanded {
-                let end_task_button = button("End Task").on_press(TemplateTaskMessage::snapshot(
-                    self,
-                    entry_date,
-                    TemplateMessage::Common(CommonMessage::EndTask),
-                ));
-
-                let delete_button = button("Delete Task").on_press(TemplateTaskMessage::snapshot(
-                    self,
-                    entry_date,
-                    TemplateMessage::Common(CommonMessage::DeleteTemplate),
-                ));
-
-                let options_menu = column![end_task_button, delete_button];
-
-                column![task_element, options_menu].into()
-            } else {
-                task_element
-            }
+            template_disk
         } else {
-            Space::new().width(0).height(0).into()
+            Self::default()
         }
     }
 
-    /// creates the minimized task view, used for UI consistency
-    fn minimized_task<'a, T: 'a>(
+    /// Inserts a new template task into the structure
+    pub fn create_task(&mut self, common_data: CommonTaskData, task: OwnedTask) {
+        let task_id = TaskId::new_unique_id();
+
+        let creation_date = common_data.creation_date;
+        let frequency = common_data.frequency.clone();
+
+        self.common_data.insert(task_id, common_data);
+
+        match task {
+            OwnedTask::Standard(mut standard_task) => {
+                if frequency.is_active(creation_date) {
+                    standard_task
+                        .elements
+                        .insert(creation_date, StandardTaskElement::default());
+                }
+
+                self.standard_tasks.insert(task_id, standard_task);
+            }
+            OwnedTask::MultiBinary(mut multi_binary_task) => {
+                if frequency.is_active(creation_date) {
+                    multi_binary_task.elements.insert(
+                        creation_date,
+                        MultiBinaryTaskElement::new_instance(&multi_binary_task.common),
+                    );
+                }
+
+                self.multi_binary_tasks.insert(task_id, multi_binary_task);
+            }
+        }
+    }
+
+    /// Generate any missing entries for tasks scheduled on the given date
+    pub fn generate_template_entries(&mut self, active_date: NaiveDate) {
+        let active_templates = self.get_active_template_ids(active_date);
+
+        for task_id in active_templates {
+            if let Some(common_element) = self.common_data.get(&task_id) {
+                match common_element.task_type {
+                    TaskType::Standard => {
+                        if let Some(standard_task) = self.standard_tasks.get_mut(&task_id)
+                            && !standard_task.elements.contains_key(&active_date)
+                        {
+                            standard_task
+                                .elements
+                                .insert(active_date, StandardTaskElement::new_instance());
+                        }
+                    }
+                    TaskType::MultiBinary => {
+                        if let Some(multi_binary_task) = self.multi_binary_tasks.get_mut(&task_id)
+                            && !multi_binary_task.elements.contains_key(&active_date)
+                        {
+                            multi_binary_task.elements.insert(
+                                active_date,
+                                MultiBinaryTaskElement::new_instance(&multi_binary_task.common),
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Returns the common data portion at the given TaskId, if it exists
+    pub fn get_common_data(&self, task_id: TaskId) -> Option<&CommonTaskData> {
+        self.common_data.get(&task_id)
+    }
+
+    /// Returns the task at the given TaskId, if it exists
+    pub fn get_task(&self, task_id: TaskId) -> Option<Task<'_>> {
+        if let Some(std) = self.standard_tasks.get(&task_id) {
+            Some(Task::Standard(std))
+        } else if let Some(mb) = self.multi_binary_tasks.get(&task_id) {
+            Some(Task::MultiBinary(mb))
+        } else {
+            None
+        }
+    }
+
+    /// Returns mutable access the task at the given TaskId, if it exists
+    pub fn get_task_mut(&mut self, task_id: TaskId) -> Option<TaskMut<'_>> {
+        if let Some(std) = self.standard_tasks.get_mut(&task_id) {
+            Some(TaskMut::Standard(std))
+        } else if let Some(mb) = self.multi_binary_tasks.get_mut(&task_id) {
+            Some(TaskMut::MultiBinary(mb))
+        } else {
+            None
+        }
+    }
+
+    /// Returns true if given name and task type are present in the same TemplateTask
+    pub fn task_exists(&self, task_name: &str, task_type: TaskType) -> bool {
+        for task in self.common_data.values() {
+            if task.name == task_name && task.task_type == task_type {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    /// Performs the action specified by the message on the TemplateTask on the given date
+    pub fn update(&mut self, active_date: NaiveDate, message: TemplateTaskMessage) {
+        match message.message {
+            TemplateMessage::Common(common_message) => {
+                if let Some(common_data) = self.common_data.get_mut(&message.task_id) {
+                    match common_message {
+                        CommonMessage::ExpandToggled => {
+                            common_data.expanded = !common_data.expanded;
+                        }
+                        CommonMessage::ExpandOptions => {
+                            common_data.options_expanded = !common_data.options_expanded
+                        }
+                        CommonMessage::EndTask => {
+                            common_data.ended_date = Some(active_date);
+                        }
+                        CommonMessage::DeleteTemplate => {
+                            if let Some(deleted) = self.common_data.remove(&message.task_id) {
+                                match deleted.task_type {
+                                    TaskType::Standard => {
+                                        self.standard_tasks.remove(&message.task_id);
+                                    }
+                                    TaskType::MultiBinary => {
+                                        self.multi_binary_tasks.remove(&message.task_id);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            TemplateMessage::Standard(standard_message) => {
+                if let Some(task) = self.standard_tasks.get_mut(&message.task_id)
+                    && let Some(task_element) = task.elements.get_mut(&active_date)
+                {
+                    match standard_message {
+                        StandardMessage::CheckedBox(checked) => {
+                            task_element.set_completion(checked);
+                        }
+                        StandardMessage::TextEdit(content_action) => {
+                            task_element.text.perform(content_action);
+                        }
+                    }
+                }
+            }
+            TemplateMessage::MultiBinary(multi_binary_message) => {
+                if let Some(task) = self.multi_binary_tasks.get_mut(&message.task_id)
+                    && let Some(task_element) = task.elements.get_mut(&active_date)
+                {
+                    match multi_binary_message {
+                        MultiBinaryMessage::CheckedNth((index, checked)) => {
+                            task_element.set_subtask_completion(index, checked);
+                        }
+                        MultiBinaryMessage::CheckedOverride(checked) => {
+                            task_element.completion_override = checked;
+                        }
+                        MultiBinaryMessage::TextEdit(content_action) => {
+                            task_element.text.perform(content_action);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Returns a list of all the templates that are active on a given date
+    pub fn get_active_template_ids(&self, active_date: NaiveDate) -> Vec<TaskId> {
+        self.common_data
+            .iter()
+            .filter(|(_id, data)| {
+                let after_end_date = data
+                    .ended_date
+                    .is_some_and(|ended_date| ended_date > active_date);
+
+                data.frequency.is_active(active_date)
+                    && active_date >= data.creation_date
+                    && !after_end_date
+            })
+            .map(|(id, _data)| *id)
+            .collect::<Vec<TaskId>>()
+    }
+
+    /// Graphical layout of a task that is minimized
+    fn minimized_task<T: 'a>(
         checkbox: Element<'a, T>,
         name: Element<'a, T>,
         expand_button: Element<'a, T>,
@@ -702,163 +628,149 @@ impl TemplateTask {
         .into()
     }
 
-    /// update logic for TemplateTasks based on the given TemplateTaskMessage
-    pub fn update(&mut self, task_message: TemplateTaskMessage) {
-        if let Some(data_format) = self.get_entry_mut(task_message.date) {
-            match (task_message.message, task_message.task_type, data_format) {
-                (TemplateMessage::Common(common_message), _, _) => match common_message {
-                    CommonMessage::ExpandToggled => {
-                        self.expanded = !self.expanded;
-                    }
-                    CommonMessage::ExpandOptions => {
-                        self.expanded = false;
-
-                        self.options_expanded = !self.options_expanded;
-                    }
-                    CommonMessage::EndTask => {
-                        self.options_expanded = false;
-
-                        self.ended_date = Some(task_message.date);
-                    }
-                    CommonMessage::DeleteTemplate => {
-                        unreachable!("template not deleted")
-                    }
-                },
-                (
-                    TemplateMessage::Standard(standard_message),
-                    TaskType::Standard,
-                    TaskDataFormat::Standard(standard_data),
-                ) => match standard_message {
-                    StandardMessage::CheckedBox(checked) => {
-                        standard_data.set_completion(checked);
-                    }
-                    StandardMessage::TextEdit(action) => {
-                        standard_data.text_content.perform(action);
-                    }
-                },
-                (
-                    TemplateMessage::MultiBinary(multi_binary_message),
-                    TaskType::MultiBinary,
-                    TaskDataFormat::MultiBinary(multi_binary_data),
-                ) => match multi_binary_message {
-                    MultiBinaryMessage::CheckedNth((index, checked)) => {
-                        multi_binary_data.set_completion(index, checked);
-                    }
-                    MultiBinaryMessage::CheckedOverride(checked) => {
-                        multi_binary_data.set_completion_override(checked);
-                    }
-                    MultiBinaryMessage::TextEdit(action) => {
-                        multi_binary_data.text_content.perform(action);
-                    }
-                },
-                _ => {
-                    // TODO: fix this mess with a similar strategy to the id system used in dialog_manager.rs
-                    unreachable!("malformed template task");
-                }
-            }
-        }
-    }
-}
-
-#[derive(Debug, Default)]
-/// collection of all the loaded templates
-pub struct TemplateTasks {
-    template_store: Vec<TemplateTask>,
-}
-
-impl TemplateTasks {
-    /// inserts a new template into the structure
-    pub fn add_template(&mut self, new_template: TemplateTask) {
-        self.template_store.push(new_template);
-    }
-
-    /// returns all templates in the template store
-    pub fn get_all_templates(&self) -> &Vec<TemplateTask> {
-        &self.template_store
-    }
-
-    /// returns a Vec of all the templates that are scheduled to be active on the given date
-    pub fn get_active_templates(&self, active_date: NaiveDate) -> Vec<&TemplateTask> {
-        self.template_store
-            .iter()
-            .filter(|task| task.is_active(active_date))
-            .collect()
-    }
-
-    /// returns a Vec of mutable templates that are scheduled to be active on the given date
-    pub fn get_active_templates_mut(&mut self, active_date: NaiveDate) -> Vec<&mut TemplateTask> {
-        self.template_store
-            .iter_mut()
-            .filter(|task| task.is_active(active_date))
-            .collect()
-    }
-
-    /// generate any missing entries for tasks scheduled on the given date
-    pub fn generate_template_entries(&mut self, active_date: NaiveDate) {
-        let active_templates = self.get_active_templates_mut(active_date);
-
-        for template in active_templates {
-            if template.get_entry(active_date).is_none() {
-                template.add_empty_entry(template.task_type, active_date);
-            }
-        }
-    }
-
-    /// deletes a template from the template store with both the given name and task type
-    pub fn delete_template(&mut self, name: &str, task_type: TaskType) {
-        self.template_store
-            .retain(|template| !(template.task_type == task_type && template.name == name));
-    }
-
-    /// writes all templates to disk
-    pub fn save_templates(&self) {
-        let disk_templates = self
-            .template_store
-            .iter()
-            .map(|template| template.into())
-            .collect::<Vec<TemplateTaskDisk>>();
-
-        let mut template_path = preferences().paths.template_tasks_dir();
-        template_path.push("templates.json");
-
-        let template_json = serde_json::to_string_pretty(&disk_templates)
-            .expect("couldn't serialize disk templates");
-
-        fs::write(template_path, template_json).expect("couldn't save template json");
-    }
-
-    /// loads all templates from disk
-    pub fn load_templates(&mut self) {
-        let mut template_path = preferences().paths.template_tasks_dir();
-        template_path.push("templates.json");
-
-        if let Ok(template_string) = fs::read_to_string(template_path)
-            && let Ok(template_disk) =
-                serde_json::from_str::<Vec<TemplateTaskDisk>>(&template_string)
+    /// Full TemplateTask graphical element
+    pub fn build_template(
+        &'a self,
+        task_id: TaskId,
+        active_date: NaiveDate,
+    ) -> Element<'a, TemplateTaskMessage> {
+        if let Some(task_common) = self.get_common_data(task_id)
+            && let Some(task_specific) = self.get_task(task_id)
         {
-            let templates = template_disk
-                .iter()
-                .map(|template| template.into())
-                .collect::<Vec<TemplateTask>>();
+            let name = Text::new(task_common.name.clone());
 
-            self.template_store = templates;
-        }
-    }
+            let expand_button_text = if task_common.expanded { "\\/" } else { "<" };
 
-    /// update logic for TemplateTasks. locates the template based on the data contained in the TemplateTaskMessage,
-    /// passing along the update to it. the template should always exist, since it was the one that created the message
-    /// in the first place
-    pub fn update(&mut self, template_message: TemplateTaskMessage) {
-        if let Some(template) = self.template_store.iter_mut().find(|potential_task| {
-            potential_task.name == template_message.name
-                && potential_task.task_type == template_message.task_type
-        }) {
-            if let TemplateMessage::Common(CommonMessage::DeleteTemplate) = template_message.message
-            {
-                self.delete_template(&template_message.name, template_message.task_type);
+            let expand_button =
+                button(Text::new(expand_button_text)).on_press(TemplateTaskMessage {
+                    message: TemplateMessage::Common(CommonMessage::ExpandToggled),
+                    task_id,
+                });
+
+            let options_button = button("...").on_press(TemplateTaskMessage {
+                message: TemplateMessage::Common(CommonMessage::ExpandOptions),
+                task_id,
+            });
+
+            let task_ui = match task_specific {
+                Task::Standard(standard_task) => {
+                    if let Some(task_element) = standard_task.elements.get(&active_date) {
+                        let checkbox = checkbox(task_element.completed).on_toggle(move |ticked| {
+                            TemplateTaskMessage {
+                                message: TemplateMessage::Standard(StandardMessage::CheckedBox(
+                                    ticked,
+                                )),
+                                task_id,
+                            }
+                        });
+
+                        let minimized_task = Self::minimized_task(
+                            checkbox.into(),
+                            name.into(),
+                            expand_button.into(),
+                            options_button.into(),
+                        );
+
+                        let text = widget::text_editor(task_element.text.raw_content()).on_action(
+                            move |action| TemplateTaskMessage {
+                                message: TemplateMessage::Standard(StandardMessage::TextEdit(
+                                    ContentAction::Standard(action),
+                                )),
+                                task_id,
+                            },
+                        );
+
+                        if !task_common.expanded {
+                            minimized_task
+                        } else {
+                            column![minimized_task, text].into()
+                        }
+                    } else {
+                        column![].into()
+                    }
+                }
+                Task::MultiBinary(multi_binary_task) => {
+                    if let Some(task_element) = multi_binary_task.elements.get(&active_date) {
+                        let completed_checkbox =
+                            checkbox(task_element.is_completed()).on_toggle(move |ticked| {
+                                TemplateTaskMessage {
+                                    message: TemplateMessage::MultiBinary(
+                                        MultiBinaryMessage::CheckedOverride(ticked),
+                                    ),
+                                    task_id,
+                                }
+                            });
+
+                        let minimized_task = Self::minimized_task(
+                            completed_checkbox.into(),
+                            name.into(),
+                            expand_button.into(),
+                            options_button.into(),
+                        );
+
+                        let mut subtask_checkboxes = column![];
+
+                        for (i, completion) in task_element.subtask_completion.iter().enumerate() {
+                            let checkbox = checkbox(*completion).on_toggle(move |ticked| {
+                                TemplateTaskMessage {
+                                    message: TemplateMessage::MultiBinary(
+                                        MultiBinaryMessage::CheckedNth((i, ticked)),
+                                    ),
+                                    task_id,
+                                }
+                            });
+
+                            let subtask_name = &multi_binary_task.common.subtasks[i];
+
+                            let name_text = Text::new(subtask_name);
+
+                            subtask_checkboxes = subtask_checkboxes.push(row![
+                                Space::new().width(15),
+                                checkbox,
+                                Space::new().width(5),
+                                name_text
+                            ]);
+                        }
+
+                        let text = widget::text_editor(task_element.text.raw_content()).on_action(
+                            move |action| TemplateTaskMessage {
+                                message: TemplateMessage::MultiBinary(
+                                    MultiBinaryMessage::TextEdit(ContentAction::Standard(action)),
+                                ),
+                                task_id,
+                            },
+                        );
+
+                        if !task_common.expanded {
+                            minimized_task
+                        } else {
+                            column![minimized_task, subtask_checkboxes, text].into()
+                        }
+                    } else {
+                        column![].into()
+                    }
+                }
+            };
+
+            if task_common.options_expanded {
+                let end_task_button = button("End Task").on_press(TemplateTaskMessage {
+                    message: TemplateMessage::Common(CommonMessage::EndTask),
+                    task_id,
+                });
+
+                let delete_button = button("Delete Task").on_press(TemplateTaskMessage {
+                    message: TemplateMessage::Common(CommonMessage::DeleteTemplate),
+                    task_id,
+                });
+
+                let options_menu = column![end_task_button, delete_button];
+
+                column![task_ui, options_menu].into()
             } else {
-                template.update(template_message);
+                task_ui
             }
+        } else {
+            column![].into()
         }
     }
 }

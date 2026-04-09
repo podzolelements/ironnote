@@ -14,6 +14,7 @@ use crate::{
     window_manager::{WindowType, Windowable},
     word_count::WordCount,
 };
+
 use iced::window;
 use iced::{Element, Event, Subscription, Task, event::listen_with, keyboard, widget::column};
 use keybinds::Keybinds;
@@ -47,6 +48,7 @@ mod preferences_window;
 mod search_table;
 mod tabview;
 mod task_creator_window;
+mod task_id;
 mod tasks;
 mod template_tasks;
 mod upgraded_content;

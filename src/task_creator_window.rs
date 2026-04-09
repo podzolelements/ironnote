@@ -3,12 +3,13 @@ use crate::{
     keyboard_manager::KeyboardAction,
     month_day::{DispMonth, MonthDay},
     template_tasks::{
-        Frequency, FrequencyType, MultiBinaryCommonData, TaskCommonDataFormat, TaskType,
-        TemplateTask,
+        CommonTaskData, Frequency, FrequencyType, MultiBinaryTask, OwnedTask, StandardTask,
+        TaskType,
     },
     upgraded_content::{ContentAction, UpgradedContent},
     window_manager::{WindowType, Windowable},
 };
+
 use iced::{
     Alignment::Center,
     Task,
@@ -110,13 +111,12 @@ impl TaskCreator {
             FrequencyType::Dated => {}
         }
 
-        for template in state.all_tasks.template_tasks.get_all_templates() {
-            let existing_name = template.get_name();
-            let existing_type = template.get_type();
-
-            if name_text == existing_name && self.selected_task_type == existing_type {
-                return false;
-            }
+        if state
+            .all_tasks
+            .template_tasks
+            .task_exists(&name_text, self.selected_task_type)
+        {
+            return false;
         }
 
         true
@@ -441,23 +441,6 @@ impl Windowable<TaskCreatorMessage> for TaskCreator {
 
                 let active_date = state.global_store.current_date();
 
-                let (common_data, task_type) = match self.selected_task_type {
-                    TaskType::Standard => (TaskCommonDataFormat::Standard, TaskType::Standard),
-                    TaskType::MultiBinary => {
-                        let subtask_names = self
-                            .multi_binary_contents
-                            .iter()
-                            .map(|content| content.text())
-                            .collect();
-
-                        let common_data = MultiBinaryCommonData::new(subtask_names);
-                        (
-                            TaskCommonDataFormat::MultiBinary(common_data),
-                            TaskType::MultiBinary,
-                        )
-                    }
-                };
-
                 let frequency = match self.selected_frequency {
                     FrequencyType::Daily => Frequency::Daily,
                     FrequencyType::Weekly => Frequency::Weekly(self.freq_weekmap),
@@ -467,11 +450,28 @@ impl Windowable<TaskCreatorMessage> for TaskCreator {
                     }
                 };
 
-                let template =
-                    TemplateTask::new(name_text, task_type, common_data, active_date, frequency);
+                let common_data =
+                    CommonTaskData::new(name_text, self.selected_task_type, active_date, frequency);
 
-                state.all_tasks.template_tasks.add_template(template);
+                let task_specific = match self.selected_task_type {
+                    TaskType::Standard => OwnedTask::Standard(StandardTask::default()),
+                    TaskType::MultiBinary => {
+                        let subtask_names = self
+                            .multi_binary_contents
+                            .iter()
+                            .map(|content| content.text())
+                            .collect();
+
+                        OwnedTask::MultiBinary(MultiBinaryTask::new(subtask_names))
+                    }
+                };
+
+                state
+                    .all_tasks
+                    .template_tasks
+                    .create_task(common_data, task_specific);
                 state.all_tasks.save_all();
+
                 state
                     .upstream_actions
                     .push(UpstreamAction::CloseWindow(WindowType::TaskCreator));
