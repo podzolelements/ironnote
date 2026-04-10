@@ -2,7 +2,7 @@ use crate::{
     SharedAppState, UpstreamAction,
     keyboard_manager::KeyboardAction,
     month_day::{DispMonth, MonthDay},
-    template_tasks::{
+    tasks::template_tasks::{
         Frequency, FrequencyType, MultiBinaryTask, StandardTask, TemplateData, TemplateTask,
         TemplateTaskType,
     },
@@ -112,7 +112,7 @@ impl TaskCreator {
         }
 
         if state
-            .all_tasks
+            .task_manager
             .template_tasks
             .task_exists(&name_text, self.selected_task_type)
         {
@@ -467,8 +467,8 @@ impl Windowable<TaskCreatorMessage> for TaskCreator {
 
                 let template_task = TemplateTask::new(name_text, active_date, frequency, template);
 
-                state.all_tasks.template_tasks.create_task(template_task);
-                state.all_tasks.save_all();
+                state.task_manager.template_tasks.create_task(template_task);
+                state.task_manager.save_all();
 
                 state
                     .upstream_actions

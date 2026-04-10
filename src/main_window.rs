@@ -14,8 +14,8 @@ use crate::menu_bar_builder::{
 use crate::misc_tools::point_on_edge_of_text;
 use crate::search_table::{SearchTable, SearchTableMessage};
 use crate::tabview::{TabviewItem, tabview_content_vertical};
-use crate::task_id::TaskId;
-use crate::template_tasks::{TemplateData, TemplateTaskMessage};
+use crate::tasks::TaskId;
+use crate::tasks::template_tasks::{TemplateData, TemplateTaskMessage};
 use crate::upgraded_content::{ContentAction, UpgradedContent};
 use crate::user_preferences::{preferences, preferences_mut};
 use crate::window_manager::{WindowType, Windowable};
@@ -165,7 +165,7 @@ impl Windowable<MainMessage> for Main {
         let tasks_tab_content = {
             let tasks = column![
                 state
-                    .all_tasks
+                    .task_manager
                     .build_tasks(state.global_store.current_date())
                     .map(MainMessage::TaskAction),
             ];
@@ -951,7 +951,7 @@ impl Windowable<MainMessage> for Main {
                 self.active_content = Some(ActiveContent::Task(template_message.task_id));
 
                 state
-                    .all_tasks
+                    .task_manager
                     .template_tasks
                     .update(state.global_store.current_date(), template_message);
 
@@ -973,7 +973,7 @@ impl Windowable<MainMessage> for Main {
                 ActiveContent::Editor => state.content.perform(action),
                 ActiveContent::Search => self.search_content.perform(action),
                 ActiveContent::Task(task_id) => {
-                    if let Some(task) = state.all_tasks.template_tasks.get_task_mut(*task_id) {
+                    if let Some(task) = state.task_manager.template_tasks.get_task_mut(*task_id) {
                         match task.get_template_mut() {
                             TemplateData::Standard(standard_task) => {
                                 if let Some(task_element) =
@@ -1050,7 +1050,7 @@ impl Main {
         self.write_active_entry_to_store(state);
         state.global_store.save_all();
 
-        state.all_tasks.save_all();
+        state.task_manager.save_all();
     }
 
     /// reloads the window's title based on the current active date
@@ -1085,7 +1085,7 @@ impl Main {
         }
 
         state
-            .all_tasks
+            .task_manager
             .template_tasks
             .generate_template_entries(state.global_store.current_date());
 

@@ -1,21 +1,21 @@
-use crate::template_tasks::{TemplateTaskMessage, TemplateTasks};
+use super::template_tasks::{TemplateTaskMessage, TemplateTasks};
 
 use chrono::NaiveDate;
 use iced::{Element, widget::column};
 
 #[derive(Debug)]
 /// structure storing all the different types of tasks together
-pub struct Tasks {
+pub struct TaskManager {
     pub(crate) template_tasks: TemplateTasks,
 }
 
-impl Default for Tasks {
+impl Default for TaskManager {
     fn default() -> Self {
-        Tasks::load_all()
+        TaskManager::load_all()
     }
 }
 
-impl Tasks {
+impl TaskManager {
     /// constructs all tasks scheduled for the given date
     pub fn build_tasks<'a>(&'a self, active_date: NaiveDate) -> Element<'a, TemplateTaskMessage> {
         let mut tasks = column![];
@@ -34,7 +34,7 @@ impl Tasks {
         self.template_tasks.save_templates();
     }
 
-    /// returns a Tasks containing all tasks stored on disk
+    /// Returns a TaskManager containing all tasks stored on disk
     pub fn load_all() -> Self {
         let template_tasks = TemplateTasks::load_templates();
 

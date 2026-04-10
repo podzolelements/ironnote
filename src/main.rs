@@ -8,7 +8,7 @@ use crate::{
     main_window::{Main, MainMessage},
     preferences_window::{Preferences, PreferencesMessage},
     task_creator_window::{TaskCreator, TaskCreatorMessage},
-    tasks::Tasks,
+    tasks::TaskManager,
     upgraded_content::UpgradedContent,
     user_preferences::{UserPreferences, overwrite_preferences, preferences},
     window_manager::{WindowType, Windowable},
@@ -48,9 +48,7 @@ mod preferences_window;
 mod search_table;
 mod tabview;
 mod task_creator_window;
-mod task_id;
 mod tasks;
-mod template_tasks;
 mod upgraded_content;
 mod user_preferences;
 mod warning_dialog;
@@ -63,7 +61,7 @@ struct SharedAppState {
     upstream_actions: Vec<UpstreamAction>,
     content: UpgradedContent,
     global_store: GlobalStore,
-    all_tasks: Tasks,
+    task_manager: TaskManager,
 }
 
 impl Default for SharedAppState {
@@ -74,13 +72,13 @@ impl Default for SharedAppState {
 
         let content = UpgradedContent::with_text(&global_store.day().get_day_text());
 
-        let all_tasks = Tasks::load_all();
+        let task_manager = TaskManager::load_all();
 
         Self {
             upstream_actions: Vec::default(),
             content,
             global_store,
-            all_tasks,
+            task_manager,
         }
     }
 }
