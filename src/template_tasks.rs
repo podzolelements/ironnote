@@ -78,11 +78,6 @@ impl<'de> Deserialize<'de> for StandardTaskElement {
 }
 
 impl StandardTaskElement {
-    /// A blank StandardTask entry
-    fn new_instance() -> Self {
-        Self::default()
-    }
-
     /// set if the task was completed or not
     pub fn set_completion(&mut self, completed: bool) {
         self.completed = completed;
@@ -101,6 +96,11 @@ pub struct StandardTask {
 }
 
 impl StandardTask {
+    /// Adds an empty element with the given date to the task elements if it does not exist
+    pub fn add_empty_element(&mut self, active_date: NaiveDate) {
+        self.elements.entry(active_date).or_default();
+    }
+
     /// Returns mutable access to a element at the given date, if it exists
     pub fn get_element_mut(&mut self, active_date: NaiveDate) -> Option<&mut StandardTaskElement> {
         self.elements.get_mut(&active_date)
@@ -175,10 +175,10 @@ impl<'de> Deserialize<'de> for MultiBinaryTaskElement {
 }
 
 impl MultiBinaryTaskElement {
-    /// Creates a new element based on the data in the common structure
-    fn new_instance(common_data: &MultiBinaryCommon) -> Self {
+    /// Creates a new element with the given number of subtasks
+    fn with_empty_subtasks(subtask_count: usize) -> Self {
         Self {
-            subtask_completion: vec![false; common_data.subtasks.len()],
+            subtask_completion: vec![false; subtask_count],
             completion_override: false,
             text: UpgradedContent::default(),
         }
@@ -207,17 +207,10 @@ impl MultiBinaryTaskElement {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-/// The data that is used for all MultiBinary tasks
-pub struct MultiBinaryCommon {
-    subtasks: Vec<String>,
-}
-
 #[derive(Debug, Serialize, Deserialize)]
-/// Contains all the individual element entries in a MultiBinary task, as well as all of the common data used by the
-/// task
+/// Contains the common and individual element entries in a MultiBinary task
 pub struct MultiBinaryTask {
-    common: MultiBinaryCommon,
+    subtasks: Vec<String>,
     elements: BTreeMap<NaiveDate, MultiBinaryTaskElement>,
 }
 
@@ -225,11 +218,16 @@ impl MultiBinaryTask {
     /// Creates a new MultiBinaryTask with the given set of subtasks
     pub fn new(subtask_names: Vec<String>) -> Self {
         Self {
-            common: MultiBinaryCommon {
-                subtasks: subtask_names,
-            },
+            subtasks: subtask_names,
             elements: BTreeMap::new(),
         }
+    }
+
+    /// Adds an empty element with the given date to the task elements if it does not exist
+    pub fn add_empty_element(&mut self, active_date: NaiveDate) {
+        let empty_element = MultiBinaryTaskElement::with_empty_subtasks(self.subtasks.len());
+
+        self.elements.entry(active_date).or_insert(empty_element);
     }
 
     /// Returns mutable access to the task if it exists
@@ -242,8 +240,8 @@ impl MultiBinaryTask {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Display, Serialize, Deserialize)]
-/// these are the types of templates that can be created
-pub enum TaskType {
+/// The types of templates that can be created
+pub enum TemplateTaskType {
     Standard,
     MultiBinary,
 }
@@ -323,51 +321,70 @@ pub enum CommonMessage {
     DeleteTemplate,
 }
 
-#[derive(Debug)]
-pub enum Task<'a> {
-    Standard(&'a StandardTask),
-    MultiBinary(&'a MultiBinaryTask),
-}
-
-#[derive(Debug)]
-pub enum TaskMut<'a> {
-    Standard(&'a mut StandardTask),
-    MultiBinary(&'a mut MultiBinaryTask),
-}
-
-pub enum OwnedTask {
+#[derive(Debug, Serialize, Deserialize)]
+pub enum TemplateData {
     Standard(StandardTask),
     MultiBinary(MultiBinaryTask),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+impl TemplateData {
+    /// Conversion to TemplateTaskTypes
+    pub fn task_type(&self) -> TemplateTaskType {
+        match self {
+            TemplateData::Standard(_) => TemplateTaskType::Standard,
+            TemplateData::MultiBinary(_) => TemplateTaskType::MultiBinary,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 /// Data that is used by all TemplateTasks
-pub struct CommonTaskData {
+pub struct TemplateTask {
     name: String,
-    task_type: TaskType,
     creation_date: NaiveDate,
     ended_date: Option<NaiveDate>,
     frequency: Frequency,
     expanded: bool,
     options_expanded: bool,
+    template_data: TemplateData,
 }
 
-impl CommonTaskData {
-    /// Creates new CommonTaskData instance with the given values
+impl TemplateTask {
+    /// Creates new TemplateTask instance with the given values
     pub fn new(
         name: String,
-        task_type: TaskType,
         creation_date: NaiveDate,
         frequency: Frequency,
+        template_data: TemplateData,
     ) -> Self {
         Self {
             name,
-            task_type,
             creation_date,
             ended_date: None,
             frequency,
             expanded: false,
             options_expanded: false,
+            template_data,
+        }
+    }
+
+    /// Returns mutable access to the template data
+    pub fn get_template_mut(&mut self) -> &mut TemplateData {
+        &mut self.template_data
+    }
+
+    /// If the TemplateTask does not have an entry for the given day and it should based on its Frequency, a blank
+    /// element is inserted into the elements
+    pub fn generate_template_entry(&mut self, active_date: NaiveDate) {
+        if self.frequency.is_active(active_date) {
+            match &mut self.template_data {
+                TemplateData::Standard(standard_task) => {
+                    standard_task.add_empty_element(active_date);
+                }
+                TemplateData::MultiBinary(multi_binary_task) => {
+                    multi_binary_task.add_empty_element(active_date);
+                }
+            }
         }
     }
 }
@@ -390,10 +407,7 @@ pub struct TemplateTaskMessage {
 #[derive(Debug, Default, Serialize, Deserialize)]
 /// Collection of all the loaded templates
 pub struct TemplateTasks {
-    common_data: BTreeMap<TaskId, CommonTaskData>,
-
-    standard_tasks: BTreeMap<TaskId, StandardTask>,
-    multi_binary_tasks: BTreeMap<TaskId, MultiBinaryTask>,
+    tasks: BTreeMap<TaskId, TemplateTask>,
 }
 
 impl<'a> TemplateTasks {
@@ -417,7 +431,7 @@ impl<'a> TemplateTasks {
         if let Ok(template_string) = fs::read_to_string(template_path)
             && let Ok(template_disk) = serde_json::from_str::<TemplateTasks>(&template_string)
         {
-            if let Some(max_id) = template_disk.common_data.keys().max() {
+            if let Some(max_id) = template_disk.tasks.keys().max() {
                 TaskId::set_if_greater(max_id.as_u32() + 1);
             }
 
@@ -428,35 +442,14 @@ impl<'a> TemplateTasks {
     }
 
     /// Inserts a new template task into the structure
-    pub fn create_task(&mut self, common_data: CommonTaskData, task: OwnedTask) {
+    pub fn create_task(&mut self, mut template: TemplateTask) {
         let task_id = TaskId::new_unique_id();
 
-        let creation_date = common_data.creation_date;
-        let frequency = common_data.frequency.clone();
+        let task_date = template.creation_date;
 
-        self.common_data.insert(task_id, common_data);
+        template.generate_template_entry(task_date);
 
-        match task {
-            OwnedTask::Standard(mut standard_task) => {
-                if frequency.is_active(creation_date) {
-                    standard_task
-                        .elements
-                        .insert(creation_date, StandardTaskElement::default());
-                }
-
-                self.standard_tasks.insert(task_id, standard_task);
-            }
-            OwnedTask::MultiBinary(mut multi_binary_task) => {
-                if frequency.is_active(creation_date) {
-                    multi_binary_task.elements.insert(
-                        creation_date,
-                        MultiBinaryTaskElement::new_instance(&multi_binary_task.common),
-                    );
-                }
-
-                self.multi_binary_tasks.insert(task_id, multi_binary_task);
-            }
-        }
+        self.tasks.insert(task_id, template);
     }
 
     /// Generate any missing entries for tasks scheduled on the given date
@@ -464,63 +457,26 @@ impl<'a> TemplateTasks {
         let active_templates = self.get_active_template_ids(active_date);
 
         for task_id in active_templates {
-            if let Some(common_element) = self.common_data.get(&task_id) {
-                match common_element.task_type {
-                    TaskType::Standard => {
-                        if let Some(standard_task) = self.standard_tasks.get_mut(&task_id)
-                            && !standard_task.elements.contains_key(&active_date)
-                        {
-                            standard_task
-                                .elements
-                                .insert(active_date, StandardTaskElement::new_instance());
-                        }
-                    }
-                    TaskType::MultiBinary => {
-                        if let Some(multi_binary_task) = self.multi_binary_tasks.get_mut(&task_id)
-                            && !multi_binary_task.elements.contains_key(&active_date)
-                        {
-                            multi_binary_task.elements.insert(
-                                active_date,
-                                MultiBinaryTaskElement::new_instance(&multi_binary_task.common),
-                            );
-                        }
-                    }
-                }
+            if let Some(task) = self.tasks.get_mut(&task_id) {
+                task.generate_template_entry(active_date);
             }
         }
     }
 
-    /// Returns the common data portion at the given TaskId, if it exists
-    pub fn get_common_data(&self, task_id: TaskId) -> Option<&CommonTaskData> {
-        self.common_data.get(&task_id)
-    }
-
     /// Returns the task at the given TaskId, if it exists
-    pub fn get_task(&self, task_id: TaskId) -> Option<Task<'_>> {
-        if let Some(std) = self.standard_tasks.get(&task_id) {
-            Some(Task::Standard(std))
-        } else if let Some(mb) = self.multi_binary_tasks.get(&task_id) {
-            Some(Task::MultiBinary(mb))
-        } else {
-            None
-        }
+    pub fn get_task(&self, task_id: TaskId) -> Option<&TemplateTask> {
+        self.tasks.get(&task_id)
     }
 
     /// Returns mutable access the task at the given TaskId, if it exists
-    pub fn get_task_mut(&mut self, task_id: TaskId) -> Option<TaskMut<'_>> {
-        if let Some(std) = self.standard_tasks.get_mut(&task_id) {
-            Some(TaskMut::Standard(std))
-        } else if let Some(mb) = self.multi_binary_tasks.get_mut(&task_id) {
-            Some(TaskMut::MultiBinary(mb))
-        } else {
-            None
-        }
+    pub fn get_task_mut(&mut self, task_id: TaskId) -> Option<&mut TemplateTask> {
+        self.tasks.get_mut(&task_id)
     }
 
     /// Returns true if given name and task type are present in the same TemplateTask
-    pub fn task_exists(&self, task_name: &str, task_type: TaskType) -> bool {
-        for task in self.common_data.values() {
-            if task.name == task_name && task.task_type == task_type {
+    pub fn task_exists(&self, task_name: &str, task_type: TemplateTaskType) -> bool {
+        for task in self.tasks.values() {
+            if task.name == task_name && task.template_data.task_type() == task_type {
                 return true;
             }
         }
@@ -532,35 +488,27 @@ impl<'a> TemplateTasks {
     pub fn update(&mut self, active_date: NaiveDate, message: TemplateTaskMessage) {
         match message.message {
             TemplateMessage::Common(common_message) => {
-                if let Some(common_data) = self.common_data.get_mut(&message.task_id) {
+                if let Some(template) = self.tasks.get_mut(&message.task_id) {
                     match common_message {
                         CommonMessage::ExpandToggled => {
-                            common_data.expanded = !common_data.expanded;
+                            template.expanded = !template.expanded;
                         }
                         CommonMessage::ExpandOptions => {
-                            common_data.options_expanded = !common_data.options_expanded
+                            template.options_expanded = !template.options_expanded
                         }
                         CommonMessage::EndTask => {
-                            common_data.ended_date = Some(active_date);
+                            template.ended_date = Some(active_date);
                         }
                         CommonMessage::DeleteTemplate => {
-                            if let Some(deleted) = self.common_data.remove(&message.task_id) {
-                                match deleted.task_type {
-                                    TaskType::Standard => {
-                                        self.standard_tasks.remove(&message.task_id);
-                                    }
-                                    TaskType::MultiBinary => {
-                                        self.multi_binary_tasks.remove(&message.task_id);
-                                    }
-                                }
-                            }
+                            self.tasks.remove(&message.task_id);
                         }
                     }
                 }
             }
             TemplateMessage::Standard(standard_message) => {
-                if let Some(task) = self.standard_tasks.get_mut(&message.task_id)
-                    && let Some(task_element) = task.elements.get_mut(&active_date)
+                if let Some(task) = self.tasks.get_mut(&message.task_id)
+                    && let TemplateData::Standard(standard_task) = &mut task.template_data
+                    && let Some(task_element) = standard_task.elements.get_mut(&active_date)
                 {
                     match standard_message {
                         StandardMessage::CheckedBox(checked) => {
@@ -573,8 +521,9 @@ impl<'a> TemplateTasks {
                 }
             }
             TemplateMessage::MultiBinary(multi_binary_message) => {
-                if let Some(task) = self.multi_binary_tasks.get_mut(&message.task_id)
-                    && let Some(task_element) = task.elements.get_mut(&active_date)
+                if let Some(task) = self.tasks.get_mut(&message.task_id)
+                    && let TemplateData::MultiBinary(multi_binary_task) = &mut task.template_data
+                    && let Some(task_element) = multi_binary_task.elements.get_mut(&active_date)
                 {
                     match multi_binary_message {
                         MultiBinaryMessage::CheckedNth((index, checked)) => {
@@ -594,12 +543,12 @@ impl<'a> TemplateTasks {
 
     /// Returns a list of all the templates that are active on a given date
     pub fn get_active_template_ids(&self, active_date: NaiveDate) -> Vec<TaskId> {
-        self.common_data
+        self.tasks
             .iter()
             .filter(|(_id, data)| {
                 let after_end_date = data
                     .ended_date
-                    .is_some_and(|ended_date| ended_date > active_date);
+                    .is_some_and(|ended_date| active_date > ended_date);
 
                 data.frequency.is_active(active_date)
                     && active_date >= data.creation_date
@@ -634,12 +583,10 @@ impl<'a> TemplateTasks {
         task_id: TaskId,
         active_date: NaiveDate,
     ) -> Element<'a, TemplateTaskMessage> {
-        if let Some(task_common) = self.get_common_data(task_id)
-            && let Some(task_specific) = self.get_task(task_id)
-        {
-            let name = Text::new(task_common.name.clone());
+        if let Some(task_data) = self.get_task(task_id) {
+            let name = Text::new(task_data.name.clone());
 
-            let expand_button_text = if task_common.expanded { "\\/" } else { "<" };
+            let expand_button_text = if task_data.expanded { "\\/" } else { "<" };
 
             let expand_button =
                 button(Text::new(expand_button_text)).on_press(TemplateTaskMessage {
@@ -652,8 +599,8 @@ impl<'a> TemplateTasks {
                 task_id,
             });
 
-            let task_ui = match task_specific {
-                Task::Standard(standard_task) => {
+            let task_ui = match &task_data.template_data {
+                TemplateData::Standard(standard_task) => {
                     if let Some(task_element) = standard_task.elements.get(&active_date) {
                         let checkbox = checkbox(task_element.completed).on_toggle(move |ticked| {
                             TemplateTaskMessage {
@@ -680,7 +627,7 @@ impl<'a> TemplateTasks {
                             },
                         );
 
-                        if !task_common.expanded {
+                        if !task_data.expanded {
                             minimized_task
                         } else {
                             column![minimized_task, text].into()
@@ -689,7 +636,7 @@ impl<'a> TemplateTasks {
                         column![].into()
                     }
                 }
-                Task::MultiBinary(multi_binary_task) => {
+                TemplateData::MultiBinary(multi_binary_task) => {
                     if let Some(task_element) = multi_binary_task.elements.get(&active_date) {
                         let completed_checkbox =
                             checkbox(task_element.is_completed()).on_toggle(move |ticked| {
@@ -720,7 +667,7 @@ impl<'a> TemplateTasks {
                                 }
                             });
 
-                            let subtask_name = &multi_binary_task.common.subtasks[i];
+                            let subtask_name = &multi_binary_task.subtasks[i];
 
                             let name_text = Text::new(subtask_name);
 
@@ -741,7 +688,7 @@ impl<'a> TemplateTasks {
                             },
                         );
 
-                        if !task_common.expanded {
+                        if !task_data.expanded {
                             minimized_task
                         } else {
                             column![minimized_task, subtask_checkboxes, text].into()
@@ -752,7 +699,7 @@ impl<'a> TemplateTasks {
                 }
             };
 
-            if task_common.options_expanded {
+            if task_data.options_expanded {
                 let end_task_button = button("End Task").on_press(TemplateTaskMessage {
                     message: TemplateMessage::Common(CommonMessage::EndTask),
                     task_id,

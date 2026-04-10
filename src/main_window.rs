@@ -15,7 +15,7 @@ use crate::misc_tools::point_on_edge_of_text;
 use crate::search_table::{SearchTable, SearchTableMessage};
 use crate::tabview::{TabviewItem, tabview_content_vertical};
 use crate::task_id::TaskId;
-use crate::template_tasks::{TaskMut, TemplateTaskMessage};
+use crate::template_tasks::{TemplateData, TemplateTaskMessage};
 use crate::upgraded_content::{ContentAction, UpgradedContent};
 use crate::user_preferences::{preferences, preferences_mut};
 use crate::window_manager::{WindowType, Windowable};
@@ -974,15 +974,15 @@ impl Windowable<MainMessage> for Main {
                 ActiveContent::Search => self.search_content.perform(action),
                 ActiveContent::Task(task_id) => {
                     if let Some(task) = state.all_tasks.template_tasks.get_task_mut(*task_id) {
-                        match task {
-                            TaskMut::Standard(standard_task) => {
+                        match task.get_template_mut() {
+                            TemplateData::Standard(standard_task) => {
                                 if let Some(task_element) =
                                     standard_task.get_element_mut(state.global_store.current_date())
                                 {
                                     task_element.text_perform(action);
                                 }
                             }
-                            TaskMut::MultiBinary(multi_binary_task) => {
+                            TemplateData::MultiBinary(multi_binary_task) => {
                                 if let Some(task_element) = multi_binary_task
                                     .get_element_mut(state.global_store.current_date())
                                 {
