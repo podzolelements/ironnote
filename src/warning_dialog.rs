@@ -1,6 +1,6 @@
 use crate::{
     SharedAppState, UpstreamAction, dialog_manager::DialogType, upgraded_content::ContentAction,
-    window_manager::Windowable,
+    windows::window_manager::Windowable,
 };
 use iced::{
     Element, Task,

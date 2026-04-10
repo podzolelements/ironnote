@@ -1,3 +1,4 @@
+use super::window_manager::{WindowType, Windowable};
 use crate::{
     SharedAppState, UpstreamAction,
     keyboard_manager::KeyboardAction,
@@ -7,7 +8,6 @@ use crate::{
         TemplateTaskType,
     },
     upgraded_content::{ContentAction, UpgradedContent},
-    window_manager::{WindowType, Windowable},
 };
 
 use iced::{

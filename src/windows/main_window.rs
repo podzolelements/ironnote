@@ -1,3 +1,5 @@
+use super::window_manager::{WindowType, Windowable};
+
 use crate::clipboard::{read_clipboard, write_clipboard};
 use crate::custom_widgets::calender::{
     Calender, CalenderColormap, CalenderMessage, TOTAL_CALENDER_WIDTH,
@@ -20,7 +22,6 @@ use crate::tasks::TaskId;
 use crate::tasks::template_tasks::{TemplateData, TemplateTaskMessage};
 use crate::upgraded_content::{ContentAction, UpgradedContent};
 use crate::user_preferences::{preferences, preferences_mut};
-use crate::window_manager::{WindowType, Windowable};
 use crate::word_count::{TimedWordCount, WordCount};
 use crate::{SharedAppState, UpstreamAction};
 

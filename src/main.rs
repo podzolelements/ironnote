@@ -1,17 +1,17 @@
 use crate::{
     dialog_manager::{DialogManager, DialogMessage, DialogType},
     dictionary::reload_dictionary,
-    file_export_window::{FileExport, FileExportMessage},
-    file_import_window::{FileImport, FileImportMessage},
     global_store::GlobalStore,
     keyboard_manager::{KeyboardAction, bind_keybinds},
-    main_window::{Main, MainMessage},
-    preferences_window::{Preferences, PreferencesMessage},
-    task_creator_window::{TaskCreator, TaskCreatorMessage},
     tasks::TaskManager,
     upgraded_content::UpgradedContent,
     user_preferences::{UserPreferences, overwrite_preferences, preferences},
-    window_manager::{WindowType, Windowable},
+    windows::file_export_window::{FileExport, FileExportMessage},
+    windows::file_import_window::{FileImport, FileImportMessage},
+    windows::main_window::{Main, MainMessage},
+    windows::preferences_window::{Preferences, PreferencesMessage},
+    windows::task_creator_window::{TaskCreator, TaskCreatorMessage},
+    windows::window_manager::{WindowType, Windowable},
     word_count::WordCount,
 };
 
@@ -26,9 +26,7 @@ mod custom_widgets;
 mod day_store;
 mod dialog_manager;
 mod dictionary;
-mod file_export_window;
 mod file_extensions;
-mod file_import_window;
 mod global_store;
 mod highlighter;
 mod history_stack;
@@ -36,17 +34,14 @@ mod journal_pointer;
 mod journal_theme;
 mod keyboard_manager;
 mod logbox;
-mod main_window;
 mod misc_tools;
 mod month_day;
 mod month_store;
-mod preferences_window;
-mod task_creator_window;
 mod tasks;
 mod upgraded_content;
 mod user_preferences;
 mod warning_dialog;
-mod window_manager;
+mod windows;
 mod word_count;
 
 #[derive(Debug)]

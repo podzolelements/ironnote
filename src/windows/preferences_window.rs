@@ -1,3 +1,4 @@
+use super::window_manager::{WindowType, Windowable};
 use crate::{
     SharedAppState, UpstreamAction,
     custom_widgets::file_picker::{FilePicker, FilePickerMessage},
@@ -6,8 +7,8 @@ use crate::{
     keyboard_manager::KeyboardAction,
     upgraded_content::{ContentAction, Restriction, UpgradedContent},
     user_preferences::{UserPreferences, overwrite_preferences, preferences},
-    window_manager::{WindowType, Windowable},
 };
+
 use iced::{
     Length, Task,
     widget::{self, Space, Text, button, checkbox, column, row, text_editor::Action},

@@ -1,10 +1,10 @@
+use super::window_manager::{WindowType, Windowable};
 use crate::{
     SharedAppState, UpstreamAction,
     custom_widgets::file_picker::{FilePicker, FilePickerMessage},
     file_extensions::{TEXT_EXT_LIST, build_extensions},
     keyboard_manager::KeyboardAction,
     upgraded_content::{ContentAction, UpgradedContent},
-    window_manager::{WindowType, Windowable},
 };
 use iced::{
     Task,

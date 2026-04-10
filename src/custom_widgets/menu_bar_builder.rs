@@ -1,5 +1,5 @@
 use super::menu_bar::{Dropdown, MenuBar, MenuItem, MenuItemType};
-use crate::main_window::MainMessage;
+use crate::windows::main_window::MainMessage;
 
 use strum::{Display, EnumIter, IntoEnumIterator};
 
