@@ -1,19 +1,21 @@
-use crate::calender::{Calender, CalenderColormap, CalenderMessage, TOTAL_CALENDER_WIDTH};
 use crate::clipboard::{read_clipboard, write_clipboard};
-use crate::context_menu::context_menu;
+use crate::custom_widgets::calender::{
+    Calender, CalenderColormap, CalenderMessage, TOTAL_CALENDER_WIDTH,
+};
+use crate::custom_widgets::context_menu::context_menu;
+use crate::custom_widgets::menu_bar::{MenuBar, menu_bar};
+use crate::custom_widgets::menu_bar_builder::{
+    EditMessage, FileMessage, MENU_BAR_HEIGHT, MenuMessage, Menus, ToolsMessage, build_menu_bar,
+};
+use crate::custom_widgets::search_table::{SearchTable, SearchTableMessage};
+use crate::custom_widgets::tabview::{TabviewItem, tabview_content_vertical};
 use crate::dialog_manager::DialogType;
 use crate::dictionary::{self, DICTIONARY};
 use crate::highlighter::{self, HighlightSettings, SpellHighlighter};
 use crate::journal_theme::LIGHT;
 use crate::keyboard_manager::{KeyboardAction, TextEdit, UnboundKey};
 use crate::logbox::{logbox, logbox_mut};
-use crate::menu_bar::{MenuBar, menu_bar};
-use crate::menu_bar_builder::{
-    EditMessage, FileMessage, MENU_BAR_HEIGHT, MenuMessage, Menus, ToolsMessage, build_menu_bar,
-};
 use crate::misc_tools::point_on_edge_of_text;
-use crate::search_table::{SearchTable, SearchTableMessage};
-use crate::tabview::{TabviewItem, tabview_content_vertical};
 use crate::tasks::TaskId;
 use crate::tasks::template_tasks::{TemplateData, TemplateTaskMessage};
 use crate::upgraded_content::{ContentAction, UpgradedContent};

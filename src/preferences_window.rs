@@ -1,9 +1,9 @@
 use crate::{
     SharedAppState, UpstreamAction,
+    custom_widgets::file_picker::{FilePicker, FilePickerMessage},
+    custom_widgets::tabview::{TabviewItem, tabview_content_horizontal},
     file_extensions::{AFF_EXT_LIST, DIC_EXT_LIST, JSON_EXT_LIST, build_extensions},
-    file_picker::{FilePicker, FilePickerMessage},
     keyboard_manager::KeyboardAction,
-    tabview::{TabviewItem, tabview_content_horizontal},
     upgraded_content::{ContentAction, Restriction, UpgradedContent},
     user_preferences::{UserPreferences, overwrite_preferences, preferences},
     window_manager::{WindowType, Windowable},

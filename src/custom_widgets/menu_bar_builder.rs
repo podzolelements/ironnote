@@ -1,7 +1,6 @@
-use crate::{
-    main_window::MainMessage,
-    menu_bar::{Dropdown, MenuBar, MenuItem, MenuItemType},
-};
+use super::menu_bar::{Dropdown, MenuBar, MenuItem, MenuItemType};
+use crate::main_window::MainMessage;
+
 use strum::{Display, EnumIter, IntoEnumIterator};
 
 #[derive(Debug, Clone, EnumIter, Display)]
