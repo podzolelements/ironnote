@@ -2,6 +2,7 @@ use super::TaskId;
 use crate::{
     config::preferences,
     content::{ContentAction, UpgradedContent},
+    custom_widgets::calender::TOTAL_CALENDER_WIDTH,
     utils::month_day::MonthDay,
 };
 
@@ -9,7 +10,7 @@ use chrono::{Datelike, NaiveDate, Weekday};
 use iced::{
     Element,
     Length::Fill,
-    widget::{self, Space, Text, button, checkbox, column, row},
+    widget::{self, Space, Text, button, checkbox, column, row, text::Wrapping},
 };
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::{collections::BTreeMap, fs};
@@ -344,7 +345,9 @@ pub struct TemplateTask {
     creation_date: NaiveDate,
     ended_date: Option<NaiveDate>,
     frequency: Frequency,
+    #[serde(skip)]
     expanded: bool,
+    #[serde(skip)]
     options_expanded: bool,
     template_data: TemplateData,
 }
@@ -497,7 +500,13 @@ impl<'a> TemplateTasks {
                             template.options_expanded = !template.options_expanded
                         }
                         CommonMessage::EndTask => {
-                            template.ended_date = Some(active_date);
+                            if template.ended_date.is_none() {
+                                template.ended_date = Some(active_date);
+                            } else {
+                                template.ended_date = None;
+                            }
+
+                            template.options_expanded = false;
                         }
                         CommonMessage::DeleteTemplate => {
                             self.tasks.remove(&message.task_id);
@@ -571,7 +580,7 @@ impl<'a> TemplateTasks {
             name,
             Space::new().width(Fill),
             expand_button,
-            Space::new().width(5),
+            Space::new().width(1),
             options_button,
         ]
         .into()
@@ -584,7 +593,10 @@ impl<'a> TemplateTasks {
         active_date: NaiveDate,
     ) -> Element<'a, TemplateTaskMessage> {
         if let Some(task_data) = self.get_task(task_id) {
-            let name = Text::new(task_data.name.clone());
+            let name = Text::new(task_data.name.clone())
+                .width(TOTAL_CALENDER_WIDTH - 90)
+                .wrapping(Wrapping::WordOrGlyph)
+                .size(14);
 
             let expand_button_text = if task_data.expanded { "\\/" } else { "<" };
 
@@ -699,8 +711,14 @@ impl<'a> TemplateTasks {
                 }
             };
 
+            let end_task_text = if task_data.ended_date.is_none() {
+                "End Task"
+            } else {
+                "Resume Task"
+            };
+
             if task_data.options_expanded {
-                let end_task_button = button("End Task").on_press(TemplateTaskMessage {
+                let end_task_button = button(end_task_text).on_press(TemplateTaskMessage {
                     message: TemplateMessage::Common(CommonMessage::EndTask),
                     task_id,
                 });

@@ -1,7 +1,7 @@
 use super::window_manager::{WindowType, Windowable};
 use crate::{
     SharedAppState, UpstreamAction,
-    content::{ContentAction, UpgradedContent},
+    content::{ContentAction, Restriction, UpgradedContent},
     keyboard_manager::KeyboardAction,
     tasks::template_tasks::{
         Frequency, FrequencyType, MultiBinaryTask, StandardTask, TemplateData, TemplateTask,
@@ -388,7 +388,8 @@ impl Windowable<TaskCreatorMessage> for TaskCreator {
             TaskCreatorMessage::EditedName(action) => {
                 self.active_content = Some(ActiveContent::Name);
 
-                self.name_content.perform(ContentAction::Standard(action));
+                self.name_content
+                    .perform(ContentAction::Restricted((Restriction::NoNewlines, action)));
             }
             TaskCreatorMessage::CheckedWeekday(weekday_index, checked) => {
                 self.active_content = None;
@@ -415,7 +416,8 @@ impl Windowable<TaskCreatorMessage> for TaskCreator {
             TaskCreatorMessage::EditedMultiBinName((index, action)) => {
                 self.active_content = Some(ActiveContent::MultiBinaryComponent(index));
 
-                self.multi_binary_contents[index].perform(ContentAction::Standard(action));
+                self.multi_binary_contents[index]
+                    .perform(ContentAction::Restricted((Restriction::NoNewlines, action)));
             }
             TaskCreatorMessage::SelectedMonth(month) => {
                 self.freq_month = month;

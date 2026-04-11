@@ -31,9 +31,12 @@ impl CtrlEdit {
 /// types of Actions that can be performed on the UpgradedContent. Note a Restriction only ever blocks Actions from
 /// being perform()ed on the content, it will NEVER retroactively apply the Restriction rules to the content
 pub enum Restriction {
-    /// any Edits that would result in non-number characters (anything other than ASCII '0'-'9') being added to the
+    /// Any Edits that would result in non-number characters (anything other than ASCII '0'-'9') being added to the
     /// content are blocked
     NumbersOnly,
+
+    /// Edits that would insert a '\n' into the content are modified to remove any newline characters
+    NoNewlines,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -252,6 +255,22 @@ impl UpgradedContent {
 
                         if edit_contains_only_numbers {
                             self.perform(ContentAction::Standard(action));
+                        }
+                    }
+                    Restriction::NoNewlines => {
+                        let modified_newline = match action {
+                            Action::Edit(Edit::Insert('\n')) => None,
+                            Action::Edit(Edit::Paste(pasted_string)) => {
+                                let no_newline_pasted = pasted_string.to_string().replace("\n", "");
+
+                                Some(Action::Edit(Edit::Paste(no_newline_pasted.into())))
+                            }
+                            Action::Edit(Edit::Enter) => None,
+                            other_action => Some(other_action),
+                        };
+
+                        if let Some(no_newline_action) = modified_newline {
+                            self.perform(ContentAction::Standard(no_newline_action));
                         }
                     }
                 }
