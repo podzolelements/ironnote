@@ -1,18 +1,17 @@
 use crate::{
-    dialog_manager::{DialogManager, DialogMessage, DialogType},
-    dictionary::reload_dictionary,
-    global_store::GlobalStore,
+    config::{UserPreferences, overwrite_preferences, preferences},
+    content::UpgradedContent,
+    dialogs::{DialogManager, DialogMessage, DialogType},
     keyboard_manager::{KeyboardAction, bind_keybinds},
+    store::{GlobalStore, WordCount},
     tasks::TaskManager,
-    upgraded_content::UpgradedContent,
-    user_preferences::{UserPreferences, overwrite_preferences, preferences},
+    utils::dictionary::reload_dictionary,
     windows::file_export_window::{FileExport, FileExportMessage},
     windows::file_import_window::{FileImport, FileImportMessage},
     windows::main_window::{Main, MainMessage},
     windows::preferences_window::{Preferences, PreferencesMessage},
     windows::task_creator_window::{TaskCreator, TaskCreatorMessage},
     windows::window_manager::{WindowType, Windowable},
-    word_count::WordCount,
 };
 
 use iced::window;
@@ -20,29 +19,16 @@ use iced::{Element, Event, Subscription, Task, event::listen_with, keyboard, wid
 use keybinds::Keybinds;
 use std::collections::BTreeMap;
 
-mod button_themes;
-mod clipboard;
+mod config;
+mod content;
 mod custom_widgets;
-mod day_store;
-mod dialog_manager;
-mod dictionary;
-mod file_extensions;
-mod global_store;
-mod highlighter;
-mod history_stack;
-mod journal_pointer;
-mod journal_theme;
+mod dialogs;
 mod keyboard_manager;
-mod logbox;
-mod misc_tools;
-mod month_day;
-mod month_store;
+mod store;
 mod tasks;
-mod upgraded_content;
-mod user_preferences;
-mod warning_dialog;
+mod ui;
+mod utils;
 mod windows;
-mod word_count;
 
 #[derive(Debug)]
 /// stores the application state that needs to be shared between different windows

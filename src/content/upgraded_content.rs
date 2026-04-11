@@ -1,5 +1,6 @@
-use crate::history_stack::{HistoryEvent, HistoryStack, TextRemoval};
-use crate::misc_tools;
+use super::history_stack::{HistoryEvent, HistoryStack, TextRemoval};
+use crate::utils::misc_tools;
+
 use iced::widget::text_editor::{self, Action, Content, Cursor, Edit, Position};
 
 #[derive(Debug, Clone, PartialEq)]

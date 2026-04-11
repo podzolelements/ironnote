@@ -1,7 +1,8 @@
+use super::DialogType;
 use crate::{
-    SharedAppState, UpstreamAction, dialog_manager::DialogType, upgraded_content::ContentAction,
-    windows::window_manager::Windowable,
+    SharedAppState, UpstreamAction, content::ContentAction, windows::window_manager::Windowable,
 };
+
 use iced::{
     Element, Task,
     widget::{Text, button, column},

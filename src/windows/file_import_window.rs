@@ -1,10 +1,10 @@
 use super::window_manager::{WindowType, Windowable};
 use crate::{
     SharedAppState, UpstreamAction,
+    content::{ContentAction, UpgradedContent},
     custom_widgets::file_picker::{FilePicker, FilePickerMessage},
-    file_extensions::{TEXT_EXT_LIST, build_extensions},
     keyboard_manager::KeyboardAction,
-    upgraded_content::{ContentAction, UpgradedContent},
+    utils::file_extensions::{self, TEXT_EXT_LIST},
 };
 use iced::{
     Task,
@@ -39,7 +39,10 @@ pub struct FileImport {
 impl Default for FileImport {
     fn default() -> Self {
         Self {
-            filepicker: FilePicker::file(PathBuf::new(), &build_extensions(TEXT_EXT_LIST)),
+            filepicker: FilePicker::file(
+                PathBuf::new(),
+                &file_extensions::build_extensions(TEXT_EXT_LIST),
+            ),
             filepicker_content_is_active: false,
             import_strategy: None,
         }

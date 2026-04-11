@@ -1,4 +1,5 @@
-use crate::upgraded_content::{ContentAction, CtrlEdit};
+use crate::content::{ContentAction, CtrlEdit};
+
 use iced::widget::text_editor::{Action, Motion};
 use keybinds::Keybinds;
 

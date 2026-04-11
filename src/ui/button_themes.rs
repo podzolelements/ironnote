@@ -1,4 +1,5 @@
-use crate::journal_theme::LIGHT;
+use super::journal_theme::LIGHT;
+
 use iced::{
     Background, Border, Color, Shadow, Theme, Vector,
     widget::button::{self, Status},

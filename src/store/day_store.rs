@@ -1,7 +1,6 @@
-use crate::{
-    dictionary::WORD_REGEX,
-    word_count::{WordCount, WordCounts},
-};
+use super::word_count::{WordCount, WordCounts};
+use crate::utils::dictionary::WORD_REGEX;
+
 use chrono::NaiveDate;
 
 #[derive(Debug, Default, Clone)]

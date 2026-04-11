@@ -1,13 +1,13 @@
 use super::window_manager::{WindowType, Windowable};
 use crate::{
     SharedAppState, UpstreamAction,
+    content::{ContentAction, UpgradedContent},
     keyboard_manager::KeyboardAction,
-    month_day::{DispMonth, MonthDay},
     tasks::template_tasks::{
         Frequency, FrequencyType, MultiBinaryTask, StandardTask, TemplateData, TemplateTask,
         TemplateTaskType,
     },
-    upgraded_content::{ContentAction, UpgradedContent},
+    utils::month_day::{DispMonth, MonthDay},
 };
 
 use iced::{

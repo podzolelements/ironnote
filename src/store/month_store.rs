@@ -1,8 +1,8 @@
-use crate::{
-    day_store::DayStore,
-    user_preferences::preferences,
-    word_count::{TimedWordCount, WordCount, WordCounts},
-};
+use crate::config::preferences;
+
+use super::DayStore;
+use super::word_count::{TimedWordCount, WordCount, WordCounts};
+
 use chrono::{Datelike, Days, NaiveDate};
 use serde_json::Value;
 use std::fs;

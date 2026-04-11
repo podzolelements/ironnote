@@ -1,6 +1,7 @@
-use crate::dictionary::{self, DICTIONARY};
 use iced::{Color, Font, advanced::text::highlighter::Format, widget::text::Highlighter};
 use std::ops::Range;
+
+use crate::utils::dictionary::{self, DICTIONARY};
 
 /// converts the custom highlighting scheme into and iced font format
 pub fn highlight_to_format(highlight: &SpellHighlightColor, _theme: &iced::Theme) -> Format<Font> {

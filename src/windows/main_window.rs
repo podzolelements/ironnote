@@ -1,6 +1,7 @@
 use super::window_manager::{WindowType, Windowable};
 
-use crate::clipboard::{read_clipboard, write_clipboard};
+use crate::config::{preferences, preferences_mut};
+use crate::content::{ContentAction, UpgradedContent};
 use crate::custom_widgets::calender::{
     Calender, CalenderColormap, CalenderMessage, TOTAL_CALENDER_WIDTH,
 };
@@ -11,18 +12,17 @@ use crate::custom_widgets::menu_bar_builder::{
 };
 use crate::custom_widgets::search_table::{SearchTable, SearchTableMessage};
 use crate::custom_widgets::tabview::{TabviewItem, tabview_content_vertical};
-use crate::dialog_manager::DialogType;
-use crate::dictionary::{self, DICTIONARY};
-use crate::highlighter::{self, HighlightSettings, SpellHighlighter};
-use crate::journal_theme::LIGHT;
+use crate::dialogs::DialogType;
 use crate::keyboard_manager::{KeyboardAction, TextEdit, UnboundKey};
-use crate::logbox::{logbox, logbox_mut};
-use crate::misc_tools::point_on_edge_of_text;
+use crate::store::{TimedWordCount, WordCount};
 use crate::tasks::TaskId;
 use crate::tasks::template_tasks::{TemplateData, TemplateTaskMessage};
-use crate::upgraded_content::{ContentAction, UpgradedContent};
-use crate::user_preferences::{preferences, preferences_mut};
-use crate::word_count::{TimedWordCount, WordCount};
+use crate::ui::highlighter::{self, HighlightSettings, SpellHighlighter};
+use crate::ui::journal_theme::LIGHT;
+use crate::utils::clipboard::{read_clipboard, write_clipboard};
+use crate::utils::dictionary::{self, DICTIONARY};
+use crate::utils::logbox::{logbox, logbox_mut};
+use crate::utils::misc_tools::point_on_edge_of_text;
 use crate::{SharedAppState, UpstreamAction};
 
 use chrono::{DateTime, Days, Local, Months, NaiveDate};

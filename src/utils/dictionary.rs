@@ -1,4 +1,5 @@
-use crate::user_preferences::preferences;
+use crate::config::preferences;
+
 use regex::Regex;
 use spellbook::Dictionary;
 use std::{

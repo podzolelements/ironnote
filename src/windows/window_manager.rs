@@ -1,4 +1,5 @@
-use crate::{SharedAppState, upgraded_content::ContentAction};
+use crate::{SharedAppState, content::ContentAction};
+
 use iced::{Element, Size, Task, window};
 
 #[derive(Debug, Clone, PartialEq)]

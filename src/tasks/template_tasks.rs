@@ -1,8 +1,8 @@
 use super::TaskId;
 use crate::{
-    month_day::MonthDay,
-    upgraded_content::{ContentAction, UpgradedContent},
-    user_preferences::preferences,
+    config::preferences,
+    content::{ContentAction, UpgradedContent},
+    utils::month_day::MonthDay,
 };
 
 use chrono::{Datelike, NaiveDate, Weekday};

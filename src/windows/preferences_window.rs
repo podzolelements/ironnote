@@ -1,12 +1,12 @@
 use super::window_manager::{WindowType, Windowable};
 use crate::{
     SharedAppState, UpstreamAction,
+    config::{UserPreferences, overwrite_preferences, preferences},
+    content::{ContentAction, Restriction, UpgradedContent},
     custom_widgets::file_picker::{FilePicker, FilePickerMessage},
     custom_widgets::tabview::{TabviewItem, tabview_content_horizontal},
-    file_extensions::{AFF_EXT_LIST, DIC_EXT_LIST, JSON_EXT_LIST, build_extensions},
     keyboard_manager::KeyboardAction,
-    upgraded_content::{ContentAction, Restriction, UpgradedContent},
-    user_preferences::{UserPreferences, overwrite_preferences, preferences},
+    utils::file_extensions::{AFF_EXT_LIST, DIC_EXT_LIST, JSON_EXT_LIST, build_extensions},
 };
 
 use iced::{

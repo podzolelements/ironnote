@@ -1,8 +1,9 @@
+use super::{WarningDialog, WarningMessage};
 use crate::{
     SharedAppState,
-    warning_dialog::{WarningDialog, WarningMessage},
     windows::window_manager::{WINDOW_HEIGHT, WINDOW_WIDTH, Windowable},
 };
+
 use iced::{Element, Size, Task, window};
 use std::collections::BTreeMap;
 

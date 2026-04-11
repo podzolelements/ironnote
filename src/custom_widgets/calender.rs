@@ -1,4 +1,4 @@
-use crate::{button_themes::standard_button_style, journal_theme::LIGHT};
+use crate::ui::{journal_theme::LIGHT, standard_button_style};
 
 use chrono::{Datelike, Days, Local, NaiveDate};
 use iced::{

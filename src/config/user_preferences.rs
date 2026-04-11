@@ -1,4 +1,5 @@
-use crate::journal_pointer::JournalPointer;
+use super::JournalPointer;
+
 use serde::{Deserialize, Serialize};
 use std::{
     fs, io,

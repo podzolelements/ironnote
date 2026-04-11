@@ -1,10 +1,10 @@
-use crate::{
-    day_store::DayStore,
-    misc_tools::{self},
-    month_store::MonthStore,
-    user_preferences::preferences,
-    word_count::{TimedWordCount, WordCount, WordCounts},
-};
+use super::TimedWordCount;
+use super::WordCount;
+use super::WordCounts;
+use super::{DayStore, MonthStore};
+use crate::config::preferences;
+use crate::utils::misc_tools;
+
 use chrono::{Datelike, Days, Local, Months, NaiveDate};
 use regex::Regex;
 use std::sync::LazyLock;

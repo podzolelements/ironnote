@@ -1,4 +1,4 @@
-use crate::upgraded_content::{ContentAction, UpgradedContent};
+use crate::content::{ContentAction, UpgradedContent};
 
 use iced::{
     Element,

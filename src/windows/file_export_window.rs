@@ -1,11 +1,12 @@
 use super::window_manager::{WindowType, Windowable};
 use crate::{
     SharedAppState, UpstreamAction,
+    content::ContentAction,
     custom_widgets::file_picker::{FilePicker, FilePickerMessage},
-    file_extensions::{TEXT_EXT_LIST, build_extensions},
     keyboard_manager::KeyboardAction,
-    upgraded_content::ContentAction,
+    utils::file_extensions::{self, TEXT_EXT_LIST},
 };
+
 use chrono::{Datelike, Days};
 use iced::{
     Task,
@@ -43,7 +44,7 @@ impl Default for FileExport {
         Self {
             individial_file_picker: FilePicker::file(
                 PathBuf::new(),
-                &build_extensions(TEXT_EXT_LIST),
+                &file_extensions::build_extensions(TEXT_EXT_LIST),
             ),
             bulk_directory_picker: FilePicker::directory(PathBuf::new()),
             filepicker_content_is_active: false,
