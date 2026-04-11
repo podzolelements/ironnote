@@ -3,9 +3,12 @@ use crate::{
     SharedAppState, UpstreamAction,
     content::{ContentAction, Restriction, UpgradedContent},
     keyboard_manager::KeyboardAction,
-    tasks::template_tasks::{
-        Frequency, FrequencyType, MultiBinaryTask, StandardTask, TemplateData, TemplateTask,
-        TemplateTaskType,
+    tasks::{
+        TaskType,
+        template_tasks::{
+            Frequency, FrequencyType, MultiBinaryTaskTemplate, StandardTaskTemplate, TemplateData,
+            TemplateTask,
+        },
     },
     utils::month_day::{DispMonth, MonthDay},
 };
@@ -25,7 +28,7 @@ use strum::VariantArray;
 pub enum TaskCreatorMessage {
     KeyEvent(KeyboardAction),
 
-    SelectedTask(TemplateTaskType),
+    SelectedTask(TaskType),
     SelectedFrequency(FrequencyType),
     EditedName(Action),
     CheckedWeekday(usize, bool),
@@ -48,7 +51,7 @@ pub enum ActiveContent {
 
 #[derive(Debug)]
 pub struct TaskCreator {
-    selected_task_type: TemplateTaskType,
+    selected_task_type: TaskType,
     active_content: Option<ActiveContent>,
     name_content: UpgradedContent,
     selected_frequency: FrequencyType,
@@ -62,7 +65,7 @@ pub struct TaskCreator {
 impl Default for TaskCreator {
     fn default() -> Self {
         Self {
-            selected_task_type: TemplateTaskType::Standard,
+            selected_task_type: TaskType::Standard,
             active_content: None,
             name_content: UpgradedContent::default(),
             selected_frequency: FrequencyType::Daily,
@@ -137,17 +140,15 @@ impl Windowable<TaskCreatorMessage> for TaskCreator {
 
         let radio_standard = radio(
             "Standard task",
-            TemplateTaskType::Standard,
-            (self.selected_task_type == TemplateTaskType::Standard)
-                .then_some(TemplateTaskType::Standard),
+            TaskType::Standard,
+            (self.selected_task_type == TaskType::Standard).then_some(TaskType::Standard),
             TaskCreatorMessage::SelectedTask,
         );
 
         let radio_multi_binary = radio(
             "Task with any number of components",
-            TemplateTaskType::MultiBinary,
-            (self.selected_task_type == TemplateTaskType::MultiBinary)
-                .then_some(TemplateTaskType::MultiBinary),
+            TaskType::MultiBinary,
+            (self.selected_task_type == TaskType::MultiBinary).then_some(TaskType::MultiBinary),
             TaskCreatorMessage::SelectedTask,
         );
 
@@ -155,10 +156,10 @@ impl Windowable<TaskCreatorMessage> for TaskCreator {
 
         let type_config = {
             let task_specifc = match self.selected_task_type {
-                TemplateTaskType::Standard => {
+                TaskType::Standard => {
                     row![]
                 }
-                TemplateTaskType::MultiBinary => {
+                TaskType::MultiBinary => {
                     let mut subtasks = column![];
 
                     for (task_index, content) in self.multi_binary_contents.iter().enumerate() {
@@ -455,15 +456,15 @@ impl Windowable<TaskCreatorMessage> for TaskCreator {
                 };
 
                 let template = match self.selected_task_type {
-                    TemplateTaskType::Standard => TemplateData::Standard(StandardTask::default()),
-                    TemplateTaskType::MultiBinary => {
+                    TaskType::Standard => TemplateData::Standard(StandardTaskTemplate::default()),
+                    TaskType::MultiBinary => {
                         let subtask_names = self
                             .multi_binary_contents
                             .iter()
                             .map(|content| content.text())
                             .collect();
 
-                        TemplateData::MultiBinary(MultiBinaryTask::new(subtask_names))
+                        TemplateData::MultiBinary(MultiBinaryTaskTemplate::new(subtask_names))
                     }
                 };
 

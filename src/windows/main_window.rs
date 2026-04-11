@@ -982,14 +982,14 @@ impl Windowable<MainMessage> for Main {
                                 if let Some(task_element) =
                                     standard_task.get_element_mut(state.global_store.current_date())
                                 {
-                                    task_element.text_perform(action);
+                                    task_element.content_perform(action);
                                 }
                             }
                             TemplateData::MultiBinary(multi_binary_task) => {
                                 if let Some(task_element) = multi_binary_task
                                     .get_element_mut(state.global_store.current_date())
                                 {
-                                    task_element.text_perform(action);
+                                    task_element.content_perform(action);
                                 }
                             }
                         }
