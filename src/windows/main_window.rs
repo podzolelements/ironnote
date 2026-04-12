@@ -1118,10 +1118,13 @@ impl Main {
         if let Some(selection) = state.content.selection()
             && !selection.contains(char::is_whitespace)
             && recompute_spell_suggestions
+            && let Some(dictionary) = DICTIONARY
+                .read()
+                .expect("couldn't get dictionary read")
+                .as_ref()
         {
             let mut spell_suggestions = vec![];
 
-            let dictionary = DICTIONARY.read().expect("couldn't get dicitonary read");
             if !dictionary.check(&selection) {
                 dictionary.suggest(&selection, &mut spell_suggestions);
                 self.selected_misspelled_word = Some(selection.clone());

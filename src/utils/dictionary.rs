@@ -8,7 +8,7 @@ use std::{
 };
 
 /// global static dictionary
-pub static DICTIONARY: LazyLock<RwLock<Dictionary>> =
+pub static DICTIONARY: LazyLock<RwLock<Option<Dictionary>>> =
     LazyLock::new(|| RwLock::new(composite_dictionary()));
 
 /// reloads the composite user/system dictionary from disk
@@ -43,20 +43,22 @@ pub fn extract_words(text: &str) -> Vec<(&str, usize, usize)> {
 }
 
 /// generates a dictionary composed from the system dictionary combined with the personal dictionary
-pub fn composite_dictionary() -> Dictionary {
+pub fn composite_dictionary() -> Option<Dictionary> {
     let sys_aff_path = preferences().paths.system_dictionary_aff.clone();
     let sys_dic_path = preferences().paths.system_dictionary_dic.clone();
 
-    let sys_aff = fs::read_to_string(sys_aff_path).expect("couldn't read aff");
-    let sys_dic = fs::read_to_string(sys_dic_path).expect("couldn't read dic");
+    let sys_aff = fs::read_to_string(sys_aff_path).ok()?;
+    let sys_dic = fs::read_to_string(sys_dic_path).ok()?;
 
     let personal_dic_path = preferences().paths.personal_dictionary_dic.clone();
 
-    let personal_dic = fs::read_to_string(personal_dic_path).expect("couldn't read personal dic");
+    let personal_dic = fs::read_to_string(personal_dic_path).ok()?;
 
     let composite_dic = sys_dic + "\n" + &personal_dic;
 
-    Dictionary::new(&sys_aff, &composite_dic).expect("couldn't create dictionary")
+    let dictionary = Dictionary::new(&sys_aff, &composite_dic).ok()?;
+
+    Some(dictionary)
 }
 
 /// adds a word to the personal dictionary. the global dictionary is updated through .add(), and the personal
@@ -78,6 +80,8 @@ pub fn add_word_to_personal_dictionary(new_word: &str) {
 
         let mut dictionary = DICTIONARY.write().expect("couldn't get dictionary write");
 
-        dictionary.add(new_word).expect("error word to dictionary");
+        if let Some(dict) = dictionary.as_mut() {
+            dict.add(new_word).expect("error word to dictionary");
+        }
     }
 }

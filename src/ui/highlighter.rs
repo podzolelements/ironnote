@@ -60,51 +60,55 @@ impl Highlighter for SpellHighlighter {
     fn highlight_line(&mut self, line: &str) -> Self::Iterator<'_> {
         let mut highlights = Vec::new();
 
-        let dictionary = DICTIONARY.read().expect("couldn't get dictionary read");
+        if let Some(dictionary) = DICTIONARY
+            .read()
+            .expect("couldn't get dictionary read")
+            .as_ref()
+        {
+            let cursor_line = self.settings.cursor_line_idx;
+            let cursor_char = self.settings.cursor_char_idx;
+            let timed_out = self.settings.cursor_spellcheck_timed_out;
 
-        let cursor_line = self.settings.cursor_line_idx;
-        let cursor_char = self.settings.cursor_char_idx;
-        let timed_out = self.settings.cursor_spellcheck_timed_out;
+            for (word, start, end) in dictionary::extract_words(line) {
+                // disable highlighting for the word at the cursor if the edit timeout hasn't triggered yet
+                if !timed_out
+                    && cursor_line == self.current_line
+                    && cursor_char != 0
+                    && start <= cursor_char
+                    && cursor_char <= end
+                {
+                    continue;
+                }
 
-        for (word, start, end) in dictionary::extract_words(line) {
-            // disable highlighting for the word at the cursor if the edit timeout hasn't triggered yet
-            if !timed_out
-                && cursor_line == self.current_line
-                && cursor_char != 0
-                && start <= cursor_char
-                && cursor_char <= end
-            {
-                continue;
+                if !dictionary.check(word) {
+                    highlights.push((start..end, SpellHighlightColor::Red));
+                }
             }
 
-            if !dictionary.check(word) {
-                highlights.push((start..end, SpellHighlightColor::Red));
+            let (search_line, search_text) = if self.settings.ignore_search_case {
+                (
+                    line.to_lowercase(),
+                    self.settings.search_text.to_lowercase(),
+                )
+            } else {
+                (line.to_string(), self.settings.search_text.clone())
+            };
+
+            if !search_text.is_empty() {
+                let indexes: Vec<usize> = search_line
+                    .match_indices(&search_text)
+                    .map(|(idx, _)| idx)
+                    .collect();
+
+                let search_length = search_text.chars().count();
+
+                for index in indexes.iter() {
+                    highlights.push((*index..(*index + search_length), SpellHighlightColor::Green));
+                }
             }
+
+            self.current_line += 1;
         }
-
-        let (search_line, search_text) = if self.settings.ignore_search_case {
-            (
-                line.to_lowercase(),
-                self.settings.search_text.to_lowercase(),
-            )
-        } else {
-            (line.to_string(), self.settings.search_text.clone())
-        };
-
-        if !search_text.is_empty() {
-            let indexes: Vec<usize> = search_line
-                .match_indices(&search_text)
-                .map(|(idx, _)| idx)
-                .collect();
-
-            let search_length = search_text.chars().count();
-
-            for index in indexes.iter() {
-                highlights.push((*index..(*index + search_length), SpellHighlightColor::Green));
-            }
-        }
-
-        self.current_line += 1;
 
         highlights.into_iter()
     }
