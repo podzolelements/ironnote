@@ -39,6 +39,7 @@ pub enum GeneralMessage {
     ToggleAutosave(bool),
     EditAutosaveMinute(Action),
     EditAutosaveSecond(Action),
+    ToggleSmartNavigation
 }
 
 #[derive(Debug, Clone)]
@@ -186,7 +187,17 @@ impl Windowable<PreferencesMessage> for Preferences {
 
             let autosave = column![autosave_checkbox, autosave_time];
 
-            column![title, autosave]
+            let smart_nav_text = Text::new("Smart navigation");
+
+            let smart_nav_checkbox =  checkbox(general_prefs.smart_navigation)
+                .on_toggle(|_checked| {
+                    PreferencesMessage::General(GeneralMessage::ToggleSmartNavigation)
+                })
+                .label("Enable smart navigation");
+
+                let smart_navigation = column![smart_nav_text, smart_nav_checkbox];
+
+            column![title, autosave, smart_navigation]
         };
 
         let general_tab = TabviewItem {
@@ -369,6 +380,11 @@ impl Windowable<PreferencesMessage> for Preferences {
                         Duration::from_mins(self.autosave_minutes)
                             + Duration::from_secs(self.autosave_seconds);
                 }
+                GeneralMessage::ToggleSmartNavigation => {
+                    self.working_preferences.general.smart_navigation = !self.working_preferences.general.smart_navigation;
+
+                    self.edited_preferences = true; 
+                },
             },
             PreferencesMessage::Paths(paths_message) => {
                 match paths_message {

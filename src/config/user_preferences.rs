@@ -9,12 +9,18 @@ use std::{
 use super::JournalPointer;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-/// general settings
+#[serde(default)]
+/// General settings
 pub struct GeneralPreferences {
-    /// if true, the editor will perform the Autosave action at the autosave_interval
+    /// If true, the editor will perform the Autosave action at the autosave_interval
     pub(crate) autosave_enabled: bool,
-    /// how often the autosave would occour if autosaving is enabled
+
+    /// How often the autosave would occour if autosaving is enabled
     pub(crate) autosave_interval: Duration,
+
+    /// If enabled and there are empty entries, the forward/backward navigation buttons will skip over empty entries to
+    /// the next day that contains an active entry
+    pub(crate) smart_navigation: bool,
 }
 
 impl Default for GeneralPreferences {
@@ -22,12 +28,14 @@ impl Default for GeneralPreferences {
         Self {
             autosave_enabled: false,
             autosave_interval: Duration::from_mins(5),
+            smart_navigation: false,
         }
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-/// preferences that involve configurable files and directories
+#[serde(default)]
+/// Preferences that involve configurable files and directories
 pub struct PathPreferences {
     pub(crate) journal_path: PathBuf,
     pub(crate) system_dictionary_dic: PathBuf,
@@ -72,7 +80,7 @@ impl Default for PathPreferences {
 }
 
 impl PathPreferences {
-    /// the /ironnote/data directory
+    /// The /ironnote/data directory
     pub fn savedata_dir(&self) -> PathBuf {
         let mut savedata_dir = self.journal_path.clone();
         savedata_dir.push("data");
@@ -80,7 +88,7 @@ impl PathPreferences {
         savedata_dir
     }
 
-    /// the /ironnote/tasks directory
+    /// The /ironnote/tasks directory
     fn tasks_dir(&self) -> PathBuf {
         let mut tasks_path = self.journal_path.clone();
         tasks_path.push("tasks");
@@ -88,7 +96,7 @@ impl PathPreferences {
         tasks_path
     }
 
-    /// the /ironnote/tasks/templates directory
+    /// The /ironnote/tasks/templates directory
     pub fn template_tasks_dir(&self) -> PathBuf {
         let mut template_tasks_path = self.tasks_dir();
         template_tasks_path.push("templates");
@@ -104,7 +112,7 @@ impl PathPreferences {
         event_tasks_path
     }
 
-    /// creates any missing directories that are required for ironnote to operate properly
+    /// Creates any missing directories that are required for ironnote to operate properly
     fn create_all_missing_dirs(&self) -> io::Result<()> {
         fs::create_dir_all(self.savedata_dir())?;
 
@@ -124,7 +132,7 @@ impl PathPreferences {
         Ok(())
     }
 
-    /// creates any missing files that are required for ironnote to operate properly. this assumes all required
+    /// Creates any missing files that are required for ironnote to operate properly. This assumes all required
     /// directories already exist
     fn create_missing_files(&self) -> io::Result<()> {
         if !self.personal_dictionary_dic.exists() {
@@ -136,9 +144,10 @@ impl PathPreferences {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-/// settings specific to the search functionality
+#[serde(default)]
+/// Settings specific to the search functionality
 pub struct SearchPreferences {
-    /// if true, the text typed in the search bar will ignore the capitalization the search
+    /// If true, the text typed in the search bar will ignore the capitalization the search
     pub(crate) ignore_search_case: bool,
 }
 
@@ -151,14 +160,15 @@ impl Default for SearchPreferences {
 }
 
 impl SearchPreferences {
-    /// toggles the ignore_search_case setting
+    /// Toggles the ignore_search_case setting
     pub fn toggle_ignore_search_case(&mut self) {
         self.ignore_search_case = !self.ignore_search_case;
     }
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
-/// stores all of the settings of the application
+#[serde(default)]
+/// Stores all of the settings of the application
 pub struct UserPreferences {
     pub(crate) general: GeneralPreferences,
     pub(crate) paths: PathPreferences,
@@ -175,7 +185,7 @@ impl From<&UserPreferences> for JournalPointer {
 }
 
 impl UserPreferences {
-    /// ensures that all paths and files that are expected to be present are created
+    /// Ensures that all paths and files that are expected to be present are created
     pub fn initalize_paths_and_files(&self) -> io::Result<()> {
         self.paths.create_all_missing_dirs()?;
 
@@ -190,7 +200,7 @@ impl UserPreferences {
         Ok(())
     }
 
-    /// writes the preferences to the location specified by the paths.preferences_path preference
+    /// Writes the preferences to the location specified by the paths.preferences_path preference
     pub fn write_to_disk(&self) {
         let preferernces_json =
             serde_json::to_string_pretty(self).expect("serializing preferences failed");
@@ -204,7 +214,7 @@ impl UserPreferences {
         journal_pointer.save_to_disk();
     }
 
-    /// returns the preferences loaded from the location of the JournalPointer's preference path. if the specified
+    /// Returns the preferences loaded from the location of the JournalPointer's preference path. If the specified
     /// path does not exist or contains and invald perferences file, the default preferences are returned
     pub fn load_from_disk_or_default() -> Self {
         let journal_pointer = JournalPointer::load_from_disk_or_default();
@@ -221,7 +231,7 @@ impl UserPreferences {
     }
 }
 
-/// global preferences object that stores all of the settings of the application
+/// Global preferences object that stores all of the settings of the application
 static PREFERENCES: LazyLock<RwLock<UserPreferences>> = LazyLock::new(|| {
     let default_preferences = UserPreferences::load_from_disk_or_default();
 
@@ -232,19 +242,19 @@ static PREFERENCES: LazyLock<RwLock<UserPreferences>> = LazyLock::new(|| {
     RwLock::new(default_preferences)
 });
 
-/// gives read-only access to the global PREFERENCES structure
+/// Returns read-only access to the global PREFERENCES structure
 pub fn preferences() -> RwLockReadGuard<'static, UserPreferences> {
     PREFERENCES.read().expect("unable to get PREFERENCES read")
 }
 
-/// gives mutable access to the global PREFERENCES structure
+/// Returns mutable access to the global PREFERENCES structure
 pub fn preferences_mut() -> RwLockWriteGuard<'static, UserPreferences> {
     PREFERENCES
         .write()
         .expect("unable to get PREFERENCES write")
 }
 
-/// sets PREFERENCES to the provided new preferences, writing new preferences to disk
+/// Sets PREFERENCES to the provided new preferences, writing new preferences to disk
 pub fn overwrite_preferences(new_preferences: UserPreferences) {
     new_preferences
         .initalize_paths_and_files()

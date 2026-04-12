@@ -515,7 +515,9 @@ impl Windowable<MainMessage> for Main {
                     .checked_sub_days(Days::new(1))
                     .expect("failed to go to previous day");
 
-                let new_date = if state.global_store.day().contains_entry() {
+                let new_date = if state.global_store.day().contains_entry()
+                    || !preferences().general.smart_navigation
+                {
                     previous_day
                 } else {
                     state
@@ -537,7 +539,9 @@ impl Windowable<MainMessage> for Main {
                     .checked_add_days(Days::new(1))
                     .expect("failed to go to next day");
 
-                let new_date = if state.global_store.day().contains_entry() {
+                let new_date = if state.global_store.day().contains_entry()
+                    || !preferences().general.smart_navigation
+                {
                     next_day
                 } else {
                     state
