@@ -1,20 +1,13 @@
-use super::TaskId;
-use crate::{
-    config::preferences,
-    content::ContentAction,
-    custom_widgets::calender::TOTAL_CALENDER_WIDTH,
-    tasks::{MultiBinaryMessage, MultiBinaryTask, StandardMessage, StandardTask, TaskType},
-    utils::month_day::MonthDay,
-};
-
 use chrono::{Datelike, NaiveDate, Weekday};
-use iced::{
-    Element,
-    Length::Fill,
-    widget::{self, Space, Text, button, checkbox, column, row, text::Wrapping},
-};
+use iced::{Element, widget::column};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fs};
+
+use super::{
+    MultiBinaryMessage, MultiBinaryTaskElement, StandardMessage, StandardTask, TaskId, TaskType,
+    task_data::MultiBinaryTask,
+};
+use crate::{config::preferences, custom_widgets, utils::month_day::MonthDay};
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 /// Contains all the individual task entries in a standard task
@@ -38,7 +31,7 @@ impl StandardTaskTemplate {
 /// Contains the common and individual task entries in a MultiBinary task
 pub struct MultiBinaryTaskTemplate {
     subtasks: Vec<String>,
-    elements: BTreeMap<NaiveDate, MultiBinaryTask>,
+    elements: BTreeMap<NaiveDate, MultiBinaryTaskElement>,
 }
 
 impl MultiBinaryTaskTemplate {
@@ -52,13 +45,16 @@ impl MultiBinaryTaskTemplate {
 
     /// Adds an empty element with the given date to the task elements if it does not exist
     pub fn add_empty_element(&mut self, active_date: NaiveDate) {
-        let empty_element = MultiBinaryTask::with_empty_subtasks(self.subtasks.len());
+        let empty_element = MultiBinaryTaskElement::with_empty_subtasks(self.subtasks.len());
 
         self.elements.entry(active_date).or_insert(empty_element);
     }
 
     /// Returns mutable access to the task if it exists
-    pub fn get_element_mut(&mut self, active_date: NaiveDate) -> Option<&mut MultiBinaryTask> {
+    pub fn get_element_mut(
+        &mut self,
+        active_date: NaiveDate,
+    ) -> Option<&mut MultiBinaryTaskElement> {
         self.elements.get_mut(&active_date)
     }
 }
@@ -206,6 +202,95 @@ impl TemplateTask {
             }
         }
     }
+
+    /// Constructs the template ui element at the given date, if it exists
+    pub fn built_template<'a>(&'a self, active_date: NaiveDate) -> Element<'a, TemplateMessage> {
+        let checkbox = match &self.template_data {
+            TemplateData::Standard(standard_task_template) => {
+                if let Some(standard_task) = standard_task_template.elements.get(&active_date) {
+                    Some((
+                        standard_task.is_completed(),
+                        TemplateMessage::Standard(StandardMessage::ToggledCheckbox),
+                    ))
+                } else {
+                    None
+                }
+            }
+            TemplateData::MultiBinary(multi_binary_task_template) => {
+                if let Some(multi_binary_task) =
+                    multi_binary_task_template.elements.get(&active_date)
+                {
+                    Some((
+                        multi_binary_task.is_completed(),
+                        TemplateMessage::MultiBinary(MultiBinaryMessage::ToggledOverride),
+                    ))
+                } else {
+                    None
+                }
+            }
+        };
+
+        let expanded_ui = match &self.template_data {
+            TemplateData::Standard(standard_task) => {
+                if let Some(task_element) = standard_task.elements.get(&active_date) {
+                    task_element
+                        .expanded_ui()
+                        .map(|standard_message| TemplateMessage::Standard(standard_message))
+                } else {
+                    column![].into()
+                }
+            }
+            TemplateData::MultiBinary(multi_binary_task) => {
+                if let Some(task_element) = multi_binary_task.elements.get(&active_date) {
+                    MultiBinaryTask::expanded_ui(task_element, &multi_binary_task.subtasks).map(
+                        |multi_binary_message| TemplateMessage::MultiBinary(multi_binary_message),
+                    )
+                } else {
+                    column![].into()
+                }
+            }
+        };
+
+        let expanded = if self.expanded {
+            Some((
+                Some(expanded_ui),
+                TemplateMessage::Common(CommonMessage::ExpandToggled),
+            ))
+        } else {
+            Some((None, TemplateMessage::Common(CommonMessage::ExpandToggled)))
+        };
+
+        let end_task_text = if self.ended_date.is_none() {
+            "End Task".to_string()
+        } else {
+            "Resume Task".to_string()
+        };
+
+        let menu_items = vec![
+            (
+                end_task_text,
+                TemplateMessage::Common(CommonMessage::EndTask),
+            ),
+            (
+                "Delete Task".to_string(),
+                TemplateMessage::Common(CommonMessage::DeleteTemplate),
+            ),
+        ];
+
+        let options_menu = if self.options_expanded {
+            Some(menu_items)
+        } else {
+            None
+        };
+
+        custom_widgets::task::build_task(
+            checkbox,
+            self.name.clone(),
+            expanded,
+            TemplateMessage::Common(CommonMessage::ExpandOptions),
+            options_menu,
+        )
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -335,14 +420,7 @@ impl<'a> TemplateTasks {
                     && let TemplateData::Standard(standard_task) = &mut task.template_data
                     && let Some(task_element) = standard_task.elements.get_mut(&active_date)
                 {
-                    match standard_message {
-                        StandardMessage::CheckedBox(checked) => {
-                            task_element.set_completion(checked);
-                        }
-                        StandardMessage::TextEdit(content_action) => {
-                            task_element.content_perform(content_action);
-                        }
-                    }
+                    task_element.update(standard_message);
                 }
             }
             TemplateMessage::MultiBinary(multi_binary_message) => {
@@ -350,17 +428,7 @@ impl<'a> TemplateTasks {
                     && let TemplateData::MultiBinary(multi_binary_task) = &mut task.template_data
                     && let Some(task_element) = multi_binary_task.elements.get_mut(&active_date)
                 {
-                    match multi_binary_message {
-                        MultiBinaryMessage::CheckedNth((index, checked)) => {
-                            task_element.set_subtask_completion(index, checked);
-                        }
-                        MultiBinaryMessage::CheckedOverride(checked) => {
-                            task_element.set_completion_override(checked);
-                        }
-                        MultiBinaryMessage::TextEdit(content_action) => {
-                            task_element.content_perform(content_action);
-                        }
-                    }
+                    task_element.update(multi_binary_message);
                 }
             }
         }
@@ -383,25 +451,6 @@ impl<'a> TemplateTasks {
             .collect::<Vec<TaskId>>()
     }
 
-    /// Graphical layout of a task that is minimized
-    fn minimized_task<T: 'a>(
-        checkbox: Element<'a, T>,
-        name: Element<'a, T>,
-        expand_button: Element<'a, T>,
-        options_button: Element<'a, T>,
-    ) -> Element<'a, T> {
-        row![
-            checkbox,
-            Space::new().width(5),
-            name,
-            Space::new().width(Fill),
-            expand_button,
-            Space::new().width(1),
-            options_button,
-        ]
-        .into()
-    }
-
     /// Full TemplateTask graphical element
     pub fn build_template(
         &'a self,
@@ -409,149 +458,12 @@ impl<'a> TemplateTasks {
         active_date: NaiveDate,
     ) -> Element<'a, TemplateTaskMessage> {
         if let Some(task_data) = self.get_task(task_id) {
-            let name = Text::new(task_data.name.clone())
-                .width(TOTAL_CALENDER_WIDTH - 90)
-                .wrapping(Wrapping::WordOrGlyph)
-                .size(14);
-
-            let expand_button_text = if task_data.expanded { "\\/" } else { "<" };
-
-            let expand_button =
-                button(Text::new(expand_button_text)).on_press(TemplateTaskMessage {
-                    message: TemplateMessage::Common(CommonMessage::ExpandToggled),
+            task_data
+                .built_template(active_date)
+                .map(move |template_message| TemplateTaskMessage {
+                    message: template_message,
                     task_id,
-                });
-
-            let options_button = button("...").on_press(TemplateTaskMessage {
-                message: TemplateMessage::Common(CommonMessage::ExpandOptions),
-                task_id,
-            });
-
-            let task_ui = match &task_data.template_data {
-                TemplateData::Standard(standard_task) => {
-                    if let Some(task_element) = standard_task.elements.get(&active_date) {
-                        let checkbox =
-                            checkbox(task_element.is_completed()).on_toggle(move |ticked| {
-                                TemplateTaskMessage {
-                                    message: TemplateMessage::Standard(
-                                        StandardMessage::CheckedBox(ticked),
-                                    ),
-                                    task_id,
-                                }
-                            });
-
-                        let minimized_task = Self::minimized_task(
-                            checkbox.into(),
-                            name.into(),
-                            expand_button.into(),
-                            options_button.into(),
-                        );
-
-                        let text = widget::text_editor(task_element.raw_content()).on_action(
-                            move |action| TemplateTaskMessage {
-                                message: TemplateMessage::Standard(StandardMessage::TextEdit(
-                                    ContentAction::Standard(action),
-                                )),
-                                task_id,
-                            },
-                        );
-
-                        if !task_data.expanded {
-                            minimized_task
-                        } else {
-                            column![minimized_task, text].into()
-                        }
-                    } else {
-                        column![].into()
-                    }
-                }
-                TemplateData::MultiBinary(multi_binary_task) => {
-                    if let Some(task_element) = multi_binary_task.elements.get(&active_date) {
-                        let completed_checkbox =
-                            checkbox(task_element.is_completed()).on_toggle(move |ticked| {
-                                TemplateTaskMessage {
-                                    message: TemplateMessage::MultiBinary(
-                                        MultiBinaryMessage::CheckedOverride(ticked),
-                                    ),
-                                    task_id,
-                                }
-                            });
-
-                        let minimized_task = Self::minimized_task(
-                            completed_checkbox.into(),
-                            name.into(),
-                            expand_button.into(),
-                            options_button.into(),
-                        );
-
-                        let mut subtask_checkboxes = column![];
-
-                        for (i, completion) in task_element.subtask_completion().iter().enumerate()
-                        {
-                            let checkbox = checkbox(*completion).on_toggle(move |ticked| {
-                                TemplateTaskMessage {
-                                    message: TemplateMessage::MultiBinary(
-                                        MultiBinaryMessage::CheckedNth((i, ticked)),
-                                    ),
-                                    task_id,
-                                }
-                            });
-
-                            let subtask_name = &multi_binary_task.subtasks[i];
-
-                            let name_text = Text::new(subtask_name);
-
-                            subtask_checkboxes = subtask_checkboxes.push(row![
-                                Space::new().width(15),
-                                checkbox,
-                                Space::new().width(5),
-                                name_text
-                            ]);
-                        }
-
-                        let text = widget::text_editor(task_element.raw_content()).on_action(
-                            move |action| TemplateTaskMessage {
-                                message: TemplateMessage::MultiBinary(
-                                    MultiBinaryMessage::TextEdit(ContentAction::Standard(action)),
-                                ),
-                                task_id,
-                            },
-                        );
-
-                        if !task_data.expanded {
-                            minimized_task
-                        } else {
-                            column![minimized_task, subtask_checkboxes, text].into()
-                        }
-                    } else {
-                        column![].into()
-                    }
-                }
-            };
-
-            let end_task_text = if task_data.ended_date.is_none() {
-                "End Task"
-            } else {
-                "Resume Task"
-            };
-
-            if task_data.options_expanded {
-                let end_task_button = button(end_task_text).on_press(TemplateTaskMessage {
-                    message: TemplateMessage::Common(CommonMessage::EndTask),
-                    task_id,
-                });
-
-                let delete_button = button("Delete Task").on_press(TemplateTaskMessage {
-                    message: TemplateMessage::Common(CommonMessage::DeleteTemplate),
-                    task_id,
-                });
-
-                let options_menu = column![end_task_button, delete_button];
-
-                column![task_ui, options_menu].into()
-            } else {
-                task_ui
-            }
+                })
         } else {
             column![].into()
         }

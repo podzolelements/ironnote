@@ -1,5 +1,3 @@
-use super::JournalPointer;
-
 use serde::{Deserialize, Serialize};
 use std::{
     fs, io,
@@ -7,6 +5,8 @@ use std::{
     sync::{LazyLock, RwLock, RwLockReadGuard, RwLockWriteGuard},
     time::Duration,
 };
+
+use super::JournalPointer;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// general settings
@@ -96,6 +96,14 @@ impl PathPreferences {
         template_tasks_path
     }
 
+    /// The /ironnote/tasks/events directory
+    pub fn event_tasks_dir(&self) -> PathBuf {
+        let mut event_tasks_path = self.tasks_dir();
+        event_tasks_path.push("events");
+
+        event_tasks_path
+    }
+
     /// creates any missing directories that are required for ironnote to operate properly
     fn create_all_missing_dirs(&self) -> io::Result<()> {
         fs::create_dir_all(self.savedata_dir())?;
@@ -106,6 +114,7 @@ impl PathPreferences {
         }
 
         fs::create_dir_all(self.template_tasks_dir())?;
+        fs::create_dir_all(self.event_tasks_dir())?;
 
         let mut preferences_parent = self.preferences_path.clone();
         if preferences_parent.pop() {

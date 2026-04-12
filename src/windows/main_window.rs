@@ -1,30 +1,3 @@
-use super::window_manager::{WindowType, Windowable};
-
-use crate::config::{preferences, preferences_mut};
-use crate::content::{ContentAction, UpgradedContent};
-use crate::custom_widgets::calender::{
-    Calender, CalenderColormap, CalenderMessage, TOTAL_CALENDER_WIDTH,
-};
-use crate::custom_widgets::context_menu::context_menu;
-use crate::custom_widgets::menu_bar::{MenuBar, menu_bar};
-use crate::custom_widgets::menu_bar_builder::{
-    EditMessage, FileMessage, MENU_BAR_HEIGHT, MenuMessage, Menus, ToolsMessage, build_menu_bar,
-};
-use crate::custom_widgets::search_table::{SearchTable, SearchTableMessage};
-use crate::custom_widgets::tabview::{TabviewItem, tabview_content_vertical};
-use crate::dialogs::DialogType;
-use crate::keyboard_manager::{KeyboardAction, TextEdit, UnboundKey};
-use crate::store::{TimedWordCount, WordCount};
-use crate::tasks::TaskId;
-use crate::tasks::template_tasks::{TemplateData, TemplateTaskMessage};
-use crate::ui::highlighter::{self, HighlightSettings, SpellHighlighter};
-use crate::ui::journal_theme::LIGHT;
-use crate::utils::clipboard::{read_clipboard, write_clipboard};
-use crate::utils::dictionary::{self, DICTIONARY};
-use crate::utils::logbox::{logbox, logbox_mut};
-use crate::utils::misc_tools::point_on_edge_of_text;
-use crate::{SharedAppState, UpstreamAction};
-
 use chrono::{DateTime, Days, Local, Months, NaiveDate};
 use iced::Length::Fill;
 use iced::widget::operation::snap_to;
@@ -46,6 +19,34 @@ use iced::{
 };
 use std::time;
 use strum::Display;
+
+use super::window_manager::{WindowType, Windowable};
+
+use crate::config::{preferences, preferences_mut};
+use crate::content::{ContentAction, UpgradedContent};
+use crate::custom_widgets::calender::{
+    Calender, CalenderColormap, CalenderMessage, TOTAL_CALENDER_WIDTH,
+};
+use crate::custom_widgets::context_menu::context_menu;
+use crate::custom_widgets::menu_bar::{MenuBar, menu_bar};
+use crate::custom_widgets::menu_bar_builder::{
+    EditMessage, FileMessage, MENU_BAR_HEIGHT, MenuMessage, Menus, ToolsMessage, build_menu_bar,
+};
+use crate::custom_widgets::search_table::{SearchTable, SearchTableMessage};
+use crate::custom_widgets::tabview::{TabviewItem, tabview_content_vertical};
+use crate::dialogs::DialogType;
+use crate::keyboard_manager::{KeyboardAction, TextEdit, UnboundKey};
+use crate::store::{TimedWordCount, WordCount};
+use crate::tasks::task_manager::TaskMessage;
+use crate::tasks::template_tasks::TemplateData;
+use crate::tasks::{StandardMessage, TaskId};
+use crate::ui::highlighter::{self, HighlightSettings, SpellHighlighter};
+use crate::ui::journal_theme::LIGHT;
+use crate::utils::clipboard::{read_clipboard, write_clipboard};
+use crate::utils::dictionary::{self, DICTIONARY};
+use crate::utils::logbox::{logbox, logbox_mut};
+use crate::utils::misc_tools::point_on_edge_of_text;
+use crate::{SharedAppState, UpstreamAction};
 
 #[derive(Debug, Default, Clone, PartialEq, Display)]
 pub enum Tab {
@@ -127,7 +128,7 @@ pub enum MainMessage {
     MenuBar(MenuMessage),
     EditorScrolled(Viewport),
     AddTask,
-    TaskAction(TemplateTaskMessage),
+    TaskAction(TaskMessage),
     Autosave,
 }
 
@@ -951,11 +952,10 @@ impl Windowable<MainMessage> for Main {
                 Task::none()
             }
             MainMessage::TaskAction(template_message) => {
-                self.active_content = Some(ActiveContent::Task(template_message.task_id));
+                self.active_content = Some(ActiveContent::Task(template_message.get_id()));
 
                 state
                     .task_manager
-                    .template_tasks
                     .update(state.global_store.current_date(), template_message);
 
                 Task::none()
@@ -982,7 +982,7 @@ impl Windowable<MainMessage> for Main {
                                 if let Some(task_element) =
                                     standard_task.get_element_mut(state.global_store.current_date())
                                 {
-                                    task_element.content_perform(action);
+                                    task_element.update(StandardMessage::TextEdit(action));
                                 }
                             }
                             TemplateData::MultiBinary(multi_binary_task) => {

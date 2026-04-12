@@ -5,3 +5,4 @@ pub mod menu_bar;
 pub mod menu_bar_builder;
 pub mod search_table;
 pub mod tabview;
+pub mod task;
