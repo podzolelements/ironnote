@@ -231,7 +231,7 @@ impl MultiBinaryTask {
     /// The expanded ui that drops down for the multi binary task
     pub fn expanded_ui<'a>(
         element: &'a MultiBinaryTaskElement,
-        subtasks: &Vec<String>,
+        subtasks: &[String],
     ) -> Element<'a, MultiBinaryMessage> {
         let mut subtask_checkboxes = column![];
 

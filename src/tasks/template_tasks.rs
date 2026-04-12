@@ -206,45 +206,38 @@ impl TemplateTask {
     /// Constructs the template ui element at the given date, if it exists
     pub fn built_template<'a>(&'a self, active_date: NaiveDate) -> Element<'a, TemplateMessage> {
         let checkbox = match &self.template_data {
-            TemplateData::Standard(standard_task_template) => {
-                if let Some(standard_task) = standard_task_template.elements.get(&active_date) {
-                    Some((
+            TemplateData::Standard(standard_task_template) => standard_task_template
+                .elements
+                .get(&active_date)
+                .map(|standard_task| {
+                    (
                         standard_task.is_completed(),
                         TemplateMessage::Standard(StandardMessage::ToggledCheckbox),
-                    ))
-                } else {
-                    None
-                }
-            }
-            TemplateData::MultiBinary(multi_binary_task_template) => {
-                if let Some(multi_binary_task) =
-                    multi_binary_task_template.elements.get(&active_date)
-                {
-                    Some((
+                    )
+                }),
+            TemplateData::MultiBinary(multi_binary_task_template) => multi_binary_task_template
+                .elements
+                .get(&active_date)
+                .map(|multi_binary_task| {
+                    (
                         multi_binary_task.is_completed(),
                         TemplateMessage::MultiBinary(MultiBinaryMessage::ToggledOverride),
-                    ))
-                } else {
-                    None
-                }
-            }
+                    )
+                }),
         };
 
         let expanded_ui = match &self.template_data {
             TemplateData::Standard(standard_task) => {
                 if let Some(task_element) = standard_task.elements.get(&active_date) {
-                    task_element
-                        .expanded_ui()
-                        .map(|standard_message| TemplateMessage::Standard(standard_message))
+                    task_element.expanded_ui().map(TemplateMessage::Standard)
                 } else {
                     column![].into()
                 }
             }
             TemplateData::MultiBinary(multi_binary_task) => {
                 if let Some(task_element) = multi_binary_task.elements.get(&active_date) {
-                    MultiBinaryTask::expanded_ui(task_element, &multi_binary_task.subtasks).map(
-                        |multi_binary_message| TemplateMessage::MultiBinary(multi_binary_message),
-                    )
+                    MultiBinaryTask::expanded_ui(task_element, &multi_binary_task.subtasks)
+                        .map(TemplateMessage::MultiBinary)
                 } else {
                     column![].into()
                 }

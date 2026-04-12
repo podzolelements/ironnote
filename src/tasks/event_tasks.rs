@@ -85,13 +85,8 @@ impl EventTask {
                         retained_days
                     };
 
-                    if self.date.checked_add_days(Days::new(days_past_end as u64))
-                        >= Some(active_date)
-                    {
-                        return true;
-                    } else {
-                        return false;
-                    }
+                    return self.date.checked_add_days(Days::new(days_past_end as u64))
+                        >= Some(active_date);
                 }
                 PastDate::RetainIndefinite => return true,
             }
@@ -119,26 +114,18 @@ impl EventTask {
 
         let expanded = if let Some(task) = &self.task_data {
             let expanded_ui = match &task.task {
-                TaskData::Standard(standard_task) => {
-                    let standard_expanded_ui = standard_task
-                        .expanded_ui()
-                        .map(EventTaskAction::StandardTask);
-
-                    standard_expanded_ui
-                }
-                TaskData::MultiBinary(multi_binary_task) => {
-                    let multi_binary_expanded_ui = MultiBinaryTask::expanded_ui(
-                        &multi_binary_task.element,
-                        &multi_binary_task.subtasks,
-                    )
-                    .map(EventTaskAction::MultiBinaryTask);
-
-                    multi_binary_expanded_ui
-                }
+                TaskData::Standard(standard_task) => standard_task
+                    .expanded_ui()
+                    .map(EventTaskAction::StandardTask),
+                TaskData::MultiBinary(multi_binary_task) => MultiBinaryTask::expanded_ui(
+                    &multi_binary_task.element,
+                    &multi_binary_task.subtasks,
+                )
+                .map(EventTaskAction::MultiBinaryTask),
             };
 
             if task.expanded {
-                Some((Some(expanded_ui.into()), EventTaskAction::ToggleDown))
+                Some((Some(expanded_ui), EventTaskAction::ToggleDown))
             } else {
                 Some((None, EventTaskAction::ToggleDown))
             }
