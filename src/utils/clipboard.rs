@@ -1,9 +1,9 @@
-use copypasta::{ClipboardContext, ClipboardProvider, x11_clipboard::X11ClipboardContext};
+use arboard::Clipboard;
 use std::sync::{LazyLock, RwLock};
 
 /// global clipboard, interfaced through read/write_clipboard()
-static CLIPBOARD: LazyLock<RwLock<X11ClipboardContext>> =
-    LazyLock::new(|| RwLock::new(ClipboardContext::new().expect("couldn't get clipboard")));
+static CLIPBOARD: LazyLock<RwLock<Clipboard>> =
+    LazyLock::new(|| RwLock::new(Clipboard::new().expect("couldn't get clipboard")));
 
 /// returns the current contents of the clipboard
 pub fn read_clipboard() -> String {
@@ -12,7 +12,7 @@ pub fn read_clipboard() -> String {
         .expect("couldn't get clipboard write lock");
 
     clipboard
-        .get_contents()
+        .get_text()
         .expect("couldn't read clipboard contents")
 }
 
@@ -23,6 +23,6 @@ pub fn write_clipboard(new_clipboard_contents: String) {
         .expect("couldn't get clipboard write lock");
 
     clipboard
-        .set_contents(new_clipboard_contents)
+        .set_text(new_clipboard_contents)
         .expect("couldn't write to clipboard");
 }
