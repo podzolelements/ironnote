@@ -64,7 +64,6 @@ pub fn smooth_color_map(counts: [usize; 42]) -> [Option<f32>; 42] {
             (min.min(val), max.max(val))
         });
 
-        
     let mut smoothed = [None; 42];
 
     for (i, &work) in clamped_work.iter().enumerate() {

@@ -813,6 +813,22 @@ impl Windowable<MainMessage> for Main {
                 self.captured_mouse_position = self.mouse_position;
                 self.captured_window_mouse_position = self.window_mouse_position;
 
+                state.content.perform(ContentAction::Standard(Action::Click(
+                    self.captured_mouse_position,
+                )));
+
+                state
+                    .content
+                    .perform(ContentAction::Standard(Action::SelectWord));
+
+                self.update_spellcheck(state);
+
+                if self.spell_suggestions.is_empty() {
+                    state.content.perform(ContentAction::Standard(Action::Click(
+                        self.captured_mouse_position,
+                    )));
+                }
+
                 self.show_context_menu = true;
 
                 Task::none()
@@ -1103,7 +1119,6 @@ impl Main {
     }
 
     fn update_spellcheck(&mut self, state: &mut SharedAppState) {
-        // TODO: allow direct right clicking on misspelled words without selection requirements
         // TODO: compute suggestions on another thread for better performance?
 
         // computing spellcheck suggestions is extremely expensive, so we only do so when the selection size has
