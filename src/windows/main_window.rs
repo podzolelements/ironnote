@@ -1,4 +1,4 @@
-use chrono::{DateTime, Days, Local, Months, NaiveDate};
+use chrono::{DateTime, Datelike, Days, Local, Months, NaiveDate};
 use iced::Length::Fill;
 use iced::widget::operation::snap_to;
 use iced::widget::scrollable::{AbsoluteOffset, RelativeOffset, Viewport};
@@ -42,6 +42,7 @@ use crate::tasks::template_tasks::TemplateData;
 use crate::tasks::{StandardMessage, TaskId};
 use crate::ui::highlighter::{self, HighlightSettings, SpellHighlighter};
 use crate::ui::journal_theme::LIGHT;
+use crate::ui::ui_tools;
 use crate::utils::clipboard::{read_clipboard, write_clipboard};
 use crate::utils::dictionary::{self, DICTIONARY};
 use crate::utils::logbox::{logbox, logbox_mut};
@@ -1228,7 +1229,9 @@ impl Main {
         let mut iterative_date = self.calender.calender_start_date();
 
         for char_count in char_counts.iter_mut() {
-            if let Some(day_store) = state.global_store.get_day(iterative_date) {
+            if let Some(day_store) = state.global_store.get_day(iterative_date)
+                && iterative_date.month() == state.global_store.current_date().month()
+            {
                 let day_char_count = day_store.total_char_count();
 
                 *char_count = day_char_count;
@@ -1239,33 +1242,7 @@ impl Main {
                 .expect("couldn't add day");
         }
 
-        let mut sorted_char_counts = char_counts;
-        sorted_char_counts.sort();
-
-        let soft_max_char_count = sorted_char_counts
-            .iter()
-            .rev()
-            .take(3)
-            .filter(|top_char_count| **top_char_count > 0)
-            .min()
-            .unwrap_or(&0);
-
-        let mut colormap_weights = [None; 42];
-
-        if *soft_max_char_count > 0 {
-            for (color_index, color) in colormap_weights.iter_mut().enumerate() {
-                if char_counts[color_index] == 0 {
-                    continue;
-                }
-
-                let day_char_count = char_counts[color_index];
-
-                let new_color =
-                    (day_char_count as f32 / *soft_max_char_count as f32).clamp(0.0, 1.0);
-
-                *color = Some(new_color);
-            }
-        }
+        let colormap_weights = ui_tools::smooth_color_map(char_counts);
 
         CalenderColormap {
             colormap_weights,

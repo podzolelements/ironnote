@@ -25,8 +25,8 @@ pub const LIGHT: JournalTheme = JournalTheme {
     selection: color!(0x179bdd, 1.0),
     selection_text: color!(0xffffff, 1.0),
 
-    char_count_floor: color!(0xb0ffce, 0.8),
-    char_count_ceiling: color!(0x00762d, 0.8),
+    char_count_floor: color!(0xc7e6ff, 0.8),
+    char_count_ceiling: color!(0x0040ff, 0.8),
 };
 
 impl JournalTheme {
