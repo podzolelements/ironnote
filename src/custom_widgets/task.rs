@@ -3,7 +3,7 @@ use iced::{
     widget::{self, Text, button, column, row, text::Wrapping},
 };
 
-use super::calender::TOTAL_CALENDER_WIDTH;
+use crate::ui::layout::DASHBOARD_WIDTH;
 
 /// Constructs a Task widget. Paremeters:
 ///
@@ -33,7 +33,7 @@ pub fn build_task<'a, M: 'a + Clone>(
     };
 
     let name_text = Text::new(name)
-        .width(TOTAL_CALENDER_WIDTH - 90)
+        .width(DASHBOARD_WIDTH - 90.0)
         .wrapping(Wrapping::WordOrGlyph)
         .size(14);
 

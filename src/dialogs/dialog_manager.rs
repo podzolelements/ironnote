@@ -1,10 +1,7 @@
 use super::{WarningDialog, WarningMessage};
-use crate::{
-    SharedAppState,
-    windows::window_manager::{WINDOW_HEIGHT, WINDOW_WIDTH, Windowable},
-};
+use crate::{SharedAppState, ui::layout::DIALOG_WINDOW_SIZE, windows::window_manager::Windowable};
 
-use iced::{Element, Size, Task, window};
+use iced::{Element, Task, window};
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone)]
@@ -28,12 +25,10 @@ pub struct DialogManager {
 }
 
 impl DialogManager {
-    const DIALOG_WINDOW_SIZE: Size<f32> = Size::new(WINDOW_WIDTH / 3.0, WINDOW_HEIGHT / 5.0);
-
     /// window settings for the dialog boxes
     pub fn dialog_window_settings() -> window::Settings {
         window::Settings {
-            size: Self::DIALOG_WINDOW_SIZE,
+            size: DIALOG_WINDOW_SIZE,
             resizable: false,
             position: window::Position::Centered,
 

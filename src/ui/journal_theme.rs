@@ -13,6 +13,8 @@ pub struct JournalTheme {
 
     pub(crate) char_count_floor: Color,
     pub(crate) char_count_ceiling: Color,
+
+    pub(crate) link: Color,
 }
 
 pub const LIGHT: JournalTheme = JournalTheme {
@@ -27,6 +29,8 @@ pub const LIGHT: JournalTheme = JournalTheme {
 
     char_count_floor: color!(0xc7e6ff, 0.8),
     char_count_ceiling: color!(0x0040ff, 0.8),
+
+    link: color!(0x0000ee, 1.0),
 };
 
 impl JournalTheme {
@@ -38,5 +42,9 @@ impl JournalTheme {
         let dark_a = (color_to_darken.a - self.darkening_delta.a).max(0.0);
 
         Color::from_linear_rgba(dark_r, dark_g, dark_b, dark_a)
+    }
+
+    pub fn darkened_background(&self) -> Color {
+        self.darken(self.default_background)
     }
 }

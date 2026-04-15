@@ -1,6 +1,10 @@
-use crate::{SharedAppState, content::ContentAction};
+use crate::{
+    SharedAppState,
+    content::ContentAction,
+    ui::layout::{MEDIUM_WINDOW_SIZE, SMALL_WINDOW_SIZE, WINDOW_SIZE},
+};
 
-use iced::{Element, Size, Task, window};
+use iced::{Element, Task, window};
 
 #[derive(Debug, Clone, PartialEq)]
 /// all of the types windows that can be created
@@ -12,43 +16,34 @@ pub enum WindowType {
     Preferences,
 }
 
-pub const WINDOW_WIDTH: f32 = 1024.0;
-pub const WINDOW_HEIGHT: f32 = 768.0;
-
 impl WindowType {
-    const WINDOW_SIZE: Size<f32> = Size::new(WINDOW_WIDTH, WINDOW_HEIGHT);
-
-    const SMALL_WINDOW_SIZE: Size<f32> = Size::new(WINDOW_WIDTH / 2.0, WINDOW_HEIGHT / 2.0);
-
-    const MEDIUM_WINDOW_SIZE: Size<f32> = Size::new(WINDOW_WIDTH / 1.5, WINDOW_HEIGHT / 1.5);
-
     /// window settings based on the type of window
     pub fn settings(&self) -> window::Settings {
         match self {
             WindowType::Main => window::Settings {
-                size: Self::WINDOW_SIZE,
+                size: WINDOW_SIZE,
                 ..Default::default()
             },
             WindowType::FileImport => window::Settings {
-                size: Self::SMALL_WINDOW_SIZE,
+                size: SMALL_WINDOW_SIZE,
                 resizable: false,
                 position: window::Position::Centered,
                 ..Default::default()
             },
             WindowType::FileExport => window::Settings {
-                size: Self::SMALL_WINDOW_SIZE,
+                size: SMALL_WINDOW_SIZE,
                 resizable: false,
                 position: window::Position::Centered,
                 ..Default::default()
             },
             WindowType::TaskCreator => window::Settings {
-                size: Self::MEDIUM_WINDOW_SIZE,
+                size: MEDIUM_WINDOW_SIZE,
                 resizable: false,
                 position: window::Position::Centered,
                 ..Default::default()
             },
             WindowType::Preferences => window::Settings {
-                size: Self::MEDIUM_WINDOW_SIZE,
+                size: MEDIUM_WINDOW_SIZE,
                 resizable: false,
                 position: window::Position::Centered,
                 ..Default::default()

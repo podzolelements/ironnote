@@ -1,3 +1,4 @@
+pub mod font_settings;
 pub mod journal_pointer;
 pub mod user_preferences;
 

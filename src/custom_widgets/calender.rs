@@ -1,4 +1,8 @@
-use crate::ui::{journal_theme::LIGHT, standard_button_style};
+use crate::ui::{
+    journal_theme::LIGHT,
+    layout::{CALENDER_DAY_WIDTH, TOTAL_CALENDER_WIDTH},
+    standard_button_style,
+};
 
 use chrono::{Datelike, Days, Local, NaiveDate};
 use iced::{
@@ -59,18 +63,12 @@ pub struct Calender {
     colormap: CalenderColormap,
 }
 
-/// width of each day button on the calender
-const DAY_WIDTH: u32 = 34;
-
-/// total width of the calender widget
-pub const TOTAL_CALENDER_WIDTH: u32 = DAY_WIDTH * 7;
-
 impl Calender {
     /// constructs the actual iced Element from the calender structure
     pub fn build_calender<'a>(&'a self) -> Element<'a, CalenderMessage> {
-        const NAV_BUTTON_WIDTH: u32 = 25;
-        const MONTH_TEXT_WIDTH: u32 = 65;
-        const YEAR_TEXT_WIDTH: u32 = 35;
+        const NAV_BUTTON_WIDTH: f32 = 25.0;
+        const MONTH_TEXT_WIDTH: f32 = 65.0;
+        const YEAR_TEXT_WIDTH: f32 = 35.0;
 
         let month_back_btn = Button::new(Text::new("<").center())
             .on_press(CalenderMessage::BackMonth)
@@ -111,7 +109,10 @@ impl Calender {
         let month_year_bar = row![
             month_nav,
             Space::new().width(
-                TOTAL_CALENDER_WIDTH - (4 * NAV_BUTTON_WIDTH) - MONTH_TEXT_WIDTH - YEAR_TEXT_WIDTH
+                TOTAL_CALENDER_WIDTH
+                    - (4.0 * NAV_BUTTON_WIDTH)
+                    - MONTH_TEXT_WIDTH
+                    - YEAR_TEXT_WIDTH
             ),
             year_nav
         ];
@@ -149,7 +150,7 @@ impl Calender {
 
             let day_button = widget::button(day_button_content)
                 .on_press(CalenderMessage::DayClicked(*date))
-                .width(DAY_WIDTH)
+                .width(CALENDER_DAY_WIDTH)
                 .height(24)
                 .style(self.day_button_color(day_index));
 

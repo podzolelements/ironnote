@@ -3,7 +3,7 @@ use iced::Length::Fill;
 use iced::widget::operation::snap_to;
 use iced::widget::scrollable::{AbsoluteOffset, RelativeOffset, Viewport};
 use iced::widget::text_editor::Action;
-use iced::widget::{Id, Space, Text, tooltip};
+use iced::widget::{Id, Space, Text, markdown, tooltip};
 use iced::window;
 use iced::{
     Alignment::Center,
@@ -22,11 +22,10 @@ use strum::Display;
 
 use super::window_manager::{WindowType, Windowable};
 
+use crate::config::font_settings::markdown_settings;
 use crate::config::{preferences, preferences_mut};
 use crate::content::{ContentAction, UpgradedContent};
-use crate::custom_widgets::calender::{
-    Calender, CalenderColormap, CalenderMessage, TOTAL_CALENDER_WIDTH,
-};
+use crate::custom_widgets::calender::{Calender, CalenderColormap, CalenderMessage};
 use crate::custom_widgets::context_menu::context_menu;
 use crate::custom_widgets::menu_bar::{MenuBar, menu_bar};
 use crate::custom_widgets::menu_bar_builder::{
@@ -42,6 +41,7 @@ use crate::tasks::template_tasks::TemplateData;
 use crate::tasks::{StandardMessage, TaskId};
 use crate::ui::highlighter::{self, HighlightSettings, SpellHighlighter};
 use crate::ui::journal_theme::LIGHT;
+use crate::ui::layout::{DASHBOARD_WIDTH, EDITOR_WIDTH};
 use crate::ui::ui_tools;
 use crate::utils::clipboard::{read_clipboard, write_clipboard};
 use crate::utils::dictionary::{self, DICTIONARY};
@@ -65,6 +65,19 @@ impl Tab {
             Tab::Stats => 2,
         }
     }
+}
+
+#[derive(Debug, Clone)]
+/// What gets displayed on the editor area
+pub enum EditorMode {
+    /// Text editor only
+    Editor,
+
+    /// Both text editor and live markdown render
+    SplitView,
+
+    /// Markdown render only
+    View,
 }
 
 #[derive(Debug, PartialEq)]
@@ -96,6 +109,8 @@ pub struct Main {
     captured_window_mouse_position: Point,
     menu_bar: MenuBar<MainMessage>,
     editor_scroll_offset: AbsoluteOffset,
+    editor_mode: EditorMode,
+    editor_markdown: Vec<markdown::Item>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -114,7 +129,8 @@ pub enum MainMessage {
     JumpToToday,
     Edit(text_editor::Action),
     EditSearch(text_editor::Action),
-    TempTopBarMessage,
+    SwitchEditorMode(EditorMode),
+    Markdown,
     Calender(CalenderMessage),
     TableSearch(SearchTableMessage),
     TabSwitched(Tab),
@@ -162,8 +178,7 @@ impl Windowable<MainMessage> for Main {
             .width(FillPortion(1))
             .height(100);
 
-        let daily_nav_bar =
-            row![back_button, today_button, forward_button].width(TOTAL_CALENDER_WIDTH);
+        let daily_nav_bar = row![back_button, today_button, forward_button].width(DASHBOARD_WIDTH);
 
         let calender = self.calender.build_calender().map(MainMessage::Calender);
 
@@ -299,41 +314,60 @@ impl Windowable<MainMessage> for Main {
         let tab_view = tabview_content_vertical(
             tab_elements,
             self.current_tab.to_index(),
-            Length::Fixed(TOTAL_CALENDER_WIDTH as f32),
+            Length::Fixed(DASHBOARD_WIDTH),
             Length::Fill,
         );
 
         let left_ui = column![daily_nav_bar, calender, tab_view];
 
         let right_top_bar = row![
-            widget::button("test button 0")
-                .on_press(MainMessage::TempTopBarMessage)
+            widget::button("Edit Mode")
+                .on_press(MainMessage::SwitchEditorMode(EditorMode::Editor))
                 .height(100),
-            widget::button("test button 1")
-                .on_press(MainMessage::TempTopBarMessage)
+            widget::button("Live Preview")
+                .on_press(MainMessage::SwitchEditorMode(EditorMode::SplitView))
                 .height(100),
-            widget::button("test button 2")
-                .on_press(MainMessage::TempTopBarMessage)
+            widget::button("View Mode")
+                .on_press(MainMessage::SwitchEditorMode(EditorMode::View))
                 .height(100),
         ];
 
-        let log_text_input = widget::text_editor(state.content.raw_content())
-            .placeholder("Type today's log...")
-            .on_action(MainMessage::Edit)
-            .size(13)
-            .font(Font::DEFAULT)
-            .wrapping(Wrapping::WordOrGlyph)
-            .height(Length::Shrink)
-            .highlight_with::<SpellHighlighter>(
-                HighlightSettings {
-                    cursor_line_idx,
-                    cursor_char_idx,
-                    cursor_spellcheck_timed_out,
-                    search_text: self.search_text.clone(),
-                    ignore_search_case: preferences().search.ignore_search_case,
-                },
-                highlighter::highlight_to_format,
-            );
+        let editor_area = {
+            let log_text_input = widget::text_editor(state.content.raw_content())
+                .placeholder("Type today's log...")
+                .on_action(MainMessage::Edit)
+                .size(13)
+                .font(Font::DEFAULT)
+                .wrapping(Wrapping::WordOrGlyph)
+                .height(Length::Shrink)
+                .highlight_with::<SpellHighlighter>(
+                    HighlightSettings {
+                        cursor_line_idx,
+                        cursor_char_idx,
+                        cursor_spellcheck_timed_out,
+                        search_text: self.search_text.clone(),
+                        ignore_search_case: preferences().search.ignore_search_case,
+                    },
+                    highlighter::highlight_to_format,
+                );
+
+            match self.editor_mode {
+                EditorMode::Editor => row![log_text_input],
+                EditorMode::SplitView => {
+                    let half_editor = log_text_input.width(EDITOR_WIDTH / 2.0);
+                    let half_viewer = markdown::view(&self.editor_markdown, markdown_settings())
+                        .map(|_link| MainMessage::Markdown);
+
+                    row![half_editor, half_viewer]
+                }
+                EditorMode::View => {
+                    row![
+                        markdown::view(&self.editor_markdown, markdown_settings())
+                            .map(|_link| MainMessage::Markdown)
+                    ]
+                }
+            }
+        };
 
         let mut spellcheck_context_menu_contents: Vec<(String, MainMessage)> = vec![];
 
@@ -457,7 +491,7 @@ impl Windowable<MainMessage> for Main {
         }
 
         let editor_with_menu = context_menu(
-            log_text_input,
+            editor_area,
             total_context_menu,
             self.show_context_menu,
             context_menu_position,
@@ -581,6 +615,10 @@ impl Windowable<MainMessage> for Main {
                 let cursor_location =
                     point_on_edge_of_text(&editor_text, cursor_x, cursor_y, 3, 400);
 
+                if matches!(self.editor_mode, EditorMode::SplitView) {
+                    self.editor_markdown = markdown::parse(&state.content.text()).collect();
+                }
+
                 match cursor_location {
                     Some(true) => snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::START),
                     Some(false) => snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::END),
@@ -622,10 +660,22 @@ impl Windowable<MainMessage> for Main {
 
                 Task::none()
             }
-            MainMessage::TempTopBarMessage => {
+            MainMessage::SwitchEditorMode(new_editor_mode) => {
                 self.active_content = None;
 
-                println!("topbar");
+                self.editor_mode = new_editor_mode;
+
+                match self.editor_mode {
+                    EditorMode::Editor => {}
+                    EditorMode::SplitView | EditorMode::View => {
+                        self.editor_markdown = markdown::parse(&state.content.text()).collect();
+                    }
+                }
+
+                Task::none()
+            }
+            MainMessage::Markdown => {
+                println!("md!");
 
                 Task::none()
             }
@@ -1042,6 +1092,8 @@ impl Default for Main {
             captured_window_mouse_position: Point::default(),
             menu_bar: build_menu_bar(),
             editor_scroll_offset: AbsoluteOffset::default(),
+            editor_mode: EditorMode::Editor,
+            editor_markdown: Vec::default(),
         }
     }
 }
@@ -1106,6 +1158,13 @@ impl Main {
         if self.current_tab == Tab::Stats {
             self.calender
                 .set_colormap(self.compute_word_count_colormap(state));
+        }
+
+        match self.editor_mode {
+            EditorMode::Editor => {}
+            EditorMode::SplitView | EditorMode::View => {
+                self.editor_markdown = markdown::parse(&state.content.text()).collect();
+            }
         }
 
         state
