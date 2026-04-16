@@ -49,14 +49,6 @@ impl SearchTable {
             );
         }
 
-        // widget::scrollable(table)
-        //     .width(Length::Fixed(250.0))
-        //     .height(Length::Fixed(500.0))
-        //     .direction(Direction::Both {
-        //         vertical: Scrollbar::new(),
-        //         horizontal: Scrollbar::new(),
-        //     })
-        //     .into()
         table.into()
     }
 

@@ -3,7 +3,7 @@ use iced::Length::Fill;
 use iced::widget::operation::snap_to;
 use iced::widget::scrollable::{AbsoluteOffset, RelativeOffset, Viewport};
 use iced::widget::text_editor::Action;
-use iced::widget::{Id, Space, Text, markdown, tooltip};
+use iced::widget::{Id, Space, Text, tooltip};
 use iced::window;
 use iced::{
     Alignment::Center,
@@ -22,7 +22,6 @@ use strum::Display;
 
 use super::window_manager::{WindowType, Windowable};
 
-use crate::config::font_settings::markdown_settings;
 use crate::config::{preferences, preferences_mut};
 use crate::content::{ContentAction, UpgradedContent};
 use crate::custom_widgets::calender::{Calender, CalenderColormap, CalenderMessage};
@@ -35,6 +34,7 @@ use crate::custom_widgets::search_table::{SearchTable, SearchTableMessage};
 use crate::custom_widgets::tabview::{TabviewItem, tabview_content_vertical};
 use crate::dialogs::DialogType;
 use crate::keyboard_manager::{KeyboardAction, TextEdit, UnboundKey};
+use crate::md_image::markdown_image::{self, ParsedMarkdown};
 use crate::store::{TimedWordCount, WordCount};
 use crate::tasks::task_manager::TaskMessage;
 use crate::tasks::template_tasks::TemplateData;
@@ -112,7 +112,7 @@ pub struct Main {
     menu_bar: MenuBar<MainMessage>,
     editor_scroll_offset: AbsoluteOffset,
     editor_mode: EditorMode,
-    editor_markdown: Vec<markdown::Item>,
+    editor_markdown: Vec<ParsedMarkdown>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -375,16 +375,18 @@ impl Windowable<MainMessage> for Main {
                 EditorMode::Editor => row![log_text_input],
                 EditorMode::SplitView => {
                     let half_editor = log_text_input.width(EDITOR_WIDTH / 2.0);
-                    let half_viewer = markdown::view(&self.editor_markdown, markdown_settings())
-                        .map(|_link| MainMessage::Markdown);
+                    let half_viewer = markdown_image::build_markdown(
+                        &self.editor_markdown,
+                        MainMessage::Markdown,
+                    );
 
                     row![half_editor, half_viewer]
                 }
                 EditorMode::View => {
-                    row![
-                        markdown::view(&self.editor_markdown, markdown_settings())
-                            .map(|_link| MainMessage::Markdown)
-                    ]
+                    row![markdown_image::build_markdown(
+                        &self.editor_markdown,
+                        MainMessage::Markdown
+                    )]
                 }
             }
         };
@@ -642,7 +644,7 @@ impl Windowable<MainMessage> for Main {
                     point_on_edge_of_text(&editor_text, cursor_x, cursor_y, 3, 400);
 
                 if matches!(self.editor_mode, EditorMode::SplitView) {
-                    self.editor_markdown = markdown::parse(&state.content.text()).collect();
+                    self.parse_markdown(state);
                 }
 
                 match cursor_location {
@@ -694,7 +696,7 @@ impl Windowable<MainMessage> for Main {
                 match self.editor_mode {
                     EditorMode::Editor => {}
                     EditorMode::SplitView | EditorMode::View => {
-                        self.editor_markdown = markdown::parse(&state.content.text()).collect();
+                        self.parse_markdown(state);
                     }
                 }
 
@@ -1189,7 +1191,7 @@ impl Main {
         match self.editor_mode {
             EditorMode::Editor => {}
             EditorMode::SplitView | EditorMode::View => {
-                self.editor_markdown = markdown::parse(&state.content.text()).collect();
+                self.parse_markdown(state);
             }
         }
 
@@ -1252,6 +1254,11 @@ impl Main {
                 self.selected_misspelled_word = None;
             }
         }
+    }
+
+    /// Parses the editor text into their format for rendering
+    fn parse_markdown(&mut self, state: &SharedAppState) {
+        self.editor_markdown = markdown_image::parse(&state.content.text());
     }
 
     fn recompute_search(&mut self, state: &mut SharedAppState) {

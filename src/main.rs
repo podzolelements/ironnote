@@ -24,6 +24,7 @@ mod content;
 mod custom_widgets;
 mod dialogs;
 mod keyboard_manager;
+mod md_image;
 mod store;
 mod tasks;
 mod ui;
