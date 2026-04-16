@@ -41,7 +41,9 @@ use crate::tasks::template_tasks::TemplateData;
 use crate::tasks::{StandardMessage, TaskId};
 use crate::ui::highlighter::{self, HighlightSettings, SpellHighlighter};
 use crate::ui::journal_theme::LIGHT;
-use crate::ui::layout::{DASHBOARD_WIDTH, EDITOR_WIDTH};
+use crate::ui::layout::{
+    DASHBOARD_TAB_CONTENT_HEIGHT, DASHBOARD_WIDTH, EDITOR_WIDTH, LOGBOX_HEIGHT, SCROLLBAR_WIDTH,
+};
 use crate::ui::ui_tools;
 use crate::utils::clipboard::{read_clipboard, write_clipboard};
 use crate::utils::dictionary::{self, DICTIONARY};
@@ -182,20 +184,27 @@ impl Windowable<MainMessage> for Main {
 
         let calender = self.calender.build_calender().map(MainMessage::Calender);
 
-        let tasks_tab_content = {
-            let tasks = column![
+        let (tasks_tab_content, tasks_tab_overlay) = {
+            const ADD_BUTTON_WIDTH: f32 = 40.0;
+            const ADD_MARGIN: f32 = 5.0;
+
+            let content = column![
                 state
                     .task_manager
                     .build_tasks(state.global_store.current_date())
                     .map(MainMessage::TaskAction),
+                Space::new().height(ADD_BUTTON_WIDTH + ADD_MARGIN * 2.0)
             ];
 
-            let add_button_h_padding = Space::new().width(Length::Fill);
+            let add_button_h_padding = Space::new()
+                .width(DASHBOARD_WIDTH - ADD_BUTTON_WIDTH - ADD_MARGIN - SCROLLBAR_WIDTH);
+            let add_button_v_padding =
+                Space::new().height(DASHBOARD_TAB_CONTENT_HEIGHT - ADD_BUTTON_WIDTH);
 
             let add_button = widget::Button::new(Text::new("+").align_x(Center).align_y(Center))
                 .on_press(MainMessage::AddTask)
-                .width(40)
-                .height(40);
+                .width(ADD_BUTTON_WIDTH)
+                .height(ADD_BUTTON_WIDTH);
 
             let add_button_tooltip = tooltip(
                 add_button,
@@ -204,15 +213,18 @@ impl Windowable<MainMessage> for Main {
             )
             .delay(TOOLTIP_DELAY);
 
-            let add_button_layer = row![add_button_h_padding, add_button_tooltip];
+            let add_button_h_padded = row![add_button_h_padding, add_button_tooltip];
 
-            column![tasks, Space::new().height(Fill), add_button_layer]
+            let overlay = column![add_button_v_padding, add_button_h_padded];
+
+            (content, overlay)
         };
 
         let tasks_tab = TabviewItem {
             title: Tab::Tasks.to_string(),
             clicked_message: MainMessage::TabSwitched(Tab::Tasks),
             content: tasks_tab_content.into(),
+            overlay: Some(tasks_tab_overlay.into()),
         };
 
         let search_tab_content = {
@@ -252,11 +264,17 @@ impl Windowable<MainMessage> for Main {
             )
             .delay(TOOLTIP_DELAY);
 
-            let search_line = row![searchbar, clear_search_tooltip, match_case_tooltip];
+            let search_line = row![
+                searchbar,
+                clear_search_tooltip,
+                match_case_tooltip,
+                Space::new().width(SCROLLBAR_WIDTH)
+            ]
+            .width(DASHBOARD_WIDTH);
 
-            let table = SearchTable::view(&self.search_table).map(MainMessage::TableSearch);
+            let search_results =
+                SearchTable::view(&self.search_table).map(MainMessage::TableSearch);
 
-            let search_results = column![table];
             column![search_line, search_results]
         };
 
@@ -264,6 +282,7 @@ impl Windowable<MainMessage> for Main {
             title: Tab::Search.to_string(),
             clicked_message: MainMessage::TabSwitched(Tab::Search),
             content: search_tab_content.into(),
+            overlay: None,
         };
 
         let stats_tab_content = {
@@ -307,6 +326,7 @@ impl Windowable<MainMessage> for Main {
             title: Tab::Stats.to_string(),
             clicked_message: MainMessage::TabSwitched(Tab::Stats),
             content: stats_tab_content.into(),
+            overlay: None,
         };
 
         let tab_elements = vec![tasks_tab, search_tab, stats_tab];
@@ -502,7 +522,13 @@ impl Windowable<MainMessage> for Main {
             .width(Length::Fill)
             .on_scroll(MainMessage::EditorScrolled)
             .height(Length::Fill)
-            .direction(Direction::Vertical(Scrollbar::new().spacing(0).margin(2)))
+            .direction(Direction::Vertical(
+                Scrollbar::new()
+                    .spacing(0)
+                    .margin(0)
+                    .width(SCROLLBAR_WIDTH)
+                    .scroller_width(SCROLLBAR_WIDTH),
+            ))
             .id(Id::new(LOG_EDIT_AREA_ID));
 
         let mouse_editor_area = mouse_area(scrollable_editor)
@@ -516,7 +542,7 @@ impl Windowable<MainMessage> for Main {
         let logbox = widget::text(logbox().get_log_at_time())
             .size(14)
             .font(Font::DEFAULT)
-            .height(Length::Shrink);
+            .height(LOGBOX_HEIGHT);
 
         let cursor_position_box = widget::Text::new(format!(
             "Ln {}, Col {}",

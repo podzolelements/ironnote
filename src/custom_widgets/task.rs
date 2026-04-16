@@ -1,9 +1,9 @@
 use iced::{
     Element,
-    widget::{self, Text, button, column, row, text::Wrapping},
+    widget::{self, Space, Text, button, column, row, text::Wrapping},
 };
 
-use crate::ui::layout::DASHBOARD_WIDTH;
+use crate::ui::layout::{DASHBOARD_WIDTH, SCROLLBAR_WIDTH};
 
 /// Constructs a Task widget. Paremeters:
 ///
@@ -37,13 +37,13 @@ pub fn build_task<'a, M: 'a + Clone>(
         .wrapping(Wrapping::WordOrGlyph)
         .size(14);
 
-    let (expanded_button, expanded_ui) = if let Some((subel, click_message)) = expanded {
-        let is_expanded = subel.is_some();
+    let (expanded_button, expanded_ui) = if let Some((subelement, click_message)) = expanded {
+        let is_expanded = subelement.is_some();
         let expand_button_text = if is_expanded { "\\/" } else { "<" };
 
         let expand_button = button(Text::new(expand_button_text)).on_press(click_message);
 
-        (column![expand_button], column![subel])
+        (column![expand_button], column![subelement])
     } else {
         (column![], column![])
     };
@@ -64,9 +64,15 @@ pub fn build_task<'a, M: 'a + Clone>(
         column![]
     };
 
-    let task_ui = row![main_checkbox, name_text, expanded_button, options_button];
+    let task_ui = row![
+        main_checkbox,
+        name_text,
+        expanded_button,
+        options_button,
+        Space::new().width(SCROLLBAR_WIDTH)
+    ];
 
-    let full_ui = column![task_ui, expanded_ui, menu];
+    let full_ui = column![task_ui, expanded_ui, menu].width(DASHBOARD_WIDTH);
 
     full_ui.into()
 }

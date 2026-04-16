@@ -1,14 +1,21 @@
 use iced::{
     Element, Length,
     advanced::widget::Text,
-    widget::{button, column, row},
+    widget::{
+        self, button, column, row,
+        scrollable::{Direction, Scrollbar},
+        stack,
+    },
 };
+
+use crate::ui::layout::SCROLLBAR_WIDTH;
 
 /// component that makes up a single tab on a tabview
 pub struct TabviewItem<'a, Message> {
     pub(crate) title: String,
     pub(crate) clicked_message: Message,
     pub(crate) content: Element<'a, Message>,
+    pub(crate) overlay: Option<Element<'a, Message>>,
 }
 
 /// constructs the tabview in a vertical manor based on the current selected tab from the elements structure:
@@ -41,9 +48,27 @@ pub fn tabview_content_vertical<'a, Message: Clone + 'a>(
     // since the vec owns the element, we need to remove() it in order to take ownership of it to use it. it doesn't
     // matter that the vec is being altered, since the function takes ownership of it, and we no longer have a need for
     // it since information has already been extracted
-    let active_tab_content = tab_elements.remove(current_tab_index).content;
+    let active_tab = tab_elements.remove(current_tab_index);
 
-    column![horizontal_names, active_tab_content]
+    let content_scrollable = widget::scrollable(active_tab.content)
+        .direction(Direction::Both {
+            vertical: Scrollbar::new()
+                .spacing(0)
+                .margin(0)
+                .width(SCROLLBAR_WIDTH)
+                .scroller_width(SCROLLBAR_WIDTH),
+            horizontal: Scrollbar::new()
+                .spacing(0)
+                .margin(0)
+                .width(SCROLLBAR_WIDTH)
+                .scroller_width(SCROLLBAR_WIDTH),
+        })
+        .width(width)
+        .height(height);
+
+    let full_content = stack![content_scrollable, active_tab.overlay];
+
+    column![horizontal_names, full_content]
         .width(width)
         .height(height)
         .into()
@@ -76,12 +101,27 @@ pub fn tabview_content_horizontal<'a, Message: Clone + 'a>(
         vertical_titles = vertical_titles.push(tab_button);
     }
 
-    // since the vec owns the element, we need to remove() it in order to take ownership of it to use it. it doesn't
-    // matter that the vec is being altered, since the function takes ownership of it, and we no longer have a need for
-    // it since information has already been extracted
-    let active_tab_content = tab_elements.remove(current_tab_index).content;
+    let active_tab = tab_elements.remove(current_tab_index);
 
-    row![vertical_titles, active_tab_content]
+    let content_scrollable = widget::scrollable(active_tab.content)
+        .direction(Direction::Both {
+            vertical: Scrollbar::new()
+                .spacing(0)
+                .margin(0)
+                .width(SCROLLBAR_WIDTH)
+                .scroller_width(SCROLLBAR_WIDTH),
+            horizontal: Scrollbar::new()
+                .spacing(0)
+                .margin(0)
+                .width(SCROLLBAR_WIDTH)
+                .scroller_width(SCROLLBAR_WIDTH),
+        })
+        .width(width)
+        .height(height);
+
+    let full_content = stack![content_scrollable, active_tab.overlay];
+
+    row![vertical_titles, full_content]
         .width(width)
         .height(height)
         .into()

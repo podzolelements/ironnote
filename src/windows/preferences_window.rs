@@ -204,6 +204,7 @@ impl Windowable<PreferencesMessage> for Preferences {
             title: PreferencesTab::General.to_string(),
             clicked_message: PreferencesMessage::TabSwitched(PreferencesTab::General),
             content: general_tab_content.into(),
+            overlay: None,
         };
 
         let paths_tab_content = {
@@ -258,6 +259,7 @@ impl Windowable<PreferencesMessage> for Preferences {
             title: PreferencesTab::Paths.to_string(),
             clicked_message: PreferencesMessage::TabSwitched(PreferencesTab::Paths),
             content: paths_tab_content,
+            overlay: None,
         };
 
         let keyboard_tab_content = { column![Text::new("Keyboard Settings")] };
@@ -266,6 +268,7 @@ impl Windowable<PreferencesMessage> for Preferences {
             title: PreferencesTab::Keyboard.to_string(),
             clicked_message: PreferencesMessage::TabSwitched(PreferencesTab::Keyboard),
             content: keyboard_tab_content.into(),
+            overlay: None,
         };
 
         let tab_elements = vec![general_tab, paths_tab, keyboard_tab];

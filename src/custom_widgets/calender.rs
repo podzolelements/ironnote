@@ -1,6 +1,9 @@
 use crate::ui::{
     journal_theme::LIGHT,
-    layout::{CALENDER_DAY_WIDTH, TOTAL_CALENDER_WIDTH},
+    layout::{
+        CALENDER_DAY_HEIGHT, CALENDER_DAY_OF_WEEK_HEIGHT, CALENDER_DAY_WIDTH,
+        CALENDER_MONTH_YEAR_HEIGHT, TOTAL_CALENDER_WIDTH,
+    },
     standard_button_style,
 };
 
@@ -73,17 +76,17 @@ impl Calender {
         let month_back_btn = Button::new(Text::new("<").center())
             .on_press(CalenderMessage::BackMonth)
             .width(NAV_BUTTON_WIDTH)
-            .height(30)
+            .height(CALENDER_MONTH_YEAR_HEIGHT)
             .style(standard_button_style);
         let month_text = Text::new(self.current_date.format("%B").to_string())
             .center()
             .size(12)
             .width(MONTH_TEXT_WIDTH)
-            .height(34);
+            .height(CALENDER_MONTH_YEAR_HEIGHT);
         let month_forward_btn = Button::new(Text::new(">").center())
             .on_press(CalenderMessage::ForwardMonth)
             .width(NAV_BUTTON_WIDTH)
-            .height(30)
+            .height(CALENDER_MONTH_YEAR_HEIGHT)
             .style(standard_button_style);
 
         let month_nav = row![month_back_btn, month_text, month_forward_btn];
@@ -91,17 +94,17 @@ impl Calender {
         let year_back_btn = Button::new(Text::new("<").center())
             .on_press(CalenderMessage::BackYear)
             .width(NAV_BUTTON_WIDTH)
-            .height(30)
+            .height(CALENDER_MONTH_YEAR_HEIGHT)
             .style(standard_button_style);
         let year_text = Text::new(self.current_date.format("%Y").to_string())
             .center()
             .size(12)
             .width(YEAR_TEXT_WIDTH)
-            .height(34);
+            .height(CALENDER_MONTH_YEAR_HEIGHT);
         let year_forward_btn = Button::new(Text::new(">").center())
             .on_press(CalenderMessage::ForwardYear)
             .width(NAV_BUTTON_WIDTH)
-            .height(30)
+            .height(CALENDER_MONTH_YEAR_HEIGHT)
             .style(standard_button_style);
 
         let year_nav = row![year_back_btn, year_text, year_forward_btn];
@@ -125,7 +128,8 @@ impl Calender {
                 Text::new(day)
                     .width(FillPortion(1))
                     .align_x(Center)
-                    .size(12),
+                    .size(12)
+                    .height(CALENDER_DAY_OF_WEEK_HEIGHT),
             )
         }
 
@@ -151,7 +155,7 @@ impl Calender {
             let day_button = widget::button(day_button_content)
                 .on_press(CalenderMessage::DayClicked(*date))
                 .width(CALENDER_DAY_WIDTH)
-                .height(24)
+                .height(CALENDER_DAY_HEIGHT)
                 .style(self.day_button_color(day_index));
 
             week_row = week_row.push(day_button);

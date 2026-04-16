@@ -1,14 +1,12 @@
 use chrono::NaiveDate;
 use iced::{
-    Element, Font, Length,
+    Element, Font,
     font::Weight,
     never,
-    widget::{
-        self, Column, rich_text,
-        scrollable::{Direction, Scrollbar},
-        span,
-    },
+    widget::{self, Column, rich_text, span},
 };
+
+use crate::ui::layout::{DASHBOARD_WIDTH, SCROLLBAR_WIDTH};
 
 #[derive(Debug, Clone)]
 pub enum SearchTableMessage {
@@ -47,18 +45,19 @@ impl SearchTable {
             table = table.push(
                 widget::button(rich_text)
                     .on_press(SearchTableMessage::EntryClicked(entry.date))
-                    .width(500),
+                    .width(DASHBOARD_WIDTH - SCROLLBAR_WIDTH),
             );
         }
 
-        widget::scrollable(table)
-            .width(Length::Fixed(250.0))
-            .height(Length::Fixed(500.0))
-            .direction(Direction::Both {
-                vertical: Scrollbar::new(),
-                horizontal: Scrollbar::new(),
-            })
-            .into()
+        // widget::scrollable(table)
+        //     .width(Length::Fixed(250.0))
+        //     .height(Length::Fixed(500.0))
+        //     .direction(Direction::Both {
+        //         vertical: Scrollbar::new(),
+        //         horizontal: Scrollbar::new(),
+        //     })
+        //     .into()
+        table.into()
     }
 
     pub fn insert_element(
