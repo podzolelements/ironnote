@@ -17,7 +17,6 @@ use iced::{
         text_editor::{self},
     },
 };
-use std::time;
 use strum::Display;
 
 use super::window_manager::{WindowType, Windowable};
@@ -34,7 +33,7 @@ use crate::custom_widgets::search_table::{SearchTable, SearchTableMessage};
 use crate::custom_widgets::tabview::{TabviewItem, tabview_content_vertical};
 use crate::dialogs::DialogType;
 use crate::keyboard_manager::{KeyboardAction, TextEdit, UnboundKey};
-use crate::md_image::markdown_image::{self, ParsedMarkdown};
+use crate::md_image::markdown_image::{self, ImageCache, ParsedMarkdown};
 use crate::store::{TimedWordCount, WordCount};
 use crate::tasks::task_manager::TaskMessage;
 use crate::tasks::template_tasks::TemplateData;
@@ -44,6 +43,7 @@ use crate::ui::journal_theme::LIGHT;
 use crate::ui::layout::{
     DASHBOARD_TAB_CONTENT_HEIGHT, DASHBOARD_WIDTH, EDITOR_WIDTH, LOGBOX_HEIGHT, SCROLLBAR_WIDTH,
 };
+use crate::ui::styling::{TOOLTIP_DELAY, TOOLTIP_SIZE};
 use crate::ui::ui_tools;
 use crate::utils::clipboard::{read_clipboard, write_clipboard};
 use crate::utils::dictionary::{self, DICTIONARY};
@@ -113,6 +113,7 @@ pub struct Main {
     editor_scroll_offset: AbsoluteOffset,
     editor_mode: EditorMode,
     editor_markdown: Vec<ParsedMarkdown>,
+    markdown_image_cache: ImageCache,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -159,8 +160,6 @@ impl Windowable<MainMessage> for Main {
     }
 
     fn view<'a>(&'a self, state: &'a SharedAppState) -> Element<'a, MainMessage> {
-        const TOOLTIP_DELAY: time::Duration = time::Duration::from_millis(600);
-
         let cursor_line_idx = state.content.cursor_line();
         let cursor_char_idx = state.content.cursor_column();
 
@@ -208,7 +207,7 @@ impl Windowable<MainMessage> for Main {
 
             let add_button_tooltip = tooltip(
                 add_button,
-                Text::new("Create New Task").size(15),
+                Text::new("Create New Task").size(TOOLTIP_SIZE),
                 tooltip::Position::Left,
             )
             .delay(TOOLTIP_DELAY);
@@ -246,7 +245,7 @@ impl Windowable<MainMessage> for Main {
 
             let clear_search_tooltip = tooltip(
                 clear_search_button,
-                Text::new("Clear Search").size(13),
+                Text::new("Clear Search").size(TOOLTIP_SIZE),
                 tooltip::Position::Top,
             )
             .delay(TOOLTIP_DELAY);
@@ -259,7 +258,7 @@ impl Windowable<MainMessage> for Main {
 
             let match_case_tooltip = tooltip(
                 match_case_button,
-                Text::new(match_case_tooltip_text).size(13),
+                Text::new(match_case_tooltip_text).size(TOOLTIP_SIZE),
                 tooltip::Position::Top,
             )
             .delay(TOOLTIP_DELAY);
@@ -377,6 +376,7 @@ impl Windowable<MainMessage> for Main {
                     let half_editor = log_text_input.width(EDITOR_WIDTH / 2.0);
                     let half_viewer = markdown_image::build_markdown(
                         &self.editor_markdown,
+                        &self.markdown_image_cache,
                         MainMessage::Markdown,
                     );
 
@@ -385,6 +385,7 @@ impl Windowable<MainMessage> for Main {
                 EditorMode::View => {
                     row![markdown_image::build_markdown(
                         &self.editor_markdown,
+                        &self.markdown_image_cache,
                         MainMessage::Markdown
                     )]
                 }
@@ -1122,6 +1123,7 @@ impl Default for Main {
             editor_scroll_offset: AbsoluteOffset::default(),
             editor_mode: EditorMode::Editor,
             editor_markdown: Vec::default(),
+            markdown_image_cache: ImageCache::default(),
         }
     }
 }
@@ -1258,7 +1260,8 @@ impl Main {
 
     /// Parses the editor text into their format for rendering
     fn parse_markdown(&mut self, state: &SharedAppState) {
-        self.editor_markdown = markdown_image::parse(&state.content.text());
+        self.editor_markdown =
+            markdown_image::parse(&state.content.text(), &mut self.markdown_image_cache);
     }
 
     fn recompute_search(&mut self, state: &mut SharedAppState) {

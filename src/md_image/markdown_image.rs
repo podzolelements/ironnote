@@ -2,13 +2,17 @@ use iced::{
     Element,
     advanced::widget::Text,
     widget::{
-        column,
+        Image, column,
+        image::Handle,
         markdown::{self, Item},
+        tooltip,
     },
 };
+use image::{DynamicImage, imageops::FilterType};
 use regex::Regex;
+use std::{collections::HashMap, path::PathBuf};
 
-use crate::config::font_settings::markdown_settings;
+use crate::{config::font_settings::markdown_settings, ui::styling::TOOLTIP_DELAY};
 
 #[derive(Debug)]
 /// Denotes what the markdown is, standard markdown text or a parsed image
@@ -17,7 +21,7 @@ pub enum MarkdownElement {
     Image(ParsedImage),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 /// Data extracted from image markdown of the following form:
 /// ```text
 /// ![no_image_text](path "hover text"){width=100 height=100}
@@ -32,7 +36,14 @@ pub struct ParsedImage {
     no_image_text: String,
     path: String,
     hover_text: Option<String>,
-    dimensions: Option<(usize, usize)>,
+    dimensions: Option<(u32, u32)>,
+}
+
+#[derive(Debug, Default)]
+/// Stores raw and processed images in memory to avoid loading and processing every frame
+pub struct ImageCache {
+    disk_images: HashMap<String, DynamicImage>,
+    proccessed_images: HashMap<ParsedImage, Handle>,
 }
 
 #[derive(Debug)]
@@ -175,8 +186,50 @@ fn classify(markdown: &str) -> Vec<MarkdownElement> {
 }
 
 /// Parses a markdown string into a collection of ParsedMarkdown ready to be rendered
-pub fn parse(markdown: &str) -> Vec<ParsedMarkdown> {
+pub fn parse(markdown: &str, image_cache: &mut ImageCache) -> Vec<ParsedMarkdown> {
     let elements = classify(markdown);
+
+    for element in &elements {
+        match element {
+            MarkdownElement::Standard(_) => {
+                continue;
+            }
+            MarkdownElement::Image(parsed_image) => {
+                let path_string = parsed_image.path.clone();
+
+                let image_path = PathBuf::from(path_string.clone());
+
+                if !image_cache.disk_images.contains_key(&path_string)
+                    && let Ok(image) = image::open(image_path)
+                {
+                    let rgba8_image = DynamicImage::from(image.to_rgba8());
+
+                    image_cache
+                        .disk_images
+                        .insert(path_string.clone(), rgba8_image);
+                }
+
+                if let Some(image) = image_cache.disk_images.get(&path_string)
+                    && !image_cache.proccessed_images.contains_key(parsed_image)
+                {
+                    let proccessed_image = if let Some((width, height)) = parsed_image.dimensions {
+                        image.resize(width, height, FilterType::Gaussian)
+                    } else {
+                        image.clone()
+                    };
+                    let handle = Handle::from_rgba(
+                        proccessed_image.width(),
+                        proccessed_image.height(),
+                        proccessed_image.clone().into_bytes(),
+                    );
+
+                    image_cache
+                        .proccessed_images
+                        .insert(parsed_image.clone(), handle);
+                }
+            }
+        }
+    }
 
     elements
         .into_iter()
@@ -192,6 +245,7 @@ pub fn parse(markdown: &str) -> Vec<ParsedMarkdown> {
 /// Renders the given parsed markdown
 pub fn build_markdown<'a, M: 'a + Clone>(
     to_render: &'a Vec<ParsedMarkdown>,
+    image_cache: &ImageCache,
     markdown_message: M,
 ) -> Element<'a, M> {
     let mut rendered = column![];
@@ -204,8 +258,31 @@ pub fn build_markdown<'a, M: 'a + Clone>(
                     markdown::view(items, markdown_settings()).map(move |_link| message.clone()),
                 );
             }
-            ParsedMarkdown::Image(markfown_image) => {
-                rendered = rendered.push(Text::new(format!("{:#?}", markfown_image)).size(16));
+            ParsedMarkdown::Image(parsed_image) => {
+                if let Some(handle) = image_cache.proccessed_images.get(parsed_image) {
+                    let image = Image::new(handle);
+
+                    let with_hover_text = if let Some(hover_text) = &parsed_image.hover_text {
+                        column![
+                            tooltip(
+                                image,
+                                Text::new(hover_text).size(15),
+                                // TODO: disapear on mouse movement
+                                tooltip::Position::FollowCursor,
+                            )
+                            .delay(TOOLTIP_DELAY)
+                        ]
+                    } else {
+                        column![image]
+                    };
+
+                    rendered = rendered.push(with_hover_text);
+                } else {
+                    // TODO: draw broken image
+                    let no_image_text = Text::new(parsed_image.no_image_text.clone());
+
+                    rendered = rendered.push(no_image_text);
+                }
             }
         }
     }
