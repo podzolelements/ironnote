@@ -10,7 +10,7 @@ use iced::{
 };
 use image::{DynamicImage, imageops::FilterType};
 use regex::Regex;
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, path::PathBuf, sync::LazyLock};
 
 use crate::{config::font_settings::markdown_settings, ui::styling::TOOLTIP_DELAY};
 
@@ -53,16 +53,19 @@ pub enum ParsedMarkdown {
     Image(ParsedImage),
 }
 
+static MARKDOWN_IMAGE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"!\[([^\]]*)\]\(\s*([^\s)]+)\s*(?:["]([^"]*)["])?\s*\)(?:\s*\{\s*width\s*=\s*(\d+)\s+height\s*=\s*(\d+)\s*\})?"#).expect("bad regex")
+});
+static CODE_BLOCK_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"```[^\n]*\n[\s\S]*?\n```|~~~[^\n]*\n[\s\S]*?\n~~~|`[^`\n]+`"#).expect("bad regex")
+});
+
 impl ParsedImage {
     /// Returns the indexes in the markdown that contain either fenced or inline code blocks
     fn get_ignored_ranges(markdown: &str) -> Vec<(usize, usize)> {
         let mut ignored_ranges = Vec::new();
 
-        let code_block_regex =
-            Regex::new(r#"```[^\n]*\n[\s\S]*?\n```|~~~[^\n]*\n[\s\S]*?\n~~~|`[^`\n]+`"#)
-                .expect("bad regex");
-
-        for found_match in code_block_regex.find_iter(markdown) {
+        for found_match in CODE_BLOCK_REGEX.find_iter(markdown) {
             ignored_ranges.push((found_match.start(), found_match.end()));
         }
 
@@ -75,13 +78,11 @@ impl ParsedImage {
     fn split_on_image(markdown: &str) -> Vec<String> {
         let mut split_strings = Vec::new();
 
-        let image_regex = Regex::new(r#"!\[([^\]]*)\]\(\s*([^\s)]+)\s*(?:["]([^"]*)["])?\s*\)(?:\s*\{\s*width\s*=\s*(\d+)\s+height\s*=\s*(\d+)\s*\})?"#).expect("bad regex");
-
         let ignored_ranges = Self::get_ignored_ranges(markdown);
 
         let mut current_last_char = 0;
 
-        for found_match in image_regex.find_iter(markdown) {
+        for found_match in MARKDOWN_IMAGE_REGEX.find_iter(markdown) {
             let is_ignored = ignored_ranges
                 .iter()
                 .any(|(start, end)| found_match.start() >= *start && found_match.end() <= *end);
@@ -114,12 +115,16 @@ impl ParsedImage {
 
     /// Attempts to parse the markdown for information required in a ParsedImage
     fn parse_markdown_image(image_text: &str) -> Option<ParsedImage> {
-        // TODO: use same regex as the splitter: detect false hits and deal with them
-        let image_regex = Regex::new(
-        r#"^!\[([^\]]*)\]\(\s*([^\s)]+)\s*(?:["]([^"]*)["])?\s*\)(?:\s*\{\s*width\s*=\s*(\d+)\s+height\s*=\s*(\d+)\s*\})?$"#
-    ).ok()?;
+        let is_text_only_an_image = MARKDOWN_IMAGE_REGEX
+            .find(image_text)
+            .map(|mat| mat.start() == 0 && mat.end() == image_text.len())
+            .unwrap_or(false);
 
-        let captures = image_regex.captures(image_text)?;
+        if !is_text_only_an_image {
+            return None;
+        }
+
+        let captures = MARKDOWN_IMAGE_REGEX.captures(image_text)?;
 
         let no_image_text = captures.get(1)?.as_str().to_string();
         let path = captures.get(2)?.as_str().to_string();
