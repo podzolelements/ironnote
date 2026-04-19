@@ -847,10 +847,9 @@ impl Windowable<MainMessage> for Main {
 
                 let equivalent_edit = text_editor::Edit::Paste(selected_suggestion.into());
 
-                self.content_perform(
-                    state,
-                    ContentAction::Standard(Action::Edit(equivalent_edit)),
-                );
+                state
+                    .content
+                    .perform(ContentAction::Standard(Action::Edit(equivalent_edit)));
 
                 exit_message
             }
@@ -892,20 +891,16 @@ impl Windowable<MainMessage> for Main {
                 self.captured_mouse_position = self.mouse_position;
                 self.captured_window_mouse_position = self.window_mouse_position;
 
-                state.content.perform(ContentAction::Standard(Action::Click(
-                    self.captured_mouse_position,
-                )));
-
-                state
-                    .content
-                    .perform(ContentAction::Standard(Action::SelectWord));
-
-                self.update_spellcheck(state);
-
-                if self.spell_suggestions.is_empty() {
+                if state.content.selection().is_none() {
                     state.content.perform(ContentAction::Standard(Action::Click(
                         self.captured_mouse_position,
                     )));
+
+                    state
+                        .content
+                        .perform(ContentAction::Standard(Action::SelectWord));
+
+                    self.update_spellcheck(state);
                 }
 
                 self.show_context_menu = true;
