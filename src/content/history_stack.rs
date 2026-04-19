@@ -1,6 +1,8 @@
 use iced::widget::text_editor::{Action, Content, Cursor, Edit, Motion, Position};
 use std::collections::VecDeque;
 
+use super::UpgradedContent;
+
 #[derive(Debug, Clone, PartialEq)]
 /// contains information about what and how text gets removed
 pub struct TextRemoval {
@@ -26,10 +28,12 @@ pub struct HistoryEvent {
     pub(crate) text_removed: Option<TextRemoval>,
     pub(crate) text_added: Option<String>,
     pub(crate) selection_char_count: usize,
-    /// what the cursor should be set to when moving along the redo stack
+
+    /// What the cursor should be set to when moving along the redo stack, stored as character indexes
     pub(crate) redo_cursor: Cursor,
-    /// what the cursor should be set to when moving along the undo stack; the final cursor state after the event has
-    /// been completed
+
+    /// What the cursor should be set to when moving along the undo stack; the final cursor state after the event has
+    /// been completed. Stored as character indexes
     pub(crate) undo_cursor: Cursor,
 }
 
@@ -131,7 +135,10 @@ impl HistoryStack {
                 // this clears any existing selection since move_to() doesn't work right when there is one
                 content.perform(Action::Move(Motion::DocumentStart));
             }
-            content.move_to(history_event.undo_cursor);
+            let bytewise_undo_cursor =
+                UpgradedContent::byte_cursor(&history_event.undo_cursor, content);
+
+            content.move_to(bytewise_undo_cursor);
 
             let inverse_actions = Self::history_event_to_inverse_actions(&history_event);
 
@@ -149,7 +156,10 @@ impl HistoryStack {
     /// back onto the undo stack
     pub fn perform_redo(&mut self, content: &mut Content) {
         if let Some(history_event) = self.move_redo_to_undo_stack() {
-            content.move_to(history_event.redo_cursor);
+            let bytewise_redo_cursor =
+                UpgradedContent::byte_cursor(&history_event.redo_cursor, content);
+
+            content.move_to(bytewise_redo_cursor);
 
             let redo_actions = Self::history_event_to_actions(history_event);
 
