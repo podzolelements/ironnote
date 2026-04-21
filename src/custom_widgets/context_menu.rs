@@ -10,12 +10,14 @@ use crate::ui::layout::{
 use crate::ui::styling::CONTEXT_MENU_SIZE;
 use crate::utils::text_tools::string_width;
 
+#[derive(Debug, Clone)]
 /// The basic data required for a context menu element
 pub struct ContextMenuElement<M> {
     pub(crate) name: String,
     pub(crate) message: Option<M>,
 }
 
+#[derive(Debug, Clone)]
 /// An item that appears in a context menu
 pub enum ContextMenuItem<M> {
     Button(ContextMenuElement<M>),

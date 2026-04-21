@@ -2,92 +2,62 @@ use iced::Alignment::Center;
 use iced::Element;
 use iced::widget::{self, column, mouse_area, row, stack};
 
-#[derive(Debug)]
-pub enum MenuItemType<Message> {
-    Button(Message),
-}
+use crate::custom_widgets::context_menu::{ContextMenuItem, build_context_menu};
+use crate::ui::layout::{CONTEXT_MENU_HEIGHT, CONTEXT_MENU_PADDING};
+use crate::ui::styling::CONTEXT_MENU_SIZE;
+use crate::utils::text_tools::string_width;
 
-#[derive(Debug)]
-pub struct MenuItem<Message> {
-    item_type: MenuItemType<Message>,
+#[derive(Debug, Default, Clone)]
+/// A Dropdown is a context menu that has a name
+pub struct Dropdown<M> {
+    items: Vec<ContextMenuItem<M>>,
     name: String,
+    on_click_dropdown: M,
 }
 
-impl<Message> MenuItem<Message> {
-    pub fn new(name: &str, item_type: MenuItemType<Message>) -> Self {
-        Self {
-            item_type,
-            name: name.to_string(),
-        }
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct Dropdown<Message> {
-    items: Vec<MenuItem<Message>>,
-    name: String,
-    name_width: u32,
-    on_click_dropdown: Message,
-}
-
-impl<Message> Dropdown<Message> {
-    pub fn new(name: &str, width: u32, on_click_dropdown: Message) -> Self {
+impl<M> Dropdown<M> {
+    /// Creates a Dropdown with the given name and click message
+    pub fn new(name: &str, on_click_dropdown: M) -> Self {
         Self {
             items: Vec::default(),
             name: name.to_string(),
-            name_width: width,
             on_click_dropdown,
         }
     }
 
-    /// adds a menu item to the end of the dropdown
-    pub fn push_menu_item(&mut self, item: MenuItem<Message>) {
+    /// Adds a menu item to the end of the dropdown
+    pub fn push_menu_item(&mut self, item: ContextMenuItem<M>) {
         self.items.push(item);
     }
 
-    /// creates the composite element from the dropdown structure
-    fn build_dropdown<'a>(&self) -> Element<'a, Message>
+    /// Creates the composite element from the dropdown structure
+    fn build_dropdown<'a>(&'a self) -> Element<'a, M>
     where
-        Message: Clone + 'a,
+        M: Clone + 'a,
     {
-        let mut dropdown = column![];
-
-        for menu_item in &self.items {
-            match &menu_item.item_type {
-                MenuItemType::Button(message) => {
-                    dropdown = dropdown.push(
-                        widget::button(widget::text(menu_item.name.clone()).size(13))
-                            .width(125)
-                            .on_press(message.clone()),
-                    )
-                }
-            }
-        }
-
-        dropdown.into()
+        build_context_menu(self.items.clone())
     }
 }
 
 #[derive(Debug)]
-pub struct MenuBar<Message> {
-    dropdowns: Vec<Dropdown<Message>>,
+/// The MenuBar is a collection of Dropdowns that make up the top context menus
+pub struct MenuBar<M> {
+    dropdowns: Vec<Dropdown<M>>,
     dropdown_visible: Option<usize>,
-    on_click_away: Message,
-    height: u32,
+    on_click_away: M,
 }
 
-impl<Message> MenuBar<Message> {
-    pub fn new(height: u32, on_click_away: Message) -> Self {
+impl<M> MenuBar<M> {
+    pub fn new(on_click_away: M) -> Self {
         Self {
             dropdowns: Vec::default(),
             dropdown_visible: None,
             on_click_away,
-            height,
         }
     }
 
-    /// adds the new_dropdown to the end of the menu bar
-    pub fn push_dropdown(&mut self, new_dropdown: Dropdown<Message>) {
+    /// Adds the new_dropdown to the end of the menu bar
+    pub fn push_dropdown(&mut self, new_dropdown: Dropdown<M>) {
         self.dropdowns.push(new_dropdown);
     }
 
@@ -101,29 +71,32 @@ impl<Message> MenuBar<Message> {
         self.dropdown_visible.is_some()
     }
 
-    /// creates the composite menu bar element
-    fn build_bar<'a>(&self) -> Element<'a, Message>
+    /// Creates the composite menu bar element
+    fn build_bar<'a>(&self) -> Element<'a, M>
     where
-        Message: Clone + 'a,
+        M: Clone + 'a,
     {
         let mut bar = row![];
 
         for dropdown in &self.dropdowns {
+            let dropdown_name_width =
+                string_width(&dropdown.name, CONTEXT_MENU_SIZE) + CONTEXT_MENU_PADDING;
+
             bar = bar.push(
                 widget::button(widget::text(dropdown.name.clone()).size(13).align_x(Center))
                     .on_press(dropdown.on_click_dropdown.clone())
-                    .width(dropdown.name_width)
-                    .height(self.height),
+                    .width(dropdown_name_width)
+                    .height(CONTEXT_MENU_HEIGHT),
             );
         }
 
         bar.into()
     }
 
-    /// builds the current dropdown based on the currently visible dropdown. a dropdown must be visible to call this
-    fn build_dropdown<'a>(&self) -> Element<'a, Message>
+    /// Builds the current dropdown based on the currently visible dropdown. a dropdown must be visible to call this
+    fn build_dropdown<'a>(&'a self) -> Element<'a, M>
     where
-        Message: Clone + 'a,
+        M: Clone + 'a,
     {
         let dropdown_index = self.dropdown_visible.expect("bad dropdown index");
 
@@ -133,14 +106,10 @@ impl<Message> MenuBar<Message> {
     }
 }
 
-/// creates a menu bar vertically on top of the underlay, based on the provided menu_structure
-pub fn menu_bar<'a, Message>(
-    underlay: Element<'a, Message>,
-    menu_structure: &MenuBar<Message>,
-    menu_height: u32,
-) -> Element<'a, Message>
+/// Creates a menu bar vertically on top of the underlay, based on the provided menu_structure
+pub fn menu_bar<'a, M>(underlay: Element<'a, M>, menu_structure: &'a MenuBar<M>) -> Element<'a, M>
 where
-    Message: Clone + 'a,
+    M: Clone + 'a,
 {
     let bar = menu_structure.build_bar();
 
@@ -159,10 +128,12 @@ where
         .dropdowns
         .iter()
         .take(dropdown_index)
-        .map(|dropdown| dropdown.name_width)
-        .sum::<u32>();
+        .map(|dropdown| string_width(&dropdown.name, CONTEXT_MENU_SIZE) + CONTEXT_MENU_PADDING)
+        .sum::<f32>();
 
-    let pinned_dropdown = widget::pin(dropdown).x(dropdown_x_alignment).y(menu_height);
+    let pinned_dropdown = widget::pin(dropdown)
+        .x(dropdown_x_alignment)
+        .y(CONTEXT_MENU_HEIGHT);
 
     let full_dropdown = mouse_area(pinned_dropdown)
         .on_press(menu_structure.on_click_away.clone())

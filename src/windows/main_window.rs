@@ -29,7 +29,7 @@ use crate::custom_widgets::context_menu::{
 };
 use crate::custom_widgets::menu_bar::{MenuBar, menu_bar};
 use crate::custom_widgets::menu_bar_builder::{
-    EditMessage, FileMessage, MENU_BAR_HEIGHT, MenuMessage, Menus, ToolsMessage, build_menu_bar,
+    EditMessage, FileMessage, MenuMessage, Menus, ToolsMessage, build_menu_bar,
 };
 use crate::custom_widgets::search_table::{SearchTable, SearchTableMessage};
 use crate::custom_widgets::tabview::{TabviewItem, tabview_content_vertical};
@@ -43,7 +43,8 @@ use crate::tasks::{StandardMessage, TaskId};
 use crate::ui::highlighter::{self, HighlightSettings, SpellHighlighter};
 use crate::ui::journal_theme::LIGHT;
 use crate::ui::layout::{
-    DASHBOARD_TAB_CONTENT_HEIGHT, DASHBOARD_WIDTH, EDITOR_WIDTH, LOGBOX_HEIGHT, SCROLLBAR_WIDTH,
+    CONTEXT_MENU_HEIGHT, DASHBOARD_TAB_CONTENT_HEIGHT, DASHBOARD_WIDTH, EDITOR_WIDTH,
+    LOGBOX_HEIGHT, SCROLLBAR_WIDTH,
 };
 use crate::ui::styling::{TOOLTIP_DELAY, TOOLTIP_SIZE};
 use crate::ui::ui_tools;
@@ -414,7 +415,7 @@ impl Windowable<MainMessage> for Main {
             .collect::<Vec<ContextMenuElement<MainMessage>>>();
 
         if let Some(word) = &self.selected_misspelled_word {
-            if spell_suggestions.len() > 0 {
+            if !spell_suggestions.is_empty() {
                 context_menu_items.push(ContextMenuItem::Text("Did you mean:".to_string()));
                 context_menu_items.push(ContextMenuItem::Scroller((spell_suggestions, 6)));
             }
@@ -504,8 +505,8 @@ impl Windowable<MainMessage> for Main {
         let distance_to_window_edge =
             self.window_size.width - self.captured_window_mouse_position.x;
 
-        if distance_to_window_edge < (context_menu_width + 15.0) as f32 {
-            context_menu_position.x -= context_menu_width as f32;
+        if distance_to_window_edge < (context_menu_width + 15.0) {
+            context_menu_position.x -= context_menu_width;
         }
 
         let distance_to_window_bottom =
@@ -572,7 +573,7 @@ impl Windowable<MainMessage> for Main {
 
         let layout_ui = column![top_ui, bottom_ui];
 
-        let layout_menus = menu_bar(layout_ui.into(), &self.menu_bar, MENU_BAR_HEIGHT);
+        let layout_menus = menu_bar(layout_ui.into(), &self.menu_bar);
 
         let layout = column![mouse_area(layout_menus).on_move(MainMessage::WindowMouseMoved)];
 
@@ -946,10 +947,9 @@ impl Windowable<MainMessage> for Main {
                 self.window_mouse_position = new_point;
 
                 if self.menu_bar.is_dropdown_visible()
-                    && self.window_mouse_position.y < MENU_BAR_HEIGHT as f32
-                    && self.window_mouse_position.x < Menus::total_bar_width() as f32
-                    && let Some(menu) =
-                        Menus::menu_from_position(self.window_mouse_position.x as u32)
+                    && self.window_mouse_position.y < CONTEXT_MENU_HEIGHT
+                    && self.window_mouse_position.x < Menus::total_bar_width()
+                    && let Some(menu) = Menus::menu_from_position(self.window_mouse_position.x)
                 {
                     return self
                         .update(state, MainMessage::MenuBar(MenuMessage::ClickedMenu(menu)));
