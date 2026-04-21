@@ -51,7 +51,6 @@ use crate::ui::ui_tools;
 use crate::utils::clipboard::{read_clipboard, write_clipboard};
 use crate::utils::dictionary::{self, DICTIONARY};
 use crate::utils::logbox::{logbox, logbox_mut};
-use crate::utils::misc_tools::point_on_edge_of_text;
 use crate::{SharedAppState, UpstreamAction};
 
 #[derive(Debug, Default, Clone, PartialEq, Display)]
@@ -583,6 +582,8 @@ impl Windowable<MainMessage> for Main {
     }
 
     fn update(&mut self, state: &mut SharedAppState, message: MainMessage) -> Task<MainMessage> {
+        let mut tasks = Vec::new();
+
         match message {
             MainMessage::EmptyMessage => {
                 panic!("uninit message");
@@ -609,7 +610,8 @@ impl Windowable<MainMessage> for Main {
 
                 self.reload_date(state, new_date);
 
-                snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::START)
+                let snap_task = snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::START);
+                tasks.push(snap_task);
             }
             MainMessage::ForwardOneDay => {
                 self.active_content = None;
@@ -633,14 +635,16 @@ impl Windowable<MainMessage> for Main {
 
                 self.reload_date(state, new_date);
 
-                snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::START)
+                let snap_task = snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::START);
+                tasks.push(snap_task);
             }
             MainMessage::JumpToToday => {
                 self.active_content = None;
 
                 self.reload_date(state, Local::now().date_naive());
 
-                snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::START)
+                let snap_task = snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::START);
+                tasks.push(snap_task);
             }
             MainMessage::Edit(editor_action) => {
                 self.active_content = Some(ActiveContent::Editor);
@@ -655,20 +659,8 @@ impl Windowable<MainMessage> for Main {
 
                 self.update_spellcheck(state);
 
-                let editor_text = state.content.text();
-                let cursor_y = state.content.cursor_line();
-                let cursor_x = state.content.cursor_column();
-                let cursor_location =
-                    point_on_edge_of_text(&editor_text, cursor_x, cursor_y, 3, 400);
-
                 if matches!(self.editor_mode, EditorMode::SplitView) {
                     self.parse_markdown(state);
-                }
-
-                match cursor_location {
-                    Some(true) => snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::START),
-                    Some(false) => snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::END),
-                    None => Task::none(),
                 }
             }
             MainMessage::EditSearch(search_action) => {
@@ -703,8 +695,6 @@ impl Windowable<MainMessage> for Main {
                     .perform(ContentAction::Standard(search_action.clone()));
 
                 self.recompute_search(state);
-
-                Task::none()
             }
             MainMessage::SwitchEditorMode(new_editor_mode) => {
                 self.active_content = None;
@@ -717,13 +707,9 @@ impl Windowable<MainMessage> for Main {
                         self.parse_markdown(state);
                     }
                 }
-
-                Task::none()
             }
             MainMessage::Markdown => {
                 println!("md!");
-
-                Task::none()
             }
             MainMessage::Calender(calender_message) => {
                 self.active_content = None;
@@ -770,7 +756,8 @@ impl Windowable<MainMessage> for Main {
                     }
                 }
 
-                Task::none()
+                let snap_task = snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::START);
+                tasks.push(snap_task);
             }
             MainMessage::KeyEvent(event) => {
                 self.show_context_menu = false;
@@ -821,8 +808,6 @@ impl Windowable<MainMessage> for Main {
                         }
                     },
                 }
-
-                Task::none()
             }
             MainMessage::TableSearch(table_message) => {
                 self.active_content = None;
@@ -831,7 +816,8 @@ impl Windowable<MainMessage> for Main {
 
                 self.reload_date(state, table_date);
 
-                snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::START)
+                let snap_task = snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::START);
+                tasks.push(snap_task);
             }
             MainMessage::TabSwitched(tab) => {
                 self.active_content = None;
@@ -854,12 +840,8 @@ impl Windowable<MainMessage> for Main {
                             .set_colormap(self.compute_word_count_colormap(state));
                     }
                 }
-
-                Task::none()
             }
             MainMessage::AcceptSpellcheck(suggestion_idx) => {
-                let exit_message = self.update(state, MainMessage::ExitContextMenu);
-
                 let selected_suggestion = self.spell_suggestions[suggestion_idx].clone();
 
                 let equivalent_edit = text_editor::Edit::Paste(selected_suggestion.into());
@@ -867,15 +849,9 @@ impl Windowable<MainMessage> for Main {
                 state
                     .content
                     .perform(ContentAction::Standard(Action::Edit(equivalent_edit)));
-
-                exit_message
             }
             MainMessage::AddToDictionary(word) => {
-                let exit_message = self.update(state, MainMessage::ExitContextMenu);
-
                 dictionary::add_word_to_personal_dictionary(&word);
-
-                exit_message
             }
             MainMessage::ClearSearch => {
                 // TODO: auto focus
@@ -883,10 +859,11 @@ impl Windowable<MainMessage> for Main {
 
                 self.search_content = UpgradedContent::default();
 
-                self.update(
+                let search_task = self.update(
                     state,
                     MainMessage::EditSearch(Action::Move(text_editor::Motion::DocumentEnd)),
-                )
+                );
+                tasks.push(search_task);
             }
             MainMessage::ToggleSearchCase => {
                 // TODO: keep focus?
@@ -894,15 +871,14 @@ impl Windowable<MainMessage> for Main {
 
                 preferences_mut().search.toggle_ignore_search_case();
 
-                self.update(
+                let search_task = self.update(
                     state,
                     MainMessage::EditSearch(Action::Move(text_editor::Motion::DocumentEnd)),
-                )
+                );
+                tasks.push(search_task);
             }
             MainMessage::MouseMoved(new_position) => {
                 self.mouse_position = new_position;
-
-                Task::none()
             }
             MainMessage::RightClickEditArea => {
                 self.captured_mouse_position = self.mouse_position;
@@ -921,30 +897,22 @@ impl Windowable<MainMessage> for Main {
                 }
 
                 self.show_context_menu = true;
-
-                Task::none()
             }
             MainMessage::ExitContextMenu => {
                 self.show_context_menu = false;
-
-                Task::none()
             }
-            MainMessage::WindowEvent(event) => {
-                match event {
-                    window::Event::Opened {
-                        position: _position,
-                        size: inital_size,
-                    } => {
-                        self.window_size = inital_size;
-                    }
-                    window::Event::Resized(new_size) => {
-                        self.window_size = new_size;
-                    }
-                    _ => {}
+            MainMessage::WindowEvent(event) => match event {
+                window::Event::Opened {
+                    position: _position,
+                    size: inital_size,
+                } => {
+                    self.window_size = inital_size;
                 }
-
-                Task::none()
-            }
+                window::Event::Resized(new_size) => {
+                    self.window_size = new_size;
+                }
+                _ => {}
+            },
             MainMessage::WindowMouseMoved(new_point) => {
                 self.window_mouse_position = new_point;
 
@@ -956,8 +924,6 @@ impl Windowable<MainMessage> for Main {
                     return self
                         .update(state, MainMessage::MenuBar(MenuMessage::ClickedMenu(menu)));
                 }
-
-                Task::none()
             }
             MainMessage::MenuBar(menu_message) => {
                 self.menu_bar.set_active_dropdown(None);
@@ -1018,8 +984,6 @@ impl Windowable<MainMessage> for Main {
                         }
                     },
                 }
-
-                Task::none()
             }
             MainMessage::OpenFileImportWindow => {
                 self.active_content = None;
@@ -1027,8 +991,6 @@ impl Windowable<MainMessage> for Main {
                 state
                     .upstream_actions
                     .push(UpstreamAction::CreateWindow(WindowType::FileImport));
-
-                Task::none()
             }
             MainMessage::OpenFileExportWindow => {
                 self.active_content = None;
@@ -1036,8 +998,6 @@ impl Windowable<MainMessage> for Main {
                 state
                     .upstream_actions
                     .push(UpstreamAction::CreateWindow(WindowType::FileExport));
-
-                Task::none()
             }
             MainMessage::OpenPreferencesWindow => {
                 self.active_content = None;
@@ -1045,13 +1005,9 @@ impl Windowable<MainMessage> for Main {
                 state
                     .upstream_actions
                     .push(UpstreamAction::CreateWindow(WindowType::Preferences));
-
-                Task::none()
             }
             MainMessage::EditorScrolled(viewport) => {
                 self.editor_scroll_offset = viewport.absolute_offset();
-
-                Task::none()
             }
             MainMessage::AddTask => {
                 self.active_content = None;
@@ -1059,8 +1015,6 @@ impl Windowable<MainMessage> for Main {
                 state
                     .upstream_actions
                     .push(UpstreamAction::CreateWindow(WindowType::TaskCreator));
-
-                Task::none()
             }
             MainMessage::TaskAction(template_message) => {
                 self.active_content = Some(ActiveContent::Task(template_message.get_id()));
@@ -1068,17 +1022,19 @@ impl Windowable<MainMessage> for Main {
                 state
                     .task_manager
                     .update(state.global_store.current_date(), template_message);
-
-                Task::none()
             }
             MainMessage::Autosave => {
                 self.save_all(state);
 
                 logbox_mut().log("Autosaved");
-
-                Task::none()
             }
         }
+
+        if tasks.is_empty() {
+            tasks.push(Task::none());
+        }
+
+        Task::batch(tasks)
     }
 
     fn content_perform(&mut self, state: &mut SharedAppState, action: ContentAction) {
