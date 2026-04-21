@@ -3,7 +3,7 @@ use iced::Element;
 use iced::widget::{self, column, mouse_area, row, stack};
 
 use crate::custom_widgets::context_menu::{ContextMenuItem, build_context_menu};
-use crate::ui::layout::{CONTEXT_MENU_HEIGHT, CONTEXT_MENU_PADDING};
+use crate::ui::layout::{CONTEXT_MENU_HEIGHT, CONTEXT_MENU_TEXT_PADDING};
 use crate::ui::styling::CONTEXT_MENU_SIZE;
 use crate::utils::text_tools::string_width;
 
@@ -80,7 +80,7 @@ impl<M> MenuBar<M> {
 
         for dropdown in &self.dropdowns {
             let dropdown_name_width =
-                string_width(&dropdown.name, CONTEXT_MENU_SIZE) + CONTEXT_MENU_PADDING;
+                string_width(&dropdown.name, CONTEXT_MENU_SIZE) + CONTEXT_MENU_TEXT_PADDING;
 
             bar = bar.push(
                 widget::button(widget::text(dropdown.name.clone()).size(13).align_x(Center))
@@ -128,7 +128,7 @@ where
         .dropdowns
         .iter()
         .take(dropdown_index)
-        .map(|dropdown| string_width(&dropdown.name, CONTEXT_MENU_SIZE) + CONTEXT_MENU_PADDING)
+        .map(|dropdown| string_width(&dropdown.name, CONTEXT_MENU_SIZE) + CONTEXT_MENU_TEXT_PADDING)
         .sum::<f32>();
 
     let pinned_dropdown = widget::pin(dropdown)

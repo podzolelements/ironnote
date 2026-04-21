@@ -417,7 +417,9 @@ impl Windowable<MainMessage> for Main {
         if let Some(word) = &self.selected_misspelled_word {
             if !spell_suggestions.is_empty() {
                 context_menu_items.push(ContextMenuItem::Text("Did you mean:".to_string()));
+                context_menu_items.push(ContextMenuItem::Break);
                 context_menu_items.push(ContextMenuItem::Scroller((spell_suggestions, 6)));
+                context_menu_items.push(ContextMenuItem::Break);
             }
 
             let contains_whitespace = word.chars().any(|chara| chara.is_whitespace());
@@ -499,13 +501,13 @@ impl Windowable<MainMessage> for Main {
         let mut context_menu_position = self.captured_mouse_position;
         context_menu_position.y += self.editor_scroll_offset.y;
 
-        let context_menu_width = ContextMenuItem::padded_menu_width(&context_menu_items);
+        let context_menu_width = ContextMenuItem::full_menu_width(&context_menu_items);
         let context_menu_height = ContextMenuItem::menu_height(&context_menu_items);
 
         let distance_to_window_edge =
             self.window_size.width - self.captured_window_mouse_position.x;
 
-        if distance_to_window_edge < (context_menu_width + 15.0) {
+        if distance_to_window_edge < context_menu_width {
             context_menu_position.x -= context_menu_width;
         }
 

@@ -3,6 +3,7 @@ pub mod context_menu;
 pub mod file_picker;
 pub mod menu_bar;
 pub mod menu_bar_builder;
+pub mod rectangle;
 pub mod search_table;
 pub mod tabview;
 pub mod task;

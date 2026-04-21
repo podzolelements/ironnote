@@ -1,7 +1,7 @@
 use super::menu_bar::{Dropdown, MenuBar};
 use crate::{
     custom_widgets::context_menu::{ContextMenuElement, ContextMenuItem},
-    ui::{layout::CONTEXT_MENU_PADDING, styling::CONTEXT_MENU_SIZE},
+    ui::{layout::CONTEXT_MENU_TEXT_PADDING, styling::CONTEXT_MENU_SIZE},
     utils::text_tools::string_width,
     windows::main_window::MainMessage,
 };
@@ -58,7 +58,7 @@ impl Menus {
 
     /// Returns how much horizontal space the menu item takes up
     pub fn width(&self) -> f32 {
-        string_width(&self.to_string(), CONTEXT_MENU_SIZE) + CONTEXT_MENU_PADDING
+        string_width(&self.to_string(), CONTEXT_MENU_SIZE) + CONTEXT_MENU_TEXT_PADDING
     }
 
     /// Returns the total horizontal space the menu bar takes up

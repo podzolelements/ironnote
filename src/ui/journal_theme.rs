@@ -15,6 +15,9 @@ pub struct JournalTheme {
     pub(crate) char_count_ceiling: Color,
 
     pub(crate) link: Color,
+
+    pub(crate) context_menu_background: Color,
+    pub(crate) context_menu_border: Color,
 }
 
 pub const LIGHT: JournalTheme = JournalTheme {
@@ -31,6 +34,9 @@ pub const LIGHT: JournalTheme = JournalTheme {
     char_count_ceiling: color!(0x0040ff, 0.8),
 
     link: color!(0x0000ee, 1.0),
+
+    context_menu_background: color!(0xffffff, 1.0),
+    context_menu_border: color!(0xcccccc, 1.0),
 };
 
 impl JournalTheme {
