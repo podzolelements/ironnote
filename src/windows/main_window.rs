@@ -3,7 +3,7 @@ use iced::Length::Fill;
 use iced::widget::operation::snap_to;
 use iced::widget::scrollable::{AbsoluteOffset, RelativeOffset, Viewport};
 use iced::widget::text_editor::Action;
-use iced::widget::{Id, Space, Text, tooltip};
+use iced::widget::{Id, Space, Text, opaque, stack, tooltip};
 use iced::window;
 use iced::{
     Alignment::Center,
@@ -24,7 +24,9 @@ use super::window_manager::{WindowType, Windowable};
 use crate::config::{preferences, preferences_mut};
 use crate::content::{ContentAction, UpgradedContent};
 use crate::custom_widgets::calender::{Calender, CalenderColormap, CalenderMessage};
-use crate::custom_widgets::context_menu::context_menu;
+use crate::custom_widgets::context_menu::{
+    ContextMenuElement, ContextMenuItem, build_context_menu,
+};
 use crate::custom_widgets::menu_bar::{MenuBar, menu_bar};
 use crate::custom_widgets::menu_bar_builder::{
     EditMessage, FileMessage, MENU_BAR_HEIGHT, MenuMessage, Menus, ToolsMessage, build_menu_bar,
@@ -401,49 +403,34 @@ impl Windowable<MainMessage> for Main {
             }
         }
 
-        const MENU_SIZE: u32 = 13;
-        const MENU_WIDTH: u32 = 125;
+        let mut context_menu_items = Vec::new();
 
-        let mut spellcheck_context_menu_buttons = column![];
-
-        for (button_text, button_message) in spellcheck_context_menu_contents.iter() {
-            spellcheck_context_menu_buttons = spellcheck_context_menu_buttons.push(
-                widget::button(widget::Text::new(button_text.clone()).size(MENU_SIZE))
-                    .on_press(button_message.clone())
-                    .width(MENU_WIDTH),
-            );
-        }
-
-        let suggestion_count = spellcheck_context_menu_contents.len();
-
-        let suggestions_scroll = if suggestion_count < 6 {
-            spellcheck_context_menu_buttons
-        } else {
-            column![widget::scrollable(spellcheck_context_menu_buttons).height(MENU_WIDTH)]
-        };
-
-        let mut suggestion_menu = if suggestion_count > 0 {
-            column![
-                widget::Text::new("Did you mean:").size(MENU_SIZE),
-                suggestions_scroll
-            ]
-        } else {
-            column![]
-        };
+        let spell_suggestions = spellcheck_context_menu_contents
+            .into_iter()
+            .map(|(text, message)| ContextMenuElement {
+                name: text,
+                message: Some(message),
+            })
+            .collect::<Vec<ContextMenuElement<MainMessage>>>();
 
         if let Some(word) = &self.selected_misspelled_word {
+            if spell_suggestions.len() > 0 {
+                context_menu_items.push(ContextMenuItem::Text("Did you mean:".to_string()));
+                context_menu_items.push(ContextMenuItem::Scroller((spell_suggestions, 6)));
+            }
+
             let contains_whitespace = word.chars().any(|chara| chara.is_whitespace());
 
             if !contains_whitespace {
-                suggestion_menu = suggestion_menu.push(
-                    widget::button(
-                        widget::Text::new("Add \"".to_string() + word + "\" to dictionary")
-                            .size(MENU_SIZE),
-                    )
-                    .on_press(MainMessage::AddToDictionary(word.clone()))
-                    .width(MENU_WIDTH),
-                )
+                let add_to_dictionary = ContextMenuElement {
+                    name: format!("Add \"{}\" to dictionary", word),
+                    message: Some(MainMessage::AddToDictionary(word.clone())),
+                };
+
+                context_menu_items.push(ContextMenuItem::Button(add_to_dictionary));
             }
+
+            context_menu_items.push(ContextMenuItem::Break);
         }
 
         let cut_message = state
@@ -451,24 +438,32 @@ impl Windowable<MainMessage> for Main {
             .selection()
             .map(|_selection| MainMessage::KeyEvent(KeyboardAction::Unbound(UnboundKey::Cut)));
 
+        let cut = ContextMenuElement {
+            name: "Cut".to_string(),
+            message: cut_message,
+        };
+
         let copy_message = state
             .content
             .selection()
             .map(|_selection| MainMessage::KeyEvent(KeyboardAction::Unbound(UnboundKey::Copy)));
 
+        let copy = ContextMenuElement {
+            name: "Copy".to_string(),
+            message: copy_message,
+        };
+
         let paste_message = MainMessage::KeyEvent(KeyboardAction::Unbound(UnboundKey::Paste));
 
-        let edit_menu = column![
-            widget::button(widget::text("Cut").size(MENU_SIZE))
-                .on_press_maybe(cut_message)
-                .width(MENU_WIDTH),
-            widget::button(widget::text("Copy").size(MENU_SIZE))
-                .on_press_maybe(copy_message)
-                .width(MENU_WIDTH),
-            widget::button(widget::text("Paste").size(MENU_SIZE))
-                .on_press(paste_message)
-                .width(MENU_WIDTH)
-        ];
+        let paste = ContextMenuElement {
+            name: "Paste".to_string(),
+            message: Some(paste_message),
+        };
+
+        context_menu_items.push(ContextMenuItem::Button(cut));
+        context_menu_items.push(ContextMenuItem::Button(copy));
+        context_menu_items.push(ContextMenuItem::Button(paste));
+        context_menu_items.push(ContextMenuItem::Break);
 
         // TODO: extend context menu to all text_editors
         let undo_message = if state.content.undo_stack_height() > 0 {
@@ -478,6 +473,12 @@ impl Windowable<MainMessage> for Main {
         } else {
             None
         };
+
+        let undo = ContextMenuElement {
+            name: "Undo".to_string(),
+            message: undo_message,
+        };
+
         let redo_message = if state.content.redo_stack_height() > 0 {
             Some(MainMessage::KeyEvent(KeyboardAction::Content(
                 TextEdit::Redo,
@@ -486,40 +487,53 @@ impl Windowable<MainMessage> for Main {
             None
         };
 
-        let history_menu = column![
-            widget::button(widget::text("Undo").size(MENU_SIZE))
-                .on_press_maybe(undo_message)
-                .width(MENU_WIDTH),
-            widget::button(widget::text("Redo").size(MENU_SIZE))
-                .on_press_maybe(redo_message)
-                .width(MENU_WIDTH),
-        ];
+        let redo = ContextMenuElement {
+            name: "Redo".to_string(),
+            message: redo_message,
+        };
 
-        let total_context_menu = column![
-            suggestion_menu,
-            Space::new().height(3),
-            edit_menu,
-            Space::new().height(3),
-            history_menu
-        ];
+        context_menu_items.push(ContextMenuItem::Button(undo));
+        context_menu_items.push(ContextMenuItem::Button(redo));
 
         let mut context_menu_position = self.captured_mouse_position;
         context_menu_position.y += self.editor_scroll_offset.y;
 
+        let context_menu_width = ContextMenuItem::padded_menu_width(&context_menu_items);
+        let context_menu_height = ContextMenuItem::menu_height(&context_menu_items);
+
         let distance_to_window_edge =
             self.window_size.width - self.captured_window_mouse_position.x;
 
-        if distance_to_window_edge < (MENU_WIDTH + 15) as f32 {
-            context_menu_position.x -= MENU_WIDTH as f32;
+        if distance_to_window_edge < (context_menu_width + 15.0) as f32 {
+            context_menu_position.x -= context_menu_width as f32;
         }
 
-        let editor_with_menu = context_menu(
-            editor_area,
-            total_context_menu,
-            self.show_context_menu,
-            context_menu_position,
-            MainMessage::ExitContextMenu,
-        );
+        let distance_to_window_bottom =
+            self.window_size.height - self.captured_window_mouse_position.y - LOGBOX_HEIGHT;
+
+        if distance_to_window_bottom < context_menu_height {
+            context_menu_position.y -= context_menu_height;
+        }
+
+        let context_menu = build_context_menu(context_menu_items);
+
+        let aligned_context_menu = if self.show_context_menu {
+            let pinned = widget::pin(context_menu).position(context_menu_position);
+
+            let menu_content = opaque(
+                mouse_area(pinned)
+                    .on_press(MainMessage::ExitContextMenu)
+                    .on_right_press(MainMessage::ExitContextMenu)
+                    .on_middle_press(MainMessage::ExitContextMenu),
+            );
+
+            Some(menu_content)
+        } else {
+            None
+        };
+
+        // TODO: extend to entire window
+        let editor_with_menu = stack!(editor_area, aligned_context_menu);
 
         let scrollable_editor = widget::scrollable(editor_with_menu)
             .width(Length::Fill)
