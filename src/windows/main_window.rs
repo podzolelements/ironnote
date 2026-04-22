@@ -1195,21 +1195,27 @@ impl Main {
     }
 
     fn update_spellcheck(&mut self, state: &mut SharedAppState) {
-        // TODO: compute suggestions on another thread for better performance?
-
-        // computing spellcheck suggestions is extremely expensive, so we only do so when the selection size has
-        // changed
-        let recompute_spell_suggestions = if let Some(selection) = state.content.selection() {
+        let selection_changed = if let Some(selection) = state.content.selection() {
             self.selected_misspelled_word.replace(selection.clone()) != Some(selection)
         } else {
             self.spell_suggestions.clear();
             self.selected_misspelled_word = None;
+
             false
         };
 
+        let contains_skippable_symbols = if let Some(selection) = state.content.selection() {
+            selection
+                .chars()
+                .any(|chara| chara.is_whitespace() || (chara.is_ascii() && !chara.is_alphabetic()))
+        } else {
+            false
+        };
+
+        // Computing spellcheck suggestions is extremely expensive, so we only do so when needed
         if let Some(selection) = state.content.selection()
-            && !selection.contains(char::is_whitespace)
-            && recompute_spell_suggestions
+            && selection_changed
+            && !contains_skippable_symbols
             && let Some(dictionary) = DICTIONARY
                 .read()
                 .expect("couldn't get dictionary read")
