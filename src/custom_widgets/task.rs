@@ -24,7 +24,7 @@ pub fn build_task<'a, M: 'a + Clone>(
     name: String,
     expanded: Option<(Option<Element<'a, M>>, M)>,
     options_menu_toggle: M,
-    options_menu_items: Option<Vec<(String, M)>>,
+    options_menu: Option<Element<'a, M>>,
 ) -> Element<'a, M> {
     let main_checkbox = if let Some((checked, check_message)) = checkbox {
         column![widget::checkbox(checked).on_toggle(move |_ticked| { check_message.clone() })]
@@ -50,20 +50,6 @@ pub fn build_task<'a, M: 'a + Clone>(
 
     let options_button = button(Text::new("...")).on_press(options_menu_toggle);
 
-    let menu = if let Some(menu_items) = options_menu_items {
-        let mut menus = column![];
-
-        for (menu_name, menu_message) in menu_items {
-            let menu_item_button = button(Text::new(menu_name)).on_press(menu_message);
-
-            menus = menus.push(menu_item_button);
-        }
-
-        menus
-    } else {
-        column![]
-    };
-
     let task_ui = row![
         main_checkbox,
         name_text,
@@ -72,7 +58,7 @@ pub fn build_task<'a, M: 'a + Clone>(
         Space::new().width(SCROLLBAR_WIDTH)
     ];
 
-    let full_ui = column![task_ui, expanded_ui, menu].width(DASHBOARD_WIDTH);
+    let full_ui = column![task_ui, expanded_ui, options_menu].width(DASHBOARD_WIDTH);
 
     full_ui.into()
 }

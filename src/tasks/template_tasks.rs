@@ -7,7 +7,14 @@ use super::{
     MultiBinaryMessage, MultiBinaryTaskElement, StandardMessage, StandardTask, TaskId, TaskType,
     task_data::MultiBinaryTask,
 };
-use crate::{config::preferences, custom_widgets, utils::month_day::MonthDay};
+use crate::{
+    config::preferences,
+    custom_widgets::{
+        self,
+        context_menu::{ContextMenuElement, ContextMenuItem, build_context_menu},
+    },
+    utils::month_day::MonthDay,
+};
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 /// Contains all the individual task entries in a standard task
@@ -159,8 +166,6 @@ pub struct TemplateTask {
     frequency: Frequency,
     #[serde(skip)]
     expanded: bool,
-    #[serde(skip)]
-    options_expanded: bool,
     template_data: TemplateData,
 }
 
@@ -178,7 +183,6 @@ impl TemplateTask {
             ended_date: None,
             frequency,
             expanded: false,
-            options_expanded: false,
             template_data,
         }
     }
@@ -204,7 +208,11 @@ impl TemplateTask {
     }
 
     /// Constructs the template ui element at the given date, if it exists
-    pub fn built_template<'a>(&'a self, active_date: NaiveDate) -> Element<'a, TemplateMessage> {
+    pub fn built_template<'a>(
+        &'a self,
+        active_date: NaiveDate,
+        options_expanded: bool,
+    ) -> Element<'a, TemplateMessage> {
         let checkbox = match &self.template_data {
             TemplateData::Standard(standard_task_template) => standard_task_template
                 .elements
@@ -259,19 +267,21 @@ impl TemplateTask {
             "Resume Task".to_string()
         };
 
-        let menu_items = vec![
-            (
-                end_task_text,
-                TemplateMessage::Common(CommonMessage::EndTask),
-            ),
-            (
-                "Delete Task".to_string(),
-                TemplateMessage::Common(CommonMessage::DeleteTemplate),
-            ),
+        let task_menu_items = vec![
+            ContextMenuItem::Button(ContextMenuElement {
+                name: end_task_text,
+                message: Some(TemplateMessage::Common(CommonMessage::EndTask)),
+            }),
+            ContextMenuItem::Button(ContextMenuElement {
+                name: "Delete Task".to_string(),
+                message: Some(TemplateMessage::Common(CommonMessage::DeleteTemplate)),
+            }),
         ];
 
-        let options_menu = if self.options_expanded {
-            Some(menu_items)
+        let task_context_menu = build_context_menu(task_menu_items);
+
+        let options_menu = if options_expanded {
+            Some(task_context_menu)
         } else {
             None
         };
@@ -390,17 +400,13 @@ impl<'a> TemplateTasks {
                         CommonMessage::ExpandToggled => {
                             template.expanded = !template.expanded;
                         }
-                        CommonMessage::ExpandOptions => {
-                            template.options_expanded = !template.options_expanded
-                        }
+                        CommonMessage::ExpandOptions => {}
                         CommonMessage::EndTask => {
                             if template.ended_date.is_none() {
                                 template.ended_date = Some(active_date);
                             } else {
                                 template.ended_date = None;
                             }
-
-                            template.options_expanded = false;
                         }
                         CommonMessage::DeleteTemplate => {
                             self.tasks.remove(&message.task_id);
@@ -449,10 +455,11 @@ impl<'a> TemplateTasks {
         &'a self,
         task_id: TaskId,
         active_date: NaiveDate,
+        options_expanded: bool,
     ) -> Element<'a, TemplateTaskMessage> {
         if let Some(task_data) = self.get_task(task_id) {
             task_data
-                .built_template(active_date)
+                .built_template(active_date, options_expanded)
                 .map(move |template_message| TemplateTaskMessage {
                     message: template_message,
                     task_id,

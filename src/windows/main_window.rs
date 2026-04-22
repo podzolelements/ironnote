@@ -584,6 +584,9 @@ impl Windowable<MainMessage> for Main {
     fn update(&mut self, state: &mut SharedAppState, message: MainMessage) -> Task<MainMessage> {
         let mut tasks = Vec::new();
 
+        let mut preserve_context_menu = false;
+        let mut preserve_task_menu = false;
+
         match message {
             MainMessage::EmptyMessage => {
                 panic!("uninit message");
@@ -759,56 +762,52 @@ impl Windowable<MainMessage> for Main {
                 let snap_task = snap_to(Id::new(LOG_EDIT_AREA_ID), RelativeOffset::START);
                 tasks.push(snap_task);
             }
-            MainMessage::KeyEvent(event) => {
-                self.show_context_menu = false;
+            MainMessage::KeyEvent(event) => match event {
+                KeyboardAction::Content(text_edit) => {
+                    self.content_perform(state, text_edit.to_content_action());
 
-                match event {
-                    KeyboardAction::Content(text_edit) => {
-                        self.content_perform(state, text_edit.to_content_action());
+                    self.last_edit_time = Local::now();
+                }
+                KeyboardAction::Save => {
+                    self.save_all(state);
 
-                        self.last_edit_time = Local::now();
-                    }
-                    KeyboardAction::Save => {
-                        self.save_all(state);
+                    logbox_mut().log("Saved");
+                }
+                KeyboardAction::Debug => {
+                    let dialog_text = "debug!".to_string();
 
-                        logbox_mut().log("Saved");
-                    }
-                    KeyboardAction::Debug => {
-                        let dialog_text = "debug!".to_string();
-
-                        state
-                            .upstream_actions
-                            .push(UpstreamAction::OpenDialog(DialogType::Warning, dialog_text));
-                    }
-                    KeyboardAction::Unbound(unbounded_action) => match unbounded_action {
-                        UnboundKey::Cut => {
-                            if let Some(selection) = state.content.selection() {
-                                write_clipboard(selection);
-
-                                return self.update(
-                                    state,
-                                    MainMessage::Edit(Action::Edit(text_editor::Edit::Backspace)),
-                                );
-                            }
-                        }
-                        UnboundKey::Copy => {
-                            if let Some(selection) = state.content.selection() {
-                                write_clipboard(selection);
-                            };
-                        }
-                        UnboundKey::Paste => {
-                            let clipboard_text = read_clipboard();
+                    state
+                        .upstream_actions
+                        .push(UpstreamAction::OpenDialog(DialogType::Warning, dialog_text));
+                }
+                KeyboardAction::Unbound(unbounded_action) => match unbounded_action {
+                    UnboundKey::Cut => {
+                        if let Some(selection) = state.content.selection() {
+                            write_clipboard(selection);
 
                             return self.update(
                                 state,
-                                MainMessage::Edit(Action::Edit(text_editor::Edit::Paste(
-                                    clipboard_text.into(),
-                                ))),
+                                MainMessage::Edit(Action::Edit(text_editor::Edit::Backspace)),
                             );
                         }
-                    },
-                }
-            }
+                    }
+                    UnboundKey::Copy => {
+                        if let Some(selection) = state.content.selection() {
+                            write_clipboard(selection);
+                        };
+                    }
+                    UnboundKey::Paste => {
+                        let clipboard_text = read_clipboard();
+
+                        return self.update(
+                            state,
+                            MainMessage::Edit(Action::Edit(text_editor::Edit::Paste(
+                                clipboard_text.into(),
+                            ))),
+                        );
+                    }
+                },
+            },
             MainMessage::TableSearch(table_message) => {
                 self.active_content = None;
 
@@ -878,9 +877,14 @@ impl Windowable<MainMessage> for Main {
                 tasks.push(search_task);
             }
             MainMessage::MouseMoved(new_position) => {
+                preserve_context_menu = true;
+                preserve_task_menu = true;
+
                 self.mouse_position = new_position;
             }
             MainMessage::RightClickEditArea => {
+                preserve_context_menu = true;
+
                 self.captured_mouse_position = self.mouse_position;
                 self.captured_window_mouse_position = self.window_mouse_position;
 
@@ -914,6 +918,9 @@ impl Windowable<MainMessage> for Main {
                 _ => {}
             },
             MainMessage::WindowMouseMoved(new_point) => {
+                preserve_context_menu = true;
+                preserve_task_menu = true;
+
                 self.window_mouse_position = new_point;
 
                 if self.menu_bar.is_dropdown_visible()
@@ -1017,6 +1024,8 @@ impl Windowable<MainMessage> for Main {
                     .push(UpstreamAction::CreateWindow(WindowType::TaskCreator));
             }
             MainMessage::TaskAction(template_message) => {
+                preserve_task_menu = true;
+
                 self.active_content = Some(ActiveContent::Task(template_message.get_id()));
 
                 state
@@ -1024,10 +1033,21 @@ impl Windowable<MainMessage> for Main {
                     .update(state.global_store.current_date(), template_message);
             }
             MainMessage::Autosave => {
+                preserve_context_menu = true;
+                preserve_task_menu = true;
+
                 self.save_all(state);
 
                 logbox_mut().log("Autosaved");
             }
+        }
+
+        if self.show_context_menu && !preserve_context_menu {
+            self.show_context_menu = false;
+        }
+
+        if state.task_manager.is_options_menu_open() && !preserve_task_menu {
+            state.task_manager.close_menu();
         }
 
         if tasks.is_empty() {

@@ -6,12 +6,16 @@ use super::{
     TaskId,
     event_tasks::{EventTaskMessage, EventTasks},
 };
+use crate::tasks::event_tasks::EventTaskAction;
+use crate::tasks::template_tasks::{CommonMessage, TemplateMessage};
 
 #[derive(Debug)]
 /// Structure storing all the different types of tasks together
 pub struct TaskManager {
     pub(crate) template_tasks: TemplateTasks,
     pub(crate) event_tasks: EventTasks,
+
+    menu_open: Option<TaskId>,
 }
 
 impl Default for TaskManager {
@@ -39,11 +43,29 @@ impl TaskMessage {
     pub fn get_id(&self) -> TaskId {
         self.task_id
     }
+
+    pub fn is_options_menu_message(&self) -> bool {
+        match &self.message {
+            TaskMessageAction::Template(template_task_message) => matches!(
+                template_task_message.message,
+                TemplateMessage::Common(CommonMessage::ExpandOptions)
+            ),
+            TaskMessageAction::Event(event_task_message) => {
+                matches!(event_task_message.message, EventTaskAction::PressMenu)
+            }
+        }
+    }
 }
 
 impl TaskManager {
     /// Updates tasks for the given date and message
     pub fn update(&mut self, active_date: NaiveDate, message: TaskMessage) {
+        if message.is_options_menu_message() && self.menu_open != Some(message.task_id) {
+            self.menu_open = Some(message.task_id)
+        } else {
+            self.menu_open = None;
+        }
+
         match message.message {
             TaskMessageAction::Template(template_task_message) => {
                 self.template_tasks
@@ -55,6 +77,16 @@ impl TaskManager {
         }
     }
 
+    /// Returns true if there currently is a task with its options context menu open
+    pub fn is_options_menu_open(&self) -> bool {
+        self.menu_open.is_some()
+    }
+
+    /// Closes the options context menu of the task
+    pub fn close_menu(&mut self) {
+        self.menu_open = None;
+    }
+
     /// Constructs all tasks scheduled to be active on the given date
     pub fn build_tasks<'a>(&'a self, active_date: NaiveDate) -> Element<'a, TaskMessage> {
         let mut tasks = column![];
@@ -62,23 +94,29 @@ impl TaskManager {
         let event_ids = self.event_tasks.get_active_event_ids(active_date);
 
         for id in event_ids {
-            tasks = tasks.push(self.event_tasks.build_event(id).map(move |event_message| {
-                TaskMessage {
+            let options_expanded = Some(id) == self.menu_open;
+
+            tasks = tasks.push(self.event_tasks.build_event(id, options_expanded).map(
+                move |event_message| TaskMessage {
                     message: TaskMessageAction::Event(event_message),
                     task_id: id,
-                }
-            }));
+                },
+            ));
         }
 
         let template_ids = self.template_tasks.get_active_template_ids(active_date);
 
         for id in template_ids {
-            tasks = tasks.push(self.template_tasks.build_template(id, active_date).map(
-                move |template_message| TaskMessage {
-                    message: TaskMessageAction::Template(template_message),
-                    task_id: id,
-                },
-            ));
+            let options_expanded = Some(id) == self.menu_open;
+
+            tasks = tasks.push(
+                self.template_tasks
+                    .build_template(id, active_date, options_expanded)
+                    .map(move |template_message| TaskMessage {
+                        message: TaskMessageAction::Template(template_message),
+                        task_id: id,
+                    }),
+            );
         }
 
         tasks.into()
@@ -98,6 +136,7 @@ impl TaskManager {
         Self {
             template_tasks,
             event_tasks,
+            menu_open: None,
         }
     }
 }

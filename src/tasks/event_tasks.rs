@@ -4,7 +4,13 @@ use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fs};
 
 use super::{MultiBinaryMessage, MultiBinaryTask, StandardMessage, TaskData, TaskId};
-use crate::{config::preferences, custom_widgets};
+use crate::{
+    config::preferences,
+    custom_widgets::{
+        self,
+        context_menu::{ContextMenuElement, ContextMenuItem, build_context_menu},
+    },
+};
 
 #[derive(Debug, Serialize, Deserialize)]
 /// How task-based events are carried into future days if they are not completed
@@ -36,7 +42,7 @@ pub enum EventTaskAction {
 
 #[derive(Debug, Clone)]
 pub struct EventTaskMessage {
-    message: EventTaskAction,
+    pub(crate) message: EventTaskAction,
     task_id: TaskId,
 }
 
@@ -47,8 +53,8 @@ pub struct EventTask {
     date: NaiveDate,
     length_days: Option<u32>,
     preview_days: Option<u32>,
-    #[serde(skip)]
-    options_expanded: bool,
+    // #[serde(skip)]
+    // options_expanded: bool,
     task_data: Option<TaskEventTask>,
 }
 
@@ -96,7 +102,7 @@ impl EventTask {
     }
 
     /// Constructs the event task ui element
-    pub fn build_event<'a>(&'a self) -> Element<'a, EventTaskAction> {
+    pub fn build_event<'a>(&'a self, options_expanded: bool) -> Element<'a, EventTaskAction> {
         let checkbox = if let Some(task) = &self.task_data {
             match &task.task {
                 TaskData::Standard(standard_task) => Some((
@@ -133,10 +139,15 @@ impl EventTask {
             None
         };
 
-        let options_menu_items = vec![("Delete Event".to_string(), EventTaskAction::DeleteEvent)];
+        let event_menu_items = vec![ContextMenuItem::Button(ContextMenuElement {
+            name: "Delete Event".to_string(),
+            message: Some(EventTaskAction::DeleteEvent),
+        })];
 
-        let menu = if self.options_expanded {
-            Some(options_menu_items)
+        let event_menu = build_context_menu(event_menu_items);
+
+        let menu = if options_expanded {
+            Some(event_menu)
         } else {
             None
         };
@@ -191,9 +202,7 @@ impl EventTasks {
     pub fn update(&mut self, message: EventTaskMessage) {
         if let Some(event_task) = self.events.get_mut(&message.task_id) {
             match message.message {
-                EventTaskAction::PressMenu => {
-                    event_task.options_expanded = !event_task.options_expanded;
-                }
+                EventTaskAction::PressMenu => {}
                 EventTaskAction::DeleteEvent => {
                     self.events.remove(&message.task_id);
                 }
@@ -221,10 +230,14 @@ impl EventTasks {
     }
 
     /// Constructs the task ui element for the given task id, if it exists
-    pub fn build_event<'a>(&'a self, task_id: TaskId) -> Element<'a, EventTaskMessage> {
+    pub fn build_event<'a>(
+        &'a self,
+        task_id: TaskId,
+        options_expanded: bool,
+    ) -> Element<'a, EventTaskMessage> {
         if let Some(event_task) = self.events.get(&task_id) {
             event_task
-                .build_event()
+                .build_event(options_expanded)
                 .map(move |event_message| EventTaskMessage {
                     message: event_message,
                     task_id,
