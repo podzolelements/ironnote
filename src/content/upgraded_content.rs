@@ -503,9 +503,9 @@ impl UpgradedContent {
         &self.content
     }
 
-    /// returns the selected text in the content, if it exists
-    pub fn selection(&self) -> Option<String> {
-        self.content.selection()
+    /// Returns the selected text in the content. If there is no selection, the empty string is returned
+    pub fn selection(&self) -> String {
+        self.content.selection().unwrap_or_default()
     }
 
     /// returns the Content text as a string

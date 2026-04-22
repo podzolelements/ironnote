@@ -435,31 +435,42 @@ impl Windowable<MainMessage> for Main {
             context_menu_items.push(ContextMenuItem::Break);
         }
 
-        let cut_message = state
-            .content
-            .selection()
-            .map(|_selection| MainMessage::KeyEvent(KeyboardAction::Unbound(UnboundKey::Cut)));
+        let cut_message = if state.content.selection().is_empty() {
+            None
+        } else {
+            Some(MainMessage::KeyEvent(KeyboardAction::Unbound(
+                UnboundKey::Cut,
+            )))
+        };
 
         let cut = ContextMenuElement {
             name: "Cut".to_string(),
             message: cut_message,
         };
 
-        let copy_message = state
-            .content
-            .selection()
-            .map(|_selection| MainMessage::KeyEvent(KeyboardAction::Unbound(UnboundKey::Copy)));
+        let copy_message = if state.content.selection().is_empty() {
+            None
+        } else {
+            Some(MainMessage::KeyEvent(KeyboardAction::Unbound(
+                UnboundKey::Copy,
+            )))
+        };
 
         let copy = ContextMenuElement {
             name: "Copy".to_string(),
             message: copy_message,
         };
 
-        let paste_message = MainMessage::KeyEvent(KeyboardAction::Unbound(UnboundKey::Paste));
-
+        let paste_message = if read_clipboard().is_empty() {
+            None
+        } else {
+            Some(MainMessage::KeyEvent(KeyboardAction::Unbound(
+                UnboundKey::Paste,
+            )))
+        };
         let paste = ContextMenuElement {
             name: "Paste".to_string(),
-            message: Some(paste_message),
+            message: paste_message,
         };
 
         context_menu_items.push(ContextMenuItem::Button(cut));
@@ -782,7 +793,9 @@ impl Windowable<MainMessage> for Main {
                 }
                 KeyboardAction::Unbound(unbounded_action) => match unbounded_action {
                     UnboundKey::Cut => {
-                        if let Some(selection) = state.content.selection() {
+                        let selection = state.content.selection();
+
+                        if !selection.is_empty() {
                             write_clipboard(selection);
 
                             return self.update(
@@ -792,7 +805,9 @@ impl Windowable<MainMessage> for Main {
                         }
                     }
                     UnboundKey::Copy => {
-                        if let Some(selection) = state.content.selection() {
+                        let selection = state.content.selection();
+
+                        if !selection.is_empty() {
                             write_clipboard(selection);
                         };
                     }
@@ -888,7 +903,7 @@ impl Windowable<MainMessage> for Main {
                 self.captured_mouse_position = self.mouse_position;
                 self.captured_window_mouse_position = self.window_mouse_position;
 
-                if state.content.selection().is_none() {
+                if state.content.selection().is_empty() {
                     state.content.perform(ContentAction::Standard(Action::Click(
                         self.captured_mouse_position,
                     )));
@@ -1195,8 +1210,10 @@ impl Main {
     }
 
     fn update_spellcheck(&mut self, state: &mut SharedAppState) {
-        let selection_changed = if let Some(selection) = state.content.selection() {
-            self.selected_misspelled_word.replace(selection.clone()) != Some(selection)
+        let selection = state.content.selection();
+
+        let selection_changed = if !selection.is_empty() {
+            self.selected_misspelled_word.replace(selection.clone()) != Some(selection.clone())
         } else {
             self.spell_suggestions.clear();
             self.selected_misspelled_word = None;
@@ -1204,17 +1221,16 @@ impl Main {
             false
         };
 
-        let contains_skippable_symbols = if let Some(selection) = state.content.selection() {
+        let contains_skippable_symbols = if !selection.is_empty() {
             selection
                 .chars()
                 .any(|chara| chara.is_whitespace() || (chara.is_ascii() && !chara.is_alphabetic()))
         } else {
-            false
+            true
         };
 
         // Computing spellcheck suggestions is extremely expensive, so we only do so when needed
-        if let Some(selection) = state.content.selection()
-            && selection_changed
+        if selection_changed
             && !contains_skippable_symbols
             && let Some(dictionary) = DICTIONARY
                 .read()
