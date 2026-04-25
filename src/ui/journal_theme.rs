@@ -18,6 +18,7 @@ pub struct JournalTheme {
 
     pub(crate) context_menu_background: Color,
     pub(crate) context_menu_border: Color,
+    pub(crate) context_menu_bar_background: Color,
 }
 
 pub const LIGHT: JournalTheme = JournalTheme {
@@ -37,6 +38,7 @@ pub const LIGHT: JournalTheme = JournalTheme {
 
     context_menu_background: color!(0xffffff, 1.0),
     context_menu_border: color!(0xcccccc, 1.0),
+    context_menu_bar_background: color!(0xe8e8e8, 1.0),
 };
 
 impl JournalTheme {

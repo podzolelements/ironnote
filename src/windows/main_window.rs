@@ -27,9 +27,9 @@ use crate::custom_widgets::calender::{Calender, CalenderColormap, CalenderMessag
 use crate::custom_widgets::context_menu::{
     ContextMenuElement, ContextMenuItem, build_context_menu,
 };
-use crate::custom_widgets::menu_bar::{MenuBar, menu_bar};
+use crate::custom_widgets::menu_bar::{MenuBar, build_full_menu_bar};
 use crate::custom_widgets::menu_bar_builder::{
-    EditMessage, FileMessage, MenuMessage, Menus, ToolsMessage, build_menu_bar,
+    EditMessage, FileMessage, MenuMessage, ToolsMessage, build_menu_bar,
 };
 use crate::custom_widgets::search_table::{SearchTable, SearchTableMessage};
 use crate::custom_widgets::tabview::{TabviewItem, tabview_content_vertical};
@@ -407,10 +407,7 @@ impl Windowable<MainMessage> for Main {
 
         let spell_suggestions = spellcheck_context_menu_contents
             .into_iter()
-            .map(|(text, message)| ContextMenuElement {
-                name: text,
-                message: Some(message),
-            })
+            .map(|(text, message)| ContextMenuElement::new(&text, Some(message)))
             .collect::<Vec<ContextMenuElement<MainMessage>>>();
 
         if let Some(word) = &self.selected_misspelled_word {
@@ -424,10 +421,10 @@ impl Windowable<MainMessage> for Main {
             let contains_whitespace = word.chars().any(|chara| chara.is_whitespace());
 
             if !contains_whitespace {
-                let add_to_dictionary = ContextMenuElement {
-                    name: format!("Add \"{}\" to dictionary", word),
-                    message: Some(MainMessage::AddToDictionary(word.clone())),
-                };
+                let add_to_dictionary = ContextMenuElement::new(
+                    &format!("Add \"{}\" to dictionary", word),
+                    Some(MainMessage::AddToDictionary(word.clone())),
+                );
 
                 context_menu_items.push(ContextMenuItem::Button(add_to_dictionary));
             }
@@ -443,10 +440,7 @@ impl Windowable<MainMessage> for Main {
             )))
         };
 
-        let cut = ContextMenuElement {
-            name: "Cut".to_string(),
-            message: cut_message,
-        };
+        let cut = ContextMenuElement::new("Cut", cut_message);
 
         let copy_message = if state.content.selection().is_empty() {
             None
@@ -456,10 +450,7 @@ impl Windowable<MainMessage> for Main {
             )))
         };
 
-        let copy = ContextMenuElement {
-            name: "Copy".to_string(),
-            message: copy_message,
-        };
+        let copy = ContextMenuElement::new("Copy", copy_message);
 
         let paste_message = if read_clipboard().is_empty() {
             None
@@ -468,10 +459,7 @@ impl Windowable<MainMessage> for Main {
                 UnboundKey::Paste,
             )))
         };
-        let paste = ContextMenuElement {
-            name: "Paste".to_string(),
-            message: paste_message,
-        };
+        let paste = ContextMenuElement::new("Paste", paste_message);
 
         context_menu_items.push(ContextMenuItem::Button(cut));
         context_menu_items.push(ContextMenuItem::Button(copy));
@@ -487,10 +475,7 @@ impl Windowable<MainMessage> for Main {
             None
         };
 
-        let undo = ContextMenuElement {
-            name: "Undo".to_string(),
-            message: undo_message,
-        };
+        let undo = ContextMenuElement::new("Undo", undo_message);
 
         let redo_message = if state.content.redo_stack_height() > 0 {
             Some(MainMessage::KeyEvent(KeyboardAction::Content(
@@ -500,10 +485,7 @@ impl Windowable<MainMessage> for Main {
             None
         };
 
-        let redo = ContextMenuElement {
-            name: "Redo".to_string(),
-            message: redo_message,
-        };
+        let redo = ContextMenuElement::new("Redo", redo_message);
 
         context_menu_items.push(ContextMenuItem::Button(undo));
         context_menu_items.push(ContextMenuItem::Button(redo));
@@ -585,7 +567,7 @@ impl Windowable<MainMessage> for Main {
 
         let layout_ui = column![top_ui, bottom_ui];
 
-        let layout_menus = menu_bar(layout_ui.into(), &self.menu_bar);
+        let layout_menus = build_full_menu_bar(layout_ui.into(), &self.menu_bar);
 
         let layout = column![mouse_area(layout_menus).on_move(MainMessage::WindowMouseMoved)];
 
@@ -940,11 +922,15 @@ impl Windowable<MainMessage> for Main {
 
                 if self.menu_bar.is_dropdown_visible()
                     && self.window_mouse_position.y < CONTEXT_MENU_HEIGHT
-                    && self.window_mouse_position.x < Menus::total_bar_width()
-                    && let Some(menu) = Menus::menu_from_position(self.window_mouse_position.x)
+                    && self.window_mouse_position.x < self.menu_bar.total_bar_width()
+                    && let Some(menu) = self
+                        .menu_bar
+                        .menu_from_position(self.window_mouse_position.x)
                 {
-                    return self
-                        .update(state, MainMessage::MenuBar(MenuMessage::ClickedMenu(menu)));
+                    return self.update(
+                        state,
+                        MainMessage::MenuBar(MenuMessage::ClickedDropdown(menu)),
+                    );
                 }
             }
             MainMessage::MenuBar(menu_message) => {
@@ -954,8 +940,8 @@ impl Windowable<MainMessage> for Main {
                     MenuMessage::ClickedAway => {
                         self.menu_bar.set_active_dropdown(None);
                     }
-                    MenuMessage::ClickedMenu(menu) => {
-                        self.menu_bar.set_active_dropdown(Some(menu.menu_index()));
+                    MenuMessage::ClickedDropdown(dropdown_index) => {
+                        self.menu_bar.set_active_dropdown(Some(dropdown_index));
                     }
                     MenuMessage::File(file_message) => match file_message {
                         FileMessage::Save => {
@@ -1121,7 +1107,7 @@ impl Default for Main {
             window_size: Size::default(),
             window_mouse_position: Point::default(),
             captured_window_mouse_position: Point::default(),
-            menu_bar: build_menu_bar(),
+            menu_bar: build_menu_bar().map(MainMessage::MenuBar),
             editor_scroll_offset: AbsoluteOffset::default(),
             editor_mode: EditorMode::Editor,
             editor_markdown: Vec::default(),

@@ -1,21 +1,29 @@
+use strum::EnumIter;
+
 use super::menu_bar::{Dropdown, MenuBar};
-use crate::{
-    custom_widgets::context_menu::{ContextMenuElement, ContextMenuItem},
-    ui::{layout::CONTEXT_MENU_TEXT_PADDING, styling::CONTEXT_MENU_SIZE},
-    utils::text_tools::string_width,
-    windows::main_window::MainMessage,
-};
+use crate::custom_widgets::context_menu::{ContextMenuElement, ContextMenuItem};
 
-use strum::{Display, EnumIter, IntoEnumIterator};
-
-#[derive(Debug, Clone, EnumIter, Display)]
+#[derive(Debug, Clone)]
+/// File menu actions
 pub enum FileMessage {
     Save,
     Import,
     Export,
 }
 
-#[derive(Debug, Clone, EnumIter, Display)]
+impl FileMessage {
+    /// The text of the file menu item
+    pub fn name(&self) -> &'static str {
+        match self {
+            FileMessage::Save => "Save",
+            FileMessage::Import => "Import",
+            FileMessage::Export => "Export",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+/// Edit menu actions
 pub enum EditMessage {
     Undo,
     Redo,
@@ -24,104 +32,130 @@ pub enum EditMessage {
     Paste,
 }
 
-#[derive(Debug, Clone, EnumIter, Display)]
+impl EditMessage {
+    /// The text of the edit menu item
+    pub fn name(&self) -> &'static str {
+        match self {
+            EditMessage::Undo => "Undo",
+            EditMessage::Redo => "Redo",
+            EditMessage::Cut => "Cut",
+            EditMessage::Copy => "Copy",
+            EditMessage::Paste => "Paste",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+/// Tools menu actions
 pub enum ToolsMessage {
     Preferences,
+}
+
+impl ToolsMessage {
+    /// The text of the tools menu item
+    pub fn name(&self) -> &'static str {
+        match self {
+            ToolsMessage::Preferences => "Preferences",
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
 pub enum MenuMessage {
     ClickedAway,
-    ClickedMenu(Menus),
+    ClickedDropdown(usize),
     File(FileMessage),
     Edit(EditMessage),
     Tools(ToolsMessage),
 }
 
-#[derive(Debug, Clone, EnumIter, Display)]
-/// the types of top bar menus
-pub enum Menus {
+#[derive(Debug, Clone, EnumIter)]
+/// The types of top bar menus
+pub enum DropdownType {
     File,
     Edit,
     Tools,
 }
 
-impl Menus {
-    /// returns the index of the menu going from left to right starting at 0
-    pub fn menu_index(&self) -> usize {
+impl DropdownType {
+    /// Returns the index of the menu going from left to right starting at 0
+    pub fn dropdown_index(&self) -> usize {
         match self {
-            Menus::File => 0,
-            Menus::Edit => 1,
-            Menus::Tools => 2,
+            DropdownType::File => 0,
+            DropdownType::Edit => 1,
+            DropdownType::Tools => 2,
         }
     }
 
-    /// Returns how much horizontal space the menu item takes up
-    pub fn width(&self) -> f32 {
-        string_width(&self.to_string(), CONTEXT_MENU_SIZE) + CONTEXT_MENU_TEXT_PADDING
-    }
-
-    /// Returns the total horizontal space the menu bar takes up
-    pub fn total_bar_width() -> f32 {
-        Menus::iter().map(|menu| menu.width()).sum()
-    }
-
-    /// Returns the menu bar present at the given position, and None if the position is outside of the range the menu
-    /// bar takes up
-    pub fn menu_from_position(horizontal_position: f32) -> Option<Menus> {
-        let mut accumulator = 0.0;
-
-        for menu in Menus::iter() {
-            accumulator += menu.width();
-
-            if horizontal_position < accumulator {
-                return Some(menu);
-            }
+    /// The text of the dropdown menus
+    pub fn dropdown_name(&self) -> &'static str {
+        match self {
+            DropdownType::File => "File",
+            DropdownType::Edit => "Edit",
+            DropdownType::Tools => "Tools",
         }
-
-        None
     }
 }
 
 /// Constructs the top menu bar used by the application
-pub fn build_menu_bar() -> MenuBar<crate::MainMessage> {
-    let mut menu_bar = MenuBar::new(MainMessage::MenuBar(MenuMessage::ClickedAway));
+pub fn build_menu_bar() -> MenuBar<MenuMessage> {
+    let mut menu_bar = MenuBar::new(MenuMessage::ClickedAway);
 
     let mut file_dropdown = Dropdown::new(
-        &Menus::File.to_string(),
-        MainMessage::MenuBar(MenuMessage::ClickedMenu(Menus::File)),
+        DropdownType::File.dropdown_name(),
+        MenuMessage::ClickedDropdown(DropdownType::File.dropdown_index()),
     );
 
-    for file_message in FileMessage::iter() {
-        file_dropdown.push_menu_item(ContextMenuItem::Button(ContextMenuElement {
-            name: file_message.to_string(),
-            message: Some(MainMessage::MenuBar(MenuMessage::File(file_message))),
-        }));
-    }
+    file_dropdown.push_menu_item(ContextMenuItem::Button(ContextMenuElement::new(
+        FileMessage::Save.name(),
+        Some(MenuMessage::File(FileMessage::Save)),
+    )));
+    file_dropdown.push_menu_item(ContextMenuItem::Break);
+    file_dropdown.push_menu_item(ContextMenuItem::Button(ContextMenuElement::new(
+        FileMessage::Import.name(),
+        Some(MenuMessage::File(FileMessage::Save)),
+    )));
+    file_dropdown.push_menu_item(ContextMenuItem::Button(ContextMenuElement::new(
+        FileMessage::Export.name(),
+        Some(MenuMessage::File(FileMessage::Save)),
+    )));
 
     let mut edit_dropdown = Dropdown::new(
-        &Menus::Edit.to_string(),
-        MainMessage::MenuBar(MenuMessage::ClickedMenu(Menus::Edit)),
+        DropdownType::Edit.dropdown_name(),
+        MenuMessage::ClickedDropdown(DropdownType::Edit.dropdown_index()),
     );
 
-    for edit_message in EditMessage::iter() {
-        edit_dropdown.push_menu_item(ContextMenuItem::Button(ContextMenuElement {
-            name: edit_message.to_string(),
-            message: Some(MainMessage::MenuBar(MenuMessage::Edit(edit_message))),
-        }));
-    }
+    edit_dropdown.push_menu_item(ContextMenuItem::Button(ContextMenuElement::new(
+        EditMessage::Cut.name(),
+        Some(MenuMessage::Edit(EditMessage::Cut)),
+    )));
+    edit_dropdown.push_menu_item(ContextMenuItem::Button(ContextMenuElement::new(
+        EditMessage::Copy.name(),
+        Some(MenuMessage::Edit(EditMessage::Copy)),
+    )));
+    edit_dropdown.push_menu_item(ContextMenuItem::Button(ContextMenuElement::new(
+        EditMessage::Paste.name(),
+        Some(MenuMessage::Edit(EditMessage::Paste)),
+    )));
+    edit_dropdown.push_menu_item(ContextMenuItem::Break);
+    edit_dropdown.push_menu_item(ContextMenuItem::Button(ContextMenuElement::new(
+        EditMessage::Undo.name(),
+        Some(MenuMessage::Edit(EditMessage::Undo)),
+    )));
+    edit_dropdown.push_menu_item(ContextMenuItem::Button(ContextMenuElement::new(
+        EditMessage::Redo.name(),
+        Some(MenuMessage::Edit(EditMessage::Redo)),
+    )));
 
     let mut tools_dropdown = Dropdown::new(
-        &Menus::Tools.to_string(),
-        MainMessage::MenuBar(MenuMessage::ClickedMenu(Menus::Tools)),
+        DropdownType::Tools.dropdown_name(),
+        MenuMessage::ClickedDropdown(DropdownType::Tools.dropdown_index()),
     );
 
-    for tools_message in ToolsMessage::iter() {
-        tools_dropdown.push_menu_item(ContextMenuItem::Button(ContextMenuElement {
-            name: tools_message.to_string(),
-            message: Some(MainMessage::MenuBar(MenuMessage::Tools(tools_message))),
-        }));
-    }
+    tools_dropdown.push_menu_item(ContextMenuItem::Button(ContextMenuElement::new(
+        ToolsMessage::Preferences.name(),
+        Some(MenuMessage::Tools(ToolsMessage::Preferences)),
+    )));
 
     menu_bar.push_dropdown(file_dropdown);
     menu_bar.push_dropdown(edit_dropdown);

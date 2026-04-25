@@ -139,10 +139,10 @@ impl EventTask {
             None
         };
 
-        let event_menu_items = vec![ContextMenuItem::Button(ContextMenuElement {
-            name: "Delete Event".to_string(),
-            message: Some(EventTaskAction::DeleteEvent),
-        })];
+        let event_menu_items = vec![ContextMenuItem::Button(ContextMenuElement::new(
+            "Delete Event",
+            Some(EventTaskAction::DeleteEvent),
+        ))];
 
         let event_menu = build_context_menu(event_menu_items);
 

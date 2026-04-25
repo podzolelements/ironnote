@@ -262,20 +262,20 @@ impl TemplateTask {
         };
 
         let end_task_text = if self.ended_date.is_none() {
-            "End Task".to_string()
+            "End Task"
         } else {
-            "Resume Task".to_string()
+            "Resume Task"
         };
 
         let task_menu_items = vec![
-            ContextMenuItem::Button(ContextMenuElement {
-                name: end_task_text,
-                message: Some(TemplateMessage::Common(CommonMessage::EndTask)),
-            }),
-            ContextMenuItem::Button(ContextMenuElement {
-                name: "Delete Task".to_string(),
-                message: Some(TemplateMessage::Common(CommonMessage::DeleteTemplate)),
-            }),
+            ContextMenuItem::Button(ContextMenuElement::new(
+                end_task_text,
+                Some(TemplateMessage::Common(CommonMessage::EndTask)),
+            )),
+            ContextMenuItem::Button(ContextMenuElement::new(
+                "Delete Task",
+                Some(TemplateMessage::Common(CommonMessage::DeleteTemplate)),
+            )),
         ];
 
         let task_context_menu = build_context_menu(task_menu_items);

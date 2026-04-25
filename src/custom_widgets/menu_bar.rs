@@ -1,9 +1,10 @@
 use iced::Alignment::Center;
-use iced::Element;
-use iced::widget::{self, column, mouse_area, row, stack};
+use iced::widget::{self, button, column, mouse_area, row, stack};
+use iced::{Element, Length};
 
 use crate::custom_widgets::context_menu::{ContextMenuItem, build_context_menu};
-use crate::ui::layout::{CONTEXT_MENU_HEIGHT, CONTEXT_MENU_TEXT_PADDING};
+use crate::ui::button_themes;
+use crate::ui::layout::{CONTEXT_MENU_BAR_PADDING, CONTEXT_MENU_HEIGHT};
 use crate::ui::styling::CONTEXT_MENU_SIZE;
 use crate::utils::text_tools::string_width;
 
@@ -36,6 +37,11 @@ impl<M> Dropdown<M> {
         M: Clone + 'a,
     {
         build_context_menu(self.items.clone())
+    }
+
+    /// The width of the dropdown text, plus the padding on both sides
+    pub fn width(&self) -> f32 {
+        string_width(&self.name, CONTEXT_MENU_SIZE) + 2.0 * CONTEXT_MENU_BAR_PADDING
     }
 }
 
@@ -71,6 +77,27 @@ impl<M> MenuBar<M> {
         self.dropdown_visible.is_some()
     }
 
+    /// Total amount of horizontal space the menu takes up
+    pub fn total_bar_width(&self) -> f32 {
+        self.dropdowns.iter().map(|dropdown| dropdown.width()).sum()
+    }
+
+    /// Determines the menu index from the horizontal position along the menu bar, if the position is within the menu
+    /// bar's bounds
+    pub fn menu_from_position(&self, horizontal_position: f32) -> Option<usize> {
+        let mut accumulator = 0.0;
+
+        for (dropdown_index, dropdown) in self.dropdowns.iter().enumerate() {
+            accumulator += dropdown.width();
+
+            if horizontal_position < accumulator {
+                return Some(dropdown_index);
+            }
+        }
+
+        None
+    }
+
     /// Creates the composite menu bar element
     fn build_bar<'a>(&self) -> Element<'a, M>
     where
@@ -79,16 +106,26 @@ impl<M> MenuBar<M> {
         let mut bar = row![];
 
         for dropdown in &self.dropdowns {
-            let dropdown_name_width =
-                string_width(&dropdown.name, CONTEXT_MENU_SIZE) + CONTEXT_MENU_TEXT_PADDING;
-
             bar = bar.push(
-                widget::button(widget::text(dropdown.name.clone()).size(13).align_x(Center))
-                    .on_press(dropdown.on_click_dropdown.clone())
-                    .width(dropdown_name_width)
-                    .height(CONTEXT_MENU_HEIGHT),
+                widget::button(
+                    widget::text(dropdown.name.clone())
+                        .size(CONTEXT_MENU_SIZE)
+                        .align_x(Center)
+                        .align_y(Center),
+                )
+                .on_press(dropdown.on_click_dropdown.clone())
+                .width(dropdown.width())
+                .height(CONTEXT_MENU_HEIGHT)
+                .style(button_themes::context_menu_bar_style),
             );
         }
+
+        let bar_filler = button("")
+            .on_press_maybe(None)
+            .width(Length::Fill)
+            .height(CONTEXT_MENU_HEIGHT)
+            .style(button_themes::context_menu_bar_style);
+        bar = bar.push(bar_filler);
 
         bar.into()
     }
@@ -104,10 +141,34 @@ impl<M> MenuBar<M> {
 
         dropdown.build_dropdown()
     }
+
+    pub fn map<N, F>(self, mut f: F) -> MenuBar<N>
+    where
+        F: Clone + FnMut(M) -> N,
+    {
+        let dropdowns = self
+            .dropdowns
+            .into_iter()
+            .map(|d| Dropdown {
+                items: d.items.into_iter().map(|e| e.map(f.clone())).collect(),
+                name: d.name,
+                on_click_dropdown: f(d.on_click_dropdown),
+            })
+            .collect();
+
+        MenuBar {
+            dropdowns,
+            dropdown_visible: self.dropdown_visible,
+            on_click_away: f(self.on_click_away),
+        }
+    }
 }
 
 /// Creates a menu bar vertically on top of the underlay, based on the provided menu_structure
-pub fn menu_bar<'a, M>(underlay: Element<'a, M>, menu_structure: &'a MenuBar<M>) -> Element<'a, M>
+pub fn build_full_menu_bar<'a, M>(
+    underlay: Element<'a, M>,
+    menu_structure: &'a MenuBar<M>,
+) -> Element<'a, M>
 where
     M: Clone + 'a,
 {
@@ -128,7 +189,7 @@ where
         .dropdowns
         .iter()
         .take(dropdown_index)
-        .map(|dropdown| string_width(&dropdown.name, CONTEXT_MENU_SIZE) + CONTEXT_MENU_TEXT_PADDING)
+        .map(|dropdown| dropdown.width())
         .sum::<f32>();
 
     let pinned_dropdown = widget::pin(dropdown)

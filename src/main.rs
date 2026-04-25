@@ -14,8 +14,8 @@ use crate::{
     windows::window_manager::{WindowType, Windowable},
 };
 
-use iced::window;
 use iced::{Element, Event, Subscription, Task, event::listen_with, keyboard, widget::column};
+use iced::{Theme, window};
 use keybinds::Keybinds;
 use std::collections::BTreeMap;
 
@@ -443,5 +443,6 @@ fn main() -> Result<(), iced::Error> {
     iced::daemon(App::new, App::update, App::view)
         .subscription(App::subscription)
         .title(App::title)
+        .theme(Theme::Light)
         .run()
 }

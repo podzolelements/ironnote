@@ -16,8 +16,27 @@ use crate::utils::text_tools::string_width;
 #[derive(Debug, Clone)]
 /// The basic data required for a context menu element
 pub struct ContextMenuElement<M> {
-    pub(crate) name: String,
-    pub(crate) message: Option<M>,
+    name: String,
+    message: Option<M>,
+}
+
+impl<M> ContextMenuElement<M> {
+    pub fn new(name: &str, message: Option<M>) -> Self {
+        Self {
+            name: name.to_string(),
+            message,
+        }
+    }
+
+    pub fn map<N, F>(self, f: F) -> ContextMenuElement<N>
+    where
+        F: FnMut(M) -> N,
+    {
+        ContextMenuElement {
+            name: self.name,
+            message: self.message.map(f),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -94,6 +113,21 @@ impl<M> ContextMenuItem<M> {
     /// The total height of the menu, including the border. This is the complete height of the widget
     pub fn bordered_menu_height(items: &[ContextMenuItem<M>]) -> f32 {
         Self::menu_height(items) + CONTEXT_MENU_BORDER_WIDTH * 2.0
+    }
+
+    pub fn map<N, F>(self, f: F) -> ContextMenuItem<N>
+    where
+        F: Clone + FnMut(M) -> N,
+    {
+        match self {
+            ContextMenuItem::Button(element) => ContextMenuItem::Button(element.map(f)),
+            ContextMenuItem::Text(text) => ContextMenuItem::Text(text),
+            ContextMenuItem::Break => ContextMenuItem::Break,
+            ContextMenuItem::Scroller((elements, size)) => ContextMenuItem::Scroller((
+                elements.into_iter().map(|e| e.map(f.clone())).collect(),
+                size,
+            )),
+        }
     }
 }
 
