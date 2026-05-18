@@ -1,5 +1,6 @@
 use chrono::{DateTime, Datelike, Days, Local, Months, NaiveDate};
 use iced::Length::Fill;
+use iced::font;
 use iced::widget::operation::snap_to;
 use iced::widget::scrollable::{AbsoluteOffset, RelativeOffset, Viewport};
 use iced::widget::text_editor::Action;
@@ -551,9 +552,18 @@ impl Windowable<MainMessage> for Main {
 
         let top_ui = row![left_ui, right_ui];
 
-        let logbox = widget::text(logbox().get_log_at_time())
+        let (logbox_text, logbox_log_time) = logbox().get_log_at_time();
+
+        let logbox = widget::text(logbox_text)
             .size(14)
-            .font(Font::DEFAULT)
+            .font(Font {
+                style: if (Local::now() - logbox_log_time).num_seconds() > 4 {
+                    font::Style::Italic
+                } else {
+                    font::Style::Normal
+                },
+                ..Font::DEFAULT
+            })
             .height(LOGBOX_HEIGHT);
 
         let cursor_position_box = widget::Text::new(format!(

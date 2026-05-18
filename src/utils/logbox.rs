@@ -23,12 +23,14 @@ impl Logbox {
     }
 
     /// returns the content of the logbox message in the format "message at timestamp"
-    pub fn get_log_at_time(&self) -> String {
-        if let Some(message) = self.message.clone() {
+    pub fn get_log_at_time(&self) -> (String, DateTime<Local>) {
+        let log_text = if let Some(message) = self.message.clone() {
             message + " at " + &self.timestamp.format("%H:%M:%S").to_string()
         } else {
             "".to_string()
-        }
+        };
+
+        (log_text, self.timestamp)
     }
 }
 
